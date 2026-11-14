@@ -1,5 +1,5 @@
-import { recommendPlans, realPast } from "./engine.js?v=4";
-import { STR } from "./i18n.js?v=4";
+import { recommendPlans, realPast } from "./engine.js?v=5";
+import { STR } from "./i18n.js?v=5";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -165,7 +165,7 @@ const listenBtn = (text, label = true) => ("speechSynthesis" in window ? h("butt
 /* ---------------- shared pieces ---------------- */
 function route() {
   const [r, arg] = location.hash.replace("#/", "").split("/");
-  return { r: ROUTES.includes(r) ? r : (store.get("lot", null) || desktop() ? "lote" : "inicio"), arg };
+  return { r: ROUTES.includes(r) ? r : (store.get("lot", null) ? "lote" : "inicio"), arg };
 }
 const go = (r) => { location.hash = "#/" + r; };
 function renderNav(active) {
@@ -244,15 +244,31 @@ function viewFind() {
   const choose = (z) => { state.lot = { ...state.lot, zone: z }; store.set("lot", state.lot); memo.clear(); go("configurar"); };
   const zoneChips = h("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, ...Object.entries(ZONE_NAMES).map(([z, n]) => h("button", { class: "chip", onclick: () => choose(z) }, icon("i-pin"), n)));
   const note = h("p", { class: "note hidden" }, T().outOfArea);
-  const useBtn = h("button", { class: "btn block", disabled: true, onclick: () => state.picked && choose(state.picked) }, T().markFirst);
-  state.onPick = () => { useBtn.disabled = false; useBtn.textContent = `${T().useMarked} · ${ZONE_NAMES[state.picked]}`; };
+  const useBtn = h("button", { class: "btn primary block hidden", onclick: () => state.picked && choose(state.picked) }, T().markFirst);
+  state.onPick = () => { useBtn.classList.remove("hidden"); useBtn.textContent = `${T().useMarked} · ${ZONE_NAMES[state.picked]}`; };
   put(v, host,
     h("div", { class: "top" },
       h("div", { class: "row between" }, h("div", { class: "row", style: "gap:8px" }, h("span", { class: "logo" }, icon("i-sprout")), h("b", { style: "font-size:22px" }, "Rooti")), langToggle()),
-      h("h1", { class: "h1" }, T().findTitle), searchBox(choose, note), note, zoneChips),
+      h("h1", { class: "h1" }, T().findTitle), h("p", { class: "lead" }, T().intro), searchBox(choose, note), note, zoneChips),
     h("div", { class: "hint" }, T().tapMap),
-    h("div", { class: "bottom" }, h("button", { class: "btn primary block", onclick: () => locate(choose, note) }, icon("i-locate"), T().imHere), useBtn));
+    h("div", { class: "bottom" }, h("button", { class: "btn block", onclick: () => locate(choose, note) }, icon("i-locate"), T().imHere), useBtn));
   initCesium(host, { pick: true, showLot: false });
+}
+function viewFindDesk() {
+  const v = $("#view"); v.className = "view find-desk";
+  const choose = (z) => { state.lot = { ...state.lot, zone: z }; store.set("lot", state.lot); memo.clear(); go("configurar"); };
+  const note = h("p", { class: "note hidden" }, T().outOfArea);
+  const useBtn = h("button", { class: "btn primary block hidden", onclick: () => state.picked && choose(state.picked) }, T().markFirst);
+  state.onPick = () => { useBtn.classList.remove("hidden"); useBtn.textContent = `${T().useMarked} · ${ZONE_NAMES[state.picked]}`; };
+  put(v,
+    h("div", { class: "row between" }, h("div", { class: "row", style: "gap:8px" }, h("span", { class: "logo" }, icon("i-sprout")), h("b", { style: "font-size:22px" }, "Rooti")), langToggle()),
+    h("div", { class: "find-copy" }, h("h1", { class: "h1" }, T().findTitle), h("p", { class: "lead" }, T().intro)),
+    searchBox(choose, note), note,
+    h("div", { class: "find-zones" }, ...DATA.zones.map((z) => h("button", { class: "zone-row", onclick: () => choose(z.zone) },
+      icon("i-pin"), h("span", {}, h("b", {}, ZONE_NAMES[z.zone]), h("small", {}, T().zoneLine(z.zone))), icon("i-chev-r")))),
+    h("p", { class: "small" }, T().tapMap),
+    useBtn);
+  initCesium($("#cesium"), { pick: true, showLot: false });
 }
 function searchBox(onPick, note) {
   const input = h("input", { type: "search", placeholder: T().search, "aria-label": T().search, autocomplete: "off" });
@@ -581,9 +597,10 @@ async function render() {
   const { r, arg } = route();
   document.documentElement.lang = state.lang;
   renderNav(r); offlineBanner();
+  document.body.classList.toggle("first", r === "inicio" || r === "configurar");
   $("#search-desk").placeholder = T().search;
   if (r !== "inicio" && desktop() && (!viewer || viewer.container !== $("#cesium"))) initCesium($("#cesium"));
-  const views = { inicio: desktop() ? viewLot : viewFind, configurar: viewSetup, lote: viewLot, porque: () => viewWhy(arg || "best"), pasado: viewPast, preguntar: viewAsk, pasaporte: viewPassport };
+  const views = { inicio: desktop() ? viewFindDesk : viewFind, configurar: viewSetup, lote: viewLot, porque: () => viewWhy(arg || "best"), pasado: viewPast, preguntar: viewAsk, pasaporte: viewPassport };
   try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(render)); }
 }
 async function start() {

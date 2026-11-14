@@ -305,3 +305,22 @@ details.unknown ul { margin-top: 8px; padding-left: 20px; }
 .todo, details.unknown { background: #fff; border: 1px solid var(--border); border-radius: 8px; }
 .todo b { color: var(--ink); }
 .round { background: #fff; border: 1px solid var(--border); }
+
+/* first visit on desktop */
+.find-desk { gap: 20px; max-width: 560px; }
+.find-copy { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+.find-copy .h1, .find .h1 { font-size: 32px; }
+.lead { font-size: 18px; color: var(--ink); line-height: 1.45; }
+.find .lead { font-size: 16px; }
+.find-zones { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--border); border-radius: 8px; }
+.zone-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 0; background: none; text-align: left; min-height: 64px; }
+.zone-row + .zone-row { border-top: 1px solid var(--border); }
+.zone-row span { flex: 1; display: flex; flex-direction: column; }
+.zone-row b { font-size: 18px; } .zone-row small { font-size: 15px; color: var(--ink2); }
+.zone-row .icon { color: var(--ink2); }
+.zone-row:hover b { text-decoration: underline; }
+.find-desk .search { background: #fff; }
+body.first .map-pane .search-float { display: none; }
+body.first .tabs { display: none; }
+.find-desk { margin: 0 auto; width: 100%; }
+@media (max-width: 600px) { .find .h1 { font-size: 26px; } }

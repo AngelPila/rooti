@@ -1,6 +1,8 @@
 export const STR = {
   es: {
     findTitle: "¿Dónde está su lote?",
+    intro: "Rooti le dice qué sembrar en verano para que su suelo dure, con 24 años de clima real de la NASA.",
+    zoneLine: (z) => ({ daule: "Guayas · arroz", babahoyo: "Los Ríos · arroz", quevedo: "Los Ríos · maíz y arroz" }[z] || ""),
     search: "Buscar recinto o parroquia",
     tapMap: "Toque el mapa para marcar",
     imHere: "Estoy en mi lote",
@@ -100,6 +102,8 @@ export const STR = {
   },
   en: {
     findTitle: "Where is your plot?",
+    intro: "Rooti tells you what to plant in the dry season so your soil lasts, using 24 years of real NASA climate data.",
+    zoneLine: (z) => ({ daule: "Guayas · rice", babahoyo: "Los Ríos · rice", quevedo: "Los Ríos · maize and rice" }[z] || ""),
     search: "Search a village or parish",
     tapMap: "Tap the map to mark it",
     imHere: "I'm at my plot",
