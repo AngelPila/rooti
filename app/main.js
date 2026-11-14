@@ -3,6 +3,7 @@ import { plan as runPlanner, cropMonths } from "./planner.js?v=21";
 import { COPY } from "./copy.js?v=21";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=21";
 import { STR } from "./i18n.js?v=21";
+import { createBootcamp } from "./bootcamp.js?v=2";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -147,6 +148,7 @@ function speak(text) {
   u.voice = want.map((l) => voices.find((v) => v.lang.startsWith(l))).find(Boolean) || null;
   u.lang = u.voice?.lang || want[0]; u.rate = 0.95;
   speechSynthesis.speak(u);
+  return u;
 }
 function sheet(...kids) {
   const d = $("#sheet");
@@ -158,6 +160,16 @@ const brand = () => h("a", { class: "brand", href: "#/" }, h("span", { class: "l
 const loading = (msg) => h("div", { class: "loading" }, msg ? h("p", { class: "small" }, msg) : null, h("div", { class: "skeleton", style: { height: "120px" } }), h("div", { class: "skeleton", style: { height: "280px" } }), h("div", { class: "skeleton", style: { height: "160px" } }));
 const errorCard = (msg, retry) => h("div", { class: "errorcard", role: "alert" }, icon("i-wifi-off"), h("b", { class: "grow" }, msg), h("button", { class: "btn", onclick: retry }, C().retry));
 const stepIcon = (ic) => icon(ic === "calendar" ? "i-calendar" : ic === "map-pin" ? "i-pin" : "i-sprout");
+const bootcamp = createBootcamp({ h, put, icon, store, speak });
+
+function viewBootcamp() {
+  const crops = CROP_ORDER.filter((id) => DATA.crops[id]).map((id) => ({
+    id,
+    name: cap(cropName(id)),
+    months: cropMonths(DATA.crops[id]),
+  }));
+  put($("#view"), bootcamp(state.lang, crops, C().cta, () => { state.draft = null; }));
+}
 
 /* ================= landing ================= */
 // The cover is the farmer's plot seen from space, with the year's planting calendar printed on it.
@@ -197,6 +209,7 @@ function viewLanding() {
       h("div", { class: "l-copy" },
         h("h1", { class: "display" }, c.heroTitle), h("p", { class: "lead" }, c.heroLead),
         h("div", { class: "l-acts" }, h("button", { class: "btn dark big", onclick: start }, c.cta, icon("i-arrow-r")),
+          h("a", { class: "btn light big", href: "#/bootcamp" }, icon("i-sprout"), c.bootcamp),
           h("div", { class: "l-examples" }, h("span", { class: "small" }, c.examplesLbl), ...Object.keys(DEMOS).map((k) => h("button", { class: "chip", onclick: () => openDemo(k) }, c.demo[k])))),
         h("p", { class: "l-note" }, c.heroNote, " · ", h("span", { class: "credit" }, "Imagery: Esri World Imagery"))))));
 }
@@ -801,14 +814,14 @@ function route() {
   const [r = "", arg] = location.hash.replace(/^#\/?/, "").split("/");
   if (RESULTS.includes(r) && !state.plan) return { r: "planear" };
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
-  return { r: ["", "planear", ...RESULTS].includes(r) ? r : "", arg };
+  return { r: ["", "planear", "bootcamp", ...RESULTS].includes(r) ? r : "", arg };
 }
 function renderChrome(r) {
   const c = C(), P = state.plan, isRes = RESULTS.includes(r);
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sprout"], ["terreno", c.nav.plot, "i-pin"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["pasado", c.nav.past, "i-history"]];
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${c.planTitle}`)),
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.bootcamp : c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "15px" } }, c.changeData) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, icon(ic), l)));
@@ -816,8 +829,9 @@ function renderChrome(r) {
 }
 async function render() {
   const { r, arg } = route();
+  if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
+  const views = { "": viewLanding, bootcamp: viewBootcamp, planear: () => viewPlanear(arg), plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
   try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
