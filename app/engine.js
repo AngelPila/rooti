@@ -208,7 +208,8 @@ export function realPast(zone, crops, rotation, opts = {}) {
     const cal = riskCalendar(zone, crops, rotation, { ...opts, climate });
     const loss = cal.reduce((t, c) => t + (c.kind === "rain_on_bare" ? c.rain / 100 : c.kind === "bare_in_sun" ? 0.15 : 0), 0);
     const soil = loss > 2.5 ? "high" : loss > 1.2 ? "medium" : "low";
-    return { year: +year, verdict, soilLoss: soil, lossIndex: +loss.toFixed(2), score: Math.round(x.scores.total * 100), risk: +x.scores.risk.toFixed(2), failed, oniPeak: climate.oni_peak };
+    const failedCrops = x.parts.filter((p) => p.failed).map((p) => p.crop.id);
+    return { year: +year, verdict, soilLoss: soil, failedCrops, lossIndex: +loss.toFixed(2), score: Math.round(x.scores.total * 100), risk: +x.scores.risk.toFixed(2), failed, oniPeak: climate.oni_peak };
   });
 }
 
