@@ -4,7 +4,6 @@ import { COPY } from "./copy.js?v=21";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=21";
 import { STR } from "./i18n.js?v=21";
 import { createBootcamp } from "./bootcamp.js?v=2";
-import { createBootcamp } from "./bootcamp.js?v=2";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
