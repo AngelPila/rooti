@@ -1,5 +1,5 @@
-import { recommendPlans, realPast } from "./engine.js?v=3";
-import { STR } from "./i18n.js?v=3";
+import { recommendPlans, realPast } from "./engine.js?v=4";
+import { STR } from "./i18n.js?v=4";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -98,6 +98,14 @@ function planSummary(p) {
   if (dry === "mulch") return es() ? "Suelo cubierto en verano" : "Soil covered in the dry season";
   if (isLegume(dry)) return es() ? "Cubre el suelo y lo abona" : "Covers the soil and feeds it";
   return es() ? "Deja algo para vender" : "Leaves something to sell";
+}
+
+// The plan as one instruction, used as the answer's headline.
+function actionLine(p) {
+  const d = p.rotation.dry, c = cropName(d).toLowerCase(), w = cropName(p.rotation.wet).toLowerCase();
+  if (d === "mulch") return es() ? "Deje la paja sobre el lote" : "Leave the straw on the plot";
+  if (d === "fallow") return es() ? "Dejar el suelo pelado" : "Leave the soil bare";
+  return es() ? `Siembre ${c} después del ${w}` : `Sow ${c} after the ${w}`;
 }
 
 /* ---------------- money ---------------- */
@@ -300,8 +308,7 @@ function mapStrip(meta, levelNow) {
   const d = 0.006, b = [meta.lon - d * 2.6, meta.lat - d, meta.lon + d * 2.6, meta.lat + d].join(",");
   return h("a", { class: "map-strip", href: "#/inicio", "aria-label": T().findTitle },
     h("img", { alt: "", loading: "lazy", src: `${ESRI}/export?bbox=${b}&bboxSR=4326&size=780,200&format=jpg&f=image` }),
-    h("span", { class: `lot-outline ${levelNow || ""}` }),
-    h("span", { class: "lot-pill" }, h("b", {}, state.lot.name), ` · ${ZONE_NAMES[state.lot.zone]} · ${state.lot.size.toLocaleString(state.lang)} ${state.lot.unit === "ha" ? "ha" : T().unitCuadra}`));
+    h("span", { class: `lot-outline ${levelNow || ""}` }));
 }
 function seasonCard() {
   const o = DATA.outlook, z = o?.zones?.[state.lot.zone], noaa = o?.official?.noaa;
@@ -331,15 +338,28 @@ function controls() {
       chip(priOpts, state.priority, T().priorityQ, (v) => { state.priority = v; store.set("priority", v); refresh(); }));
   }
 }
-function planCard(p) {
-  const rec = p.role === "best", saved = state.saved && state.saved.key === JSON.stringify(p.rotation);
-  return h("article", { class: `card plan tappable${rec ? " rec" : ""}`, tabindex: "0", role: "link", "aria-label": `${planName(p)}. ${planSummary(p)}. ${T().whyLink}`,
-    onclick: () => go(`porque/${p.role}`), onkeydown: (e) => { if (e.key === "Enter") go(`porque/${p.role}`); } },
-    h("div", { class: "row between" }, h("span", { class: "name" }, planName(p)),
-      rec ? h("span", { class: "badge" }, icon("i-star"), T().recommended) : p.role === "today" ? h("span", { class: "badge muted" }, T().today) : null),
+function monthsHead() {
+  return [h("div", { class: "seasons" }, h("span", { class: "w" }, T().winter), h("span", { class: "s" }, T().summer), h("span", { class: "w2" })),
+    h("div", { class: "letters" }, ...T().months.map((m, i) => h("span", { class: i === NOW_MONTH ? "now" : null }, m)))];
+}
+function answerPanel(zone, ps) {
+  const p = roleOf(ps, "best"), r = reasons(zone, ps, "best")[0], saved = state.saved?.key === JSON.stringify(p.rotation), m = moneyLine(p);
+  return h("section", { class: "panel answer" },
+    h("p", { class: "label" }, T().forSummer),
+    h("h2", { class: "answer-h" }, actionLine(p)),
+    r ? h("p", { class: "evidence" }, h("b", {}, r.big), " ", r.txt) : null,
+    h("div", { class: "tl-wrap" }, ...monthsHead(), timeline(p)),
+    m ? h("p", { class: "money-line" }, icon("i-coin"), m) : null,
+    h("div", { class: "row answer-actions" },
+      h("button", { class: "btn primary", "aria-pressed": String(saved), onclick: () => savePlan(p) }, saved ? [icon("i-check"), T().saved] : T().save),
+      h("a", { class: "link", href: "#/porque/best" }, T().whyLink, icon("i-chev-r"))));
+}
+function optionRow(p) {
+  const m = seasonMoney(p), lose = m.fails && m.fails / m.n >= 0.5;
+  return h("a", { class: "opt", href: `#/porque/${p.role}` },
+    h("div", { class: "row between" }, h("span", { class: "name" }, planName(p)), p.role === "today" ? h("span", { class: "badge muted" }, T().today) : icon("i-chev-r")),
     timeline(p),
-    moneyLine(p) ? h("p", { class: "money-line" }, icon("i-coin"), moneyLine(p)) : null,
-    h("div", { class: "row between" }, h("span", { class: "sum" }, saved ? T().saved + " · " : null, planSummary(p)), h("span", { class: "why-link" }, T().whyLink, icon("i-chev-r"))));
+    h("p", { class: `opt-sum${lose ? " bad" : ""}` }, lose ? `${T().canLose(usdAbs(m.invest))} · ${planSummary(p)}` : planSummary(p)));
 }
 function legend() {
   return h("div", { class: "legend" },
@@ -354,16 +374,13 @@ async function viewLot() {
   const ps = plans(zone), best = roleOf(ps, "best");
   const levelNow = best.calendar[NOW_MONTH].level;
   const say = () => `${state.lot.name}. ${T().recommended}: ${planName(best)}. ${planSummary(best)}.`;
-  const head = desktop()
-    ? h("div", { class: "row between" }, h("div", {}, h("h1", { class: "h1" }, state.lot.name), h("p", { class: "sub" }, `${ZONE_NAMES[state.lot.zone]} · ${state.lot.size.toLocaleString(state.lang)} ${state.lot.unit === "ha" ? "ha" : T().unitCuadra} · ${cropName(opts().current.wet).toLowerCase()}`)), h("div", { class: "row", style: "gap:10px" }, listenBtn(say), langToggle()))
-    : h("div", { class: "strip-wrap" }, mapStrip(meta, levelNow), h("div", { class: "strip-listen" }, listenBtn(say, false)));
+  const title = h("div", { class: "row between" }, h("div", {}, h("h1", { class: "h1" }, state.lot.name), h("p", { class: "sub" }, `${ZONE_NAMES[state.lot.zone]} · ${state.lot.size.toLocaleString(state.lang)} ${state.lot.unit === "ha" ? "ha" : T().unitCuadra} · ${cropName(opts().current.wet).toLowerCase()}`)), h("div", { class: "row", style: "gap:8px" }, listenBtn(say, desktop()), langToggle()))
+  const head = desktop() ? title : [mapStrip(meta, levelNow), title];
   put(v, head, controls(), seasonCard(),
-    h("div", { class: "plan", style: "gap:8px" },
-      h("div", { class: "seasons" }, h("span", { class: "w" }, T().winter), h("span", { class: "s" }, T().summer), h("span", { class: "w2" })),
-      h("div", { class: "letters" }, ...T().months.map((m, i) => h("span", { class: i === NOW_MONTH ? "now" : null }, m))),
-      ...ps.map(planCard)),
+    answerPanel(zone, ps),
+    h("section", { class: "panel options" }, h("h2", { class: "panel-h" }, T().otherOptions), ...ps.filter((p) => p.role !== "best").map(optionRow)),
     legend(),
-    desktop() ? h("div", { class: "desk-grid" }, whySection(zone, ps, "best", true), await pastSection(zone, ps)) : null);
+    desktop() ? h("section", { class: "panel" }, await pastSection(zone, ps)) : null);
   updateMap(meta, levelNow, best);
 }
 
@@ -406,7 +423,7 @@ function whySection(zone, ps, role, compact = false) {
   const say = () => `${planName(p)}. ${planSummary(p)}. ${rs.map((r) => r.big + " " + r.txt).join(". ")}. ${todoText(p, ps)}. ${T().checkLocal}`;
   return h("section", { class: `plan why${compact ? " boxed" : ""}`, style: "gap:16px" },
     compact ? h("h2", { class: "h2" }, `${T().whyLink}: ${planName(p)}`) : null,
-    ...rs.map((r) => h("div", { class: "reason" }, h("span", { class: `cell ${r.lvl}`, style: "width:44px;height:44px;flex:none" }, icon(LEVEL_ICON[r.lvl], "icon lvl")), h("div", {}, h("b", {}, r.big), h("span", {}, r.txt)))),
+    ...rs.map((r) => h("div", { class: `reason ${r.lvl}` }, h("b", {}, r.big), h("span", {}, r.txt))),
     h("div", { class: "todo" }, h("b", {}, T().whatToDo), h("p", {}, todoText(p, ps), p.role !== "today" ? h("span", { class: "try" }, " " + T().tryFirst) : null)),
     moneyBlock(p),
     h("details", { class: "unknown" }, h("summary", {}, T().unknownTitle), h("ul", {}, ...[...T().unknown, T().moneyCheck].map((t) => h("li", {}, t)))),
@@ -421,8 +438,8 @@ async function viewWhy(role = "best") {
   const v = $("#view"); v.className = "view"; put(v, skeleton());
   const zone = await zoneData(state.lot.zone), ps = plans(zone), p = roleOf(ps, role);
   put(v,
-    h("div", { class: "row between" }, h("a", { class: "round", href: "#/lote", "aria-label": es() ? "Atrás" : "Back" }, icon("i-back")), p.role === "best" ? h("span", { class: "badge" }, icon("i-star"), T().recommended) : null),
-    h("div", {}, h("p", { class: "eyebrow-plan" }, planName(p)), h("h1", { class: "h1" }, planSummary(p))),
+    h("div", { class: "row between" }, h("a", { class: "round", href: "#/lote", "aria-label": es() ? "Atrás" : "Back" }, icon("i-back")), p.role === "best" ? h("span", { class: "badge" }, T().recommended) : null),
+    h("div", {}, h("h1", { class: "h1" }, actionLine(p)), h("p", { class: "sub" }, `${planName(p)} · ${planSummary(p)}`)),
     timeline(p),
     whySection(zone, ps, role));
 }
@@ -441,26 +458,26 @@ function outcomeText(p, y) {
   if (y.soilLoss === "medium") return es() ? "algo de daño al suelo" : "some soil damage";
   return es() ? "sin problema" : "no problem";
 }
-async function pastSection(zone, ps) {
+async function pastSection(zone, ps, standalone = false) {
   const p = roleOf(ps, state.pastRole), ys = past(zone, p.rotation), cnt = (l) => ys.filter((y) => y.level === l).length;
   const y = state.pastYear, all = ys.map((x) => x.year), i = all.indexOf(y);
   const step = (d) => { state.pastYear = all[Math.min(all.length - 1, Math.max(0, i + d))]; render(); };
   return h("section", { class: "plan", style: "gap:16px" },
-    h("div", {}, h("h2", { class: desktop() ? "h2" : "h1" }, T().pastTitle), h("p", { class: "sub" }, T().pastSub)),
+    h("div", {}, h(standalone ? "h1" : "h2", { class: standalone ? "h1" : "h2" }, T().pastTitle), h("p", { class: "sub" }, T().pastSub)),
     h("div", { class: "seg plan-tabs" }, ...ps.map((q) => h("button", { "aria-pressed": String(q.role === p.role), onclick: () => { state.pastRole = q.role; render(); } }, q.role === "best" ? icon("i-star") : null, cropName(q.rotation.dry)))),
-    h("div", { class: "counts" }, ...["good", "care", "danger"].map((l) => h("span", {}, h("i", { class: `sw ${l}` }, icon(LEVEL_ICON[l])), `${cnt(l)} ${T().level[l].toLowerCase()}`))),
+    h("div", { class: "counts" }, ...["good", "care", "danger"].map((l) => h("span", {}, h("i", { class: `sw-flat ${l}` }), `${cnt(l)} ${T().level[l].toLowerCase()}`))),
     h("div", { class: "years" }, ...ys.map((x) => h("button", { class: x.level, "aria-label": `${x.year}: ${T().level[x.level]}`, "aria-pressed": String(x.year === y), onclick: () => { state.pastYear = x.year; render(); } },
-      icon(LEVEL_ICON[x.level]), h("span", {}, `'${String(x.year).slice(2)}`)))),
+      h("span", {}, `'${String(x.year).slice(2)}`)))),
     h("div", { class: "yeardetail" },
       h("div", { class: "row between" }, h("button", { class: "round white", "aria-label": es() ? "Año anterior" : "Previous year", onclick: () => step(-1) }, icon("i-chev-l")),
         h("div", {}, h("p", { class: "y" }, String(y)), h("p", { class: "ys" }, yearLabel(zone, y))),
         h("button", { class: "round white", "aria-label": es() ? "Año siguiente" : "Next year", onclick: () => step(1) }, icon("i-chev-r"))),
-      ...ps.map((q) => { const yy = past(zone, q.rotation).find((x) => x.year === y); return h("div", { class: "outcome" }, h("i", { class: `sw ${yy.level}` }, icon(LEVEL_ICON[yy.level])), h("span", {}, h("b", {}, planName(q)), ": ", outcomeText(q, yy))); })));
+      ...ps.map((q) => { const yy = past(zone, q.rotation).find((x) => x.year === y); return h("div", { class: "outcome" }, h("i", { class: `sw-flat ${yy.level}` }), h("span", {}, h("b", {}, planName(q)), ": ", outcomeText(q, yy))); })));
 }
 async function viewPast() {
   const v = $("#view"); v.className = "view"; put(v, skeleton());
   const zone = await zoneData(state.lot.zone);
-  put(v, await pastSection(zone, plans(zone)));
+  put(v, await pastSection(zone, plans(zone), true));
 }
 
 /* ---------- ask ---------- */
