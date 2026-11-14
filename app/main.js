@@ -1,6 +1,6 @@
-import { fetchClimate } from "./climate.js?v=8";
-import { plan as runPlanner, cropMonths } from "./planner.js?v=8";
-import { STR } from "./i18n.js?v=8";
+import { fetchClimate } from "./climate.js?v=10";
+import { plan as runPlanner, cropMonths } from "./planner.js?v=10";
+import { STR } from "./i18n.js?v=10";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -83,7 +83,7 @@ const nearPilot = (pl) => Object.entries(PILOTS).find(([, [la, lo]]) => Math.hyp
 
 /* ---------------- data ---------------- */
 async function loadBase() {
-  const [crops, econ] = await Promise.all([fetch("data/crops.json?v=8").then(ok), fetch("data/economics.json").then(ok).catch(() => null)]);
+  const [crops, econ] = await Promise.all([fetch("data/crops.json?v=10").then(ok), fetch("data/economics.json").then(ok).catch(() => null)]);
   DATA.crops = crops.crops; DATA.econ = econ;
 }
 async function climate(pl) {
@@ -296,6 +296,8 @@ async function viewResult() {
       h("div", { class: "row", style: "gap:8px" }, h("a", { class: "btn small-btn", href: "#/inicio", onclick: () => { state.draft = null; } }, T().change), listenBtn(say), desktop() ? langToggle() : null)),
     controls(), dataNote(r),
     planPanel(best, 0, true),
+    subsPanel(r),
+    sowPanel(r),
     rest.length ? h("h2", { class: "section-h" }, T().otherOptions) : null,
     ...rest.map((p, i) => planPanel(p, i + 1, false)),
     legend());
@@ -303,6 +305,37 @@ async function viewResult() {
 }
 function legend() {
   return h("div", { class: "legend" }, ...["good", "care", "danger"].map((l) => h("span", {}, h("i", { class: `sw-flat ${l}` }), T().level[l])), h("span", { class: "legend-hint" }, T().tapMonth));
+}
+
+/* ---------------- when to sow each crop, and better crops ---------------- */
+const winText = (w) => (w.from.y === w.to.y && w.from.m === w.to.m ? ym(w.from) : span(w.from, w.to));
+function sowRows(info, period) {
+  const byY = {};
+  period.forEach((p, t) => (byY[p.y] ||= []).push({ ...p, s: info.starts[t] }));
+  return h("div", { class: "yr-cal compact sow" }, ...Object.entries(byY).map(([y, ms]) => h("div", { class: "yr-row" }, h("span", { class: "yr-y" }, y),
+    h("div", { class: "yr-m" }, ...ms.map((x) => h("span", { class: `sow-m ${x.s ? x.s.level : "none"}${x.s && info.best && x.s.t === info.best.t ? " best" : ""}`, style: `grid-column:${x.m}`,
+      title: x.s ? `${T().monthsLong[x.m - 1]} ${x.y}: ${Math.round(x.s.value * 100)} %` : T().noTime }))))));
+}
+function sowPanel(r) {
+  const ids = state.plan.crops.filter((id) => r.windows[id]);
+  if (!ids.length) return null;
+  return h("section", { class: "panel" }, h("h2", { class: "panel-h" }, T().sowTitle), h("p", { class: "small" }, T().sowSub),
+    ...ids.map((id) => { const w = r.windows[id], top = w.windows[0];
+      return h("div", { class: "sow-crop" },
+        h("div", { class: "row between" }, h("b", {}, cap(cropName(id))),
+          h("span", { class: `verdict small-v ${w.level}` }, top ? T().bestSow(winText(top), Math.round(top.value * 100)) : T().noSow)),
+        w.windows[1] ? h("p", { class: "small" }, T().alsoSow(w.windows.slice(1, 3).map(winText).join(", "))) : null,
+        sowRows(w, r.period)); }),
+    h("div", { class: "legend" }, ...["good", "care", "danger"].map((l) => h("span", {}, h("i", { class: `sw-flat ${l}` }), T().sowLevel[l])), h("span", {}, h("i", { class: "sw-flat none" }), T().noTime)));
+}
+function subsPanel(r) {
+  if (!r.substitutes?.length) return null;
+  return h("section", { class: "panel subs" }, h("h2", { class: "panel-h" }, T().subsTitle),
+    ...r.substitutes.map((s) => h("div", { class: "sub" },
+      h("p", {}, T().subLine(cap(cropName(s.id)), Math.round((s.best?.value ?? 0) * 100))),
+      s.alts.length ? h("ul", { class: "sub-alts" }, ...s.alts.map((a) => h("li", {},
+        h("div", {}, h("b", {}, cap(cropName(a.id))), h("small", {}, `${DATA.crops[a.id]?.n_fixing ? T().kindLegume : T().kindCash} · ${T().subSow(winText(a.windows[0] || { from: r.period[a.best.t], to: r.period[a.best.t] }), Math.round(a.best.value * 100))}`)),
+        h("button", { class: "btn sim", onclick: () => { state.plan = { ...state.plan, crops: [...state.plan.crops, a.id] }; store.set("plan2", state.plan); memo.clear(); render(); } }, T().add)))) : h("p", { class: "small" }, T().noSubs))));
 }
 
 /* ---------------- why ---------------- */

@@ -90,7 +90,8 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
 
   // Planting table: every crop at every start month, over every sample.
   const tab = {};
-  for (const id of ids) {
+  const all = Object.keys(crops).filter((id) => crops[id].cycle_days);
+  for (const id of all) {
     const L = cropMonths(crops[id]);
     tab[id] = [];
     for (let t = 0; t + L <= N; t++) {
@@ -115,7 +116,9 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
         if (!row) continue;
         const c = crops[id];
         const income = GREEN_MANURE.has(id) ? 0.2 : 1;
-        const soil = (c.n_fixing ? 0.3 : 0) - (id === prev ? 0.4 : 0) - (CEREALS.has(id) && CEREALS.has(prev) ? 0.1 : 0) + 0.15 * lvl(c.soil_cover);
+        // Rotation rules: the same crop back to back carries its pests and diseases over; a legume after a cereal
+        // gives nitrogen back; two cereals in a row draw on the same nutrients.
+        const soil = (c.n_fixing ? 0.3 : 0) + (c.n_fixing && CEREALS.has(prev) ? 0.25 : 0) - (id === prev ? 1.0 : 0) - (CEREALS.has(id) && CEREALS.has(prev) ? 0.15 : 0) + 0.15 * lvl(c.soil_cover);
         let bareIfLost = 0;
         for (let u = t; u < t + row.L; u++) bareIfLost += 0.6 * W.soil * bareSev[u];
         const gain = (W.income * income * row.yld + W.soil * soil * (1 - row.fail) - W.water * row.deficit - row.fail * bareIfLost - W.income * PLANTING_COST) / Wsum - 2.5 * row.fail;
@@ -135,8 +138,30 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
     if (seen.has(sig)) continue;
     seen.add(sig); uniq.push(r);
   }
-  const plans = uniq.slice(0, 6).map((r, i) => describe(r, i));
-  return { period, samples: S, plans };
+  const planted = uniq.filter((r) => r.steps.length);
+  const plans = (planted.length ? planted : uniq).slice(0, 6).map((r, i) => describe(r, i));
+  // When to sow each crop: the expected share of a full harvest for every possible sowing month.
+  const windows = {};
+  for (const id of all) {
+    const starts = period.map((_, t) => { const row = tab[id][t]; if (!row) return null; const value = (1 - row.fail) * row.yld; return { t, value, fail: row.fail, yld: row.yld, level: value >= 0.65 ? "good" : value >= 0.35 ? "care" : "danger" }; });
+    const ok = starts.filter(Boolean), best = ok.reduce((a, b) => (b.value > (a?.value ?? -1) ? b : a), null);
+    const want = ok.some((x) => x.level === "good") ? "good" : "care", wins = [];
+    for (const x of ok) {
+      if (x.level !== want) continue;
+      const w = wins[wins.length - 1];
+      if (w && w.t1 === x.t - 1) { w.t1 = x.t; w.vals.push(x.value); } else wins.push({ t0: x.t, t1: x.t, vals: [x.value] });
+    }
+    windows[id] = { id, starts, best, level: best?.level || "danger", L: cropMonths(crops[id]),
+                    windows: ok.some((x) => x.level !== "danger") ? wins.map((w) => ({ from: period[w.t0], to: period[w.t1], t0: w.t0, t1: w.t1, value: Math.max(...w.vals) })).sort((a, b) => b.value - a.value) : [] };
+  }
+  // Better crops for the dates, when a picked crop does not suit them.
+  const substitutes = ids.filter((id) => (windows[id].best?.value ?? 0) < 0.5).map((id) => {
+    const mine = windows[id].best?.value ?? 0, legume = !!crops[id].n_fixing;
+    const alts = all.filter((x) => !picked.includes(x) && (windows[x].best?.value ?? 0) >= Math.max(0.6, mine + 0.15))
+      .sort((a, b) => (+!!crops[b].n_fixing === +legume) - (+!!crops[a].n_fixing === +legume) || windows[b].best.value - windows[a].best.value).slice(0, 3);
+    return { id, best: windows[id].best, alts: alts.map((x) => windows[x]) };
+  }).filter((x) => x.alts.length || (x.best?.value ?? 0) < 0.35);
+  return { period, samples: S, plans, windows, substitutes };
 
   // Month-by-month picture and outcome of one plan.
   function describe(r, i) {
