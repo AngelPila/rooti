@@ -6,4 +6,4 @@ RUN pip install --no-cache-dir earthaccess xarray netCDF4 h5netcdf h5py rioxarra
     pystac-client planetary-computer odc-stac dask[distributed] duckdb xarray-spatial pint uncertainties requests jupyterlab
 WORKDIR /work
 EXPOSE 8888
-CMD ["jupyter","lab","--ip=0.0.0.0","--no-browser","--allow-root","--ServerApp.token=''"]
+CMD ["jupyter","lab","--ip=0.0.0.0","--no-browser","--allow-root"]

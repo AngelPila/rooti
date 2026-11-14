@@ -74,6 +74,9 @@ for name in zones:
         "et_mm": d["et_mm"].resample("MS").sum(min_count=25),
     })
     m["balance_hidrico_mm"] = m["lluvia_mm"] - m["et0_mm"]  # lluvia menos demanda de referencia (FAO-56)
+    # Mes incompleto (p. ej. el mes en curso): sin lluvia completa no se cuentan días de calor ni de lluvia fuerte.
+    incompleto = m["lluvia_mm"].isna()
+    m.loc[incompleto, ["dias_lluvia_fuerte_20mm", "dias_calor_33c", "dias_calor_35c"]] = float("nan")
     base = m.loc["1991":"2020"]
     clim = base.groupby(base.index.month).mean()
     for c in ["lluvia_mm", "tmax_media_c", "humedad_suelo_raiz", "balance_hidrico_mm"]:

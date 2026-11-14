@@ -1,7 +1,7 @@
 """Relieve (Copernicus DEM GLO-30 via Planetary Computer) + suelo (SoilGrids 2.0) por zona.
 -> raw/dem_<zona>.tif, raw/terrain.csv, raw/soil.csv"""
 import json, sys, pathlib, time, numpy as np, pandas as pd, requests
-import planetary_computer, pystac_client, odc.stac
+import planetary_computer, pystac_client, odc.stac, rioxarray  # noqa: F401 (registers .rio)
 ROOT = pathlib.Path(sys.argv[1]); HALF = 0.025
 zones = json.loads((ROOT / "scripts/zones.json").read_text())
 cat = pystac_client.Client.open("https://planetarycomputer.microsoft.com/api/stac/v1",
@@ -11,7 +11,7 @@ for name, z in zones.items():
     bbox = [z["lon"]-HALF, z["lat"]-HALF, z["lon"]+HALF, z["lat"]+HALF]
     items = list(cat.search(collections=["cop-dem-glo-30"], bbox=bbox).items())
     dem = odc.stac.load(items, bands=["data"], bbox=bbox, crs="EPSG:32717", resolution=30).data.isel(time=0).astype("float32")
-    dem.rio.to_raster(ROOT / f"raw/dem_{name}.tif") if hasattr(dem, "rio") else None
+    dem.rio.to_raster(ROOT / f"raw/dem_{name}.tif")
     gy, gx = np.gradient(dem.values, 30.0)
     slope = np.degrees(np.arctan(np.hypot(gx, gy)))
     rows.append({"zona": name, "elev_media_m": round(float(np.nanmean(dem)), 1),
