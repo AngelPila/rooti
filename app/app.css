@@ -333,3 +333,54 @@ body.results .bottom-nav { display: grid; }
   .farm-card .cal-block { gap: 8px; }
 }
 .l-credit { bottom: 2px !important; font-size: 10px; }
+
+/* strategies, explanations, tips, plot */
+.sec-h { font-size: 17px; }
+.strats-wrap { display: flex; flex-direction: column; gap: 10px; }
+.strats { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.strat { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+.strat small { font-size: 13px; color: var(--ink2); } .strat b { font-size: 16px; line-height: 1.25; } .strat .verdict { font-size: 15px; }
+.strat .more { display: inline-flex; align-items: center; gap: 2px; font-weight: 600; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; margin-top: 2px; }
+.strat:hover { border-color: var(--ink); }
+ul.bul { padding-left: 20px; list-style: disc; display: flex; flex-direction: column; gap: 4px; font-size: 16px; }
+ul.bul.good li::marker { color: var(--good); } ul.bul.bad li::marker { color: var(--danger); }
+ul.tips { display: flex; flex-direction: column; gap: 10px; }
+ul.tips li { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; line-height: 1.4; }
+ul.tips .ic { width: 28px; height: 28px; border-radius: 50%; background: var(--ground); display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--good); }
+ul.tips .ic .icon { width: 16px; height: 16px; }
+.card-h { font-size: 18px; font-weight: 700; }
+.trow { display: grid; grid-template-columns: 130px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
+.trow > span { color: var(--ink2); } .trow b { display: block; font-size: 16px; } .trow small { color: var(--ink2); font-size: 13px; }
+.clim-bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; height: 150px; align-items: end; }
+.cb { display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; font-size: 11px; color: var(--ink2); font-weight: 600; }
+.cb .bars { flex: 1; width: 100%; display: flex; align-items: flex-end; gap: 2px; }
+.cb .bars i { flex: 1; border-radius: 3px 3px 0 0; } .cb .bars i.r { background: var(--rain); } .cb .bars i.e { background: #C7CCD4; }
+.sheet .cal { margin: 4px 0; }
+.opts .opt { min-width: 0; }
+@media (min-width: 1024px) {
+  .strats { grid-template-columns: repeat(3, 1fr); }
+  .strats-wrap { flex: none; }
+  .row-2q { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row-2q .opt { font-size: 13px; padding: 8px 4px; min-height: 40px; }
+  .plan-panel .chip { font-size: 13px; padding: 6px 9px; }
+  .terreno .col-left { width: 460px; }
+  .terreno .card { gap: 8px; }
+  .sheet { max-width: 640px; }
+}
+
+@media (min-width: 1024px) {
+  .terreno .trow { padding: 6px 0; }
+  .terreno .clim-bars { height: 120px; }
+  .terreno .opt { min-height: 38px; padding: 6px; font-size: 14px; }
+  .land li i { display: none; }
+  .answer { gap: 10px; }
+}
+body.results .bottom-nav { grid-template-columns: repeat(5, 1fr) !important; }
+.bottom-nav a { font-size: 11px; }
+@media (min-width: 1024px) {
+  .mini-map { height: 110px; }
+  .answer { padding: 16px 18px; }
+  .terreno .clim-bars { height: 100px; }
+  .terreno .card { padding: 16px 20px; }
+  ul.tips { gap: 7px; }
+}

@@ -1,7 +1,8 @@
-import { fetchClimate } from "./climate.js?v=13";
-import { plan as runPlanner, cropMonths } from "./planner.js?v=13";
-import { COPY } from "./copy.js?v=13";
-import { STR } from "./i18n.js?v=13";
+import { fetchClimate } from "./climate.js?v=14";
+import { plan as runPlanner, cropMonths } from "./planner.js?v=14";
+import { COPY } from "./copy.js?v=14";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=14";
+import { STR } from "./i18n.js?v=14";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -13,7 +14,7 @@ const UNITS = { ha: 1, cuadra: 0.7056, m2: 0.0001, acre: 0.4047 };
 const STEP = { ha: 0.5, cuadra: 1, m2: 100, acre: 1 };
 const CEREALS = new Set(["rice", "maize", "sorghum", "wheat", "barley"]);
 const GREEN = new Set(["jack_bean", "velvet_bean"]);
-const RESULTS = ["plan", "probar", "comparar", "pasado", "pasaporte"];
+const RESULTS = ["plan", "terreno", "probar", "comparar", "pasado", "pasaporte"];
 
 /* ---------------- state ---------------- */
 const store = {
@@ -37,11 +38,11 @@ const EXAMPLE = () => ({ place: { name: "Daule", admin: "Guayas, Ecuador", lat: 
   if (q.get("lat") && q.get("crops")) {
     state.plan = { place: { name: q.get("place") || `${(+q.get("lat")).toFixed(2)}, ${(+q.get("lon")).toFixed(2)}`, lat: +q.get("lat"), lon: +q.get("lon") },
       start: q.get("from") || iso(firstNextMonth()), end: q.get("to") || iso(addMonths(firstNextMonth(), 12)),
-      crops: q.get("crops").split(/[+ ,]/).filter(Boolean), irrigation: q.get("irr") === "1", area: +(q.get("area") || 1), unit: q.get("unit") || "ha" };
+      crops: q.get("crops").split(/[+ ,]/).filter(Boolean), irrigation: q.get("irr") === "1", area: +(q.get("area") || 1), unit: q.get("unit") || "ha", current: (q.get("now") || "").split(/[+ ,]/).filter(Boolean), waterlog: q.get("wl") || null };
   }
   if (q.get("lang")) state.lang = q.get("lang");
 }
-const DATA = { crops: null, econ: null, fires: {}, clim: {} };
+const DATA = { crops: null, econ: null, outlook: null, fires: {}, clim: {}, terrain: {}, zone: {} };
 const desktop = () => matchMedia("(min-width: 1024px)").matches;
 const C = () => COPY[state.lang];
 const S = () => STR[state.lang];
@@ -91,17 +92,36 @@ const monthsIn = (P) => Math.round((new Date(P.end) - new Date(P.start)) / (30.4
 
 /* ---------------- data ---------------- */
 async function loadBase() {
-  const [crops, econ] = await Promise.all([fetch("data/crops.json?v=13").then(ok), fetch("data/economics.json").then(ok).catch(() => null)]);
-  DATA.crops = crops.crops; DATA.econ = econ;
+  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=14").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
+  DATA.crops = crops.crops; DATA.econ = econ; DATA.outlook = outlook;
 }
 function climate(pl) {
   const k = `${pl.lat.toFixed(2)},${pl.lon.toFixed(2)}`;
   return (DATA.clim[k] ||= fetchClimate(pl.lat, pl.lon).catch((e) => { delete DATA.clim[k]; throw e; }));
 }
+// Plot data: elevation, slope and soil for any point; in the pilot zones our own soil and satellite water data.
+async function terrain(pl) {
+  const k = `${pl.lat.toFixed(3)},${pl.lon.toFixed(3)}`, z = nearPilot(pl);
+  if (!DATA.terrain[k]) DATA.terrain[k] = (async () => {
+    let pilotSoil = null, pilotWater = null;
+    if (z) {
+      const [zd, sw] = await Promise.all([fetch(`data/${z}.json`).then(ok).catch(() => null), fetch("data/surface_water.json").then(ok).catch(() => null)]);
+      const so = zd?.soil; if (so?.clay) pilotSoil = { clay: so.clay.value_0_30cm, sand: so.sand.value_0_30cm, phh2o: so.phh2o.value_0_30cm, soc: so.soc.value_0_30cm, nitrogen: so.nitrogen?.value_0_30cm };
+      pilotWater = sw?.zones?.[z]?.waterlogging_index ?? null;
+    }
+    const t = await fetchTerrain(pl.lat, pl.lon, pilotSoil).catch(() => ({ soil: null }));
+    return { ...t, pilotWater, zone: z };
+  })();
+  return DATA.terrain[k];
+}
+function siteOf(t, P) {
+  const d = describeSoil(t?.soil);
+  return { awc: d?.awc ?? 90, ph: d?.ph ?? null, slope: t?.slopePct ?? 0, wl: waterlogFactor(t, P.waterlog, t?.pilotWater) };
+}
 const memo = new Map();
 async function results(P = state.plan, mode = state.mode) {
-  const c = await climate(P.place), key = JSON.stringify([P, mode, state.priority]);
-  if (!memo.has(key)) memo.set(key, { clim: c, P, ...runPlanner(c, DATA.crops, P.crops, { start: P.start.slice(0, 7), end: P.end.slice(0, 7), irrigation: P.irrigation, priority: state.priority, mode }) });
+  const [c, tr] = await Promise.all([climate(P.place), terrain(P.place)]), key = JSON.stringify([P, mode, state.priority]);
+  if (!memo.has(key)) { const site = siteOf(tr, P); memo.set(key, { clim: c, P, terrain: tr, site, ...runPlanner(c, DATA.crops, P.crops, { start: P.start.slice(0, 7), end: P.end.slice(0, 7), irrigation: P.irrigation, priority: state.priority, mode, site, current: P.current || [] }) }); }
   return memo.get(key);
 }
 async function fireData(z) { if (!(z in DATA.fires)) DATA.fires[z] = await fetch(`data/fires_${z}.json`).then(ok).catch(() => null); return DATA.fires[z]; }
@@ -160,7 +180,7 @@ function viewLanding() {
 function draft() {
   if (!state.draft) {
     const P = state.plan, s = firstNextMonth();
-    state.draft = P ? JSON.parse(JSON.stringify(P)) : { place: null, start: iso(s), end: iso(addMonths(s, 12)), crops: [], irrigation: false, area: 1, unit: "ha" };
+    state.draft = P ? JSON.parse(JSON.stringify(P)) : { place: null, start: iso(s), end: iso(addMonths(s, 12)), crops: [], irrigation: false, area: 1, unit: "ha", current: [], waterlog: null };
   }
   return state.draft;
 }
@@ -218,8 +238,11 @@ function areaBox(d, redo) {
       h("button", { class: "round", "aria-label": "+", onclick: () => set(d.area + STEP[d.unit]) }, icon("i-plus"))),
     h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, C().units[u]))));
 }
+const currentChips = (d, redo) => h("div", { class: "row wrap", style: { gap: "6px" } }, ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id]).slice(0, 8).map((id) => { const on = (d.current || []).includes(id);
+  return h("button", { class: "chip", "aria-pressed": String(on), onclick: () => { d.current = on ? d.current.filter((x) => x !== id) : [...(d.current || []), id]; redo(); } }, cap(cropName(id))); }));
+const waterlogOpts = (d, redo) => h("div", { class: "opts" }, ...[["yes", C().yes], ["sometimes", C().sometimes], ["no", C().no], [null, C().dontKnow]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String((d.waterlog ?? null) === v), onclick: () => { d.waterlog = v; redo(); } }, l)));
 const irrigOpts = (d, redo) => h("div", { class: "opts" }, ...[[false, C().no], [true, C().yes]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String(d.irrigation === v), onclick: () => { d.irrigation = v; redo(); } }, l)));
-const prioOpts = (redo, short) => h("div", { class: "opts" }, ...[["soil", "i-sprout"], ["income", "i-coin"], ["water", "i-drops"]].map(([v, ic]) => h("button", { class: "opt", "aria-pressed": String(state.priority === v), onclick: () => { state.priority = v; store.set("priority", v); memo.clear(); redo(); } }, icon(ic), short ? C().prioShort[v] : C().prio[v])));
+const prioOpts = (redo, short) => h("div", { class: "opts" }, ...[["soil", "i-sprout"], ["income", "i-coin"], ["water", "i-drops"]].map(([v, ic]) => h("button", { class: "opt", "aria-pressed": String(state.priority === v), onclick: () => { state.priority = v; store.set("priority", v); memo.clear(); redo(); } }, short ? null : icon(ic), C().prioShort[v])));
 const submitPlan = () => { setPlan({ ...state.draft, crops: [...state.draft.crops] }); state.draft = null; state.undo = null; state.mode = "all"; memo.clear(); go("plan"); };
 
 function viewPlanear(stepArg) {
@@ -245,7 +268,7 @@ function viewPlanear(stepArg) {
     body = [title(c.whatQ, c.whatHelp), ...cropTiles(d, redo, 6), h("div", { class: "spacer" }), nextBtn(d.crops.length ? c.nextCrops(d.crops.length) : c.pickCrop, d.crops.length > 0, () => go("planear/4"))];
   } else {
     const ready = d.place && d.crops.length && !err;
-    body = [title(c.landQ, c.landHelp), areaBox(d, redo), h("div", { class: "q" }, h("b", {}, c.irrigQ), irrigOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.prioQ), prioOpts(redo, true)), h("div", { class: "spacer" }),
+    body = [title(c.landQ, c.landHelp), areaBox(d, redo), h("div", { class: "q" }, h("b", {}, c.irrigQ), irrigOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.wlQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), waterlogOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo)), h("div", { class: "q" }, h("b", {}, c.prioQ), prioOpts(redo, true)), h("div", { class: "spacer" }),
       nextBtn(ready ? c.seePlan : !d.place ? c.pickPlace : err || c.pickCrop, true, () => (ready ? submitPlan() : go(!d.place ? "planear/1" : err ? "planear/2" : "planear/3")))];
   }
   put($("#view"), h("div", { class: "step" }, head, ...body));
@@ -265,7 +288,8 @@ function planDesktop(d) {
       h("input", { class: "num", type: "number", min: "0", step: "any", value: String(d.area), "aria-label": c.landQ, onchange: (e) => { const v = parseFloat(e.target.value); if (v > 0) { d.area = v; redo(); } } }),
       h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, c.units[u]))),
       h("div", { class: "seg" }, ...[[false, c.irrig.no], [true, c.irrig.yes]].map(([v, l]) => h("button", { "aria-pressed": String(d.irrigation === v), onclick: () => { d.irrigation = v; redo(); } }, l))))),
-    h("div", { class: "q" }, h("b", {}, c.prioQ), prioOpts(redo, false)),
+    h("div", { class: "row-2q" }, h("div", { class: "q" }, h("b", {}, c.wlQ), waterlogOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.prioQ), prioOpts(redo, false))),
+    h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo)),
     h("button", { class: "btn dark big block", disabled: !okAll, onclick: submitPlan }, okAll ? [c.seePlan, icon("i-arrow-r")] : !d.place ? c.pickPlace : err || c.pickCrop)));
   initCesium($("#cesium"), { pick: true }).then(() => (d.place ? updateMap(d.place, null) : globeView()));
 }
@@ -376,7 +400,9 @@ function viewPlan() {
         miniMap(P.place),
         h("section", { class: "card answer" },
           h("p", { class: "lbl" }, c.best), h("h2", { class: "display" }, headline(f)), verdictEl(f.verdict), kpis(f, r),
+          h("button", { class: "link", style: { alignSelf: "flex-start", fontSize: "15px" }, onclick: () => explainSheet(headline(f), f, r) }, c.whyThis),
           h("div", { class: "desk-only", style: { display: "flex", flexDirection: "column", gap: "10px" } }, h("b", { style: { fontSize: "15px" } }, c.landEach), landList(f)),
+          h("div", { class: "desk-only", style: { display: "flex", flexDirection: "column", gap: "8px" } }, h("b", { style: { fontSize: "15px" } }, c.tipsTitle), tipList(tipsFor(r).slice(0, 1)), h("a", { class: "link", href: "#/terreno", style: { fontSize: "14px" } }, c.seePlot)),
           pilot ? h("a", { class: "link desk-only", href: "#/pasaporte", style: { fontSize: "14px" } }, c.passport) : null,
           h("div", { class: "acts desk-only" },
             h("button", { class: "btn dark", onclick: () => { state.saved = { plan: P, at: Date.now() }; store.set("saved3", state.saved); render(); } }, icon(isSaved ? "i-check" : "i-bookmark"), isSaved ? c.saved : c.save),
@@ -388,8 +414,134 @@ function viewPlan() {
           farmCalendar(r, f, { rain: desktop() }),
           desktop() ? h("p", { class: "small" }, c.rainNote(P.place.name)) : null,
           h("p", { class: "small", style: { marginTop: "auto", display: "flex", gap: "8px", alignItems: "flex-start" } }, icon("i-sat"), r.samples.length > 1 ? c.calNote : c.calNoteReal)),
-        ids.length ? h("div", { class: "ideas-row desk-only" }, ...ids.slice(0, 3).map((it) => h("a", { href: "#/probar" }, icon(it.icon), h("div", { class: "grow" }, h("b", {}, it.title), h("small", {}, it.eff)), h("u", {}, c.tryBtn)))) : null,
+        h("section", { class: "strats-wrap" }, h("div", { class: "row between" }, h("b", { class: "sec-h" }, c.otherStrats), ids.length ? h("a", { class: "link desk-only", href: "#/probar", style: { fontSize: "14px" } }, c.ideasHint(ids.length)) : null),
+          h("div", { class: "strats" }, ...strategies(r).map((s) => stratCard(s, r)))),
+        h("section", { class: "card phone-only" }, h("b", {}, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot)),
         ids.length ? h("a", { class: "tip phone-only", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(ids.length)), icon("i-chev-r")) : null)));
+  });
+}
+
+
+/* ---------- why, risks, what we don't know, questions for the agronomist ---------- */
+const COAST = (pl) => pl.lat > -5 && pl.lat < 2 && pl.lon > -81.5 && pl.lon < -78.5;
+function explain(f, r) {
+  const c = C(), N = r.period.length, steps = f.parcels.flatMap((p) => p.d.steps), crops = [...new Set(steps.map((s) => s.crop))];
+  const why = [], risks = [], unknown = [], ask = [];
+  if (f.anyLoss <= 0.1) why.push(c.whyFewLoss(r.samples.length > 1 ? r.samples.length : null));
+  if (f.covered >= 0.8) why.push(c.whyCovered(Math.round(f.covered * N), N));
+  if (crops.some((id) => DATA.crops[id]?.n_fixing)) why.push(c.whyLegume(andList(crops.filter((id) => DATA.crops[id]?.n_fixing).map((id) => cropName(id).toLowerCase()))));
+  if (f.parcels.length > 1) why.push(c.whySpread);
+  if (crops.length > 1 && steps.every((s, i) => i === 0 || s.crop !== steps[i - 1].crop)) why.push(c.whyRotate);
+  const byCrop = {};
+  for (const s of steps) (byCrop[s.crop] ||= []).push(s);
+  for (const [id, ss] of Object.entries(byCrop)) {
+    const n = ss[0].n, nm = cap(cropName(id));
+    const dr = Math.max(...ss.map((s) => s.drowned || 0)), dy = Math.max(...ss.map((s) => s.dry || 0)), ht = Math.max(...ss.map((s) => s.hot || 0)), cd = Math.max(...ss.map((s) => s.cold || 0));
+    if (dr / n >= 0.1) risks.push(c.riskDrown(nm, ...fracParts(dr / n)));
+    if (dy / n >= 0.1) risks.push(c.riskDry(nm, ...fracParts(dy / n)));
+    if (ht / n >= 0.1) risks.push(c.riskHot(nm));
+    if (cd / n >= 0.1) risks.push(c.riskCold(nm));
+    if (ss[0].phF < 1) risks.push(c.riskPh(nm));
+    if (!["rice", "maize", "mulch"].includes(id)) ask.push(c.askBuyer(cropName(id).toLowerCase()));
+  }
+  const bareRain = f.grid.filter((g, i) => g.bare?.share > 0.2 && normalRain(r.clim, r.period[i].m) > 80).length;
+  if (bareRain) risks.push(c.riskBare(bareRain));
+  const tr = r.terrain, d = describeSoil(tr?.soil);
+  unknown.push(c.unkClimate);
+  unknown.push(d ? (tr.soil.offsetKm ? c.unkSoilNear(tr.soil.offsetKm) : c.unkSoil) : c.unkNoSoil);
+  unknown.push(c.unkVariety);
+  if (crops.some((id) => DATA.crops[id]?.approximate)) unknown.push(c.approx);
+  if (!nearPilot(state.plan.place)) unknown.push(c.unkPrices);
+  ask.unshift(c.askVariety(cropName(crops[0] || "maize").toLowerCase()));
+  if (r.site.wl >= 0.45) ask.push(c.askDrain);
+  if (d && (d.phClass === "acid" || d.phClass === "very_acid")) ask.push(c.askLime);
+  return { why: why.slice(0, 4), risks: risks.slice(0, 4), unknown, ask: [...new Set(ask)].slice(0, 4) };
+}
+function explainSheet(title, f, r) {
+  const e = explain(f, r), c = C();
+  const list = (head, items, cls) => (items.length ? [h("b", { style: { marginTop: "6px" } }, head), h("ul", { class: `bul ${cls || ""}` }, ...items.map((x) => h("li", {}, x)))] : []);
+  sheet(h("h2", { class: "display" }, title), verdictEl(f.verdict), farmCalendar(r, f, { compact: true }),
+    ...list(c.whyTitle, e.why, "good"), ...list(c.riskTitle, e.risks, "bad"), ...list(c.unknownTitle, e.unknown), ...list(c.askTitle, e.ask));
+}
+// Short, practical advice from the plot, the climate and the plan.
+function tipsFor(r) {
+  const c = C(), out = [], tr = r.terrain, d = describeSoil(tr?.soil), P = state.plan, N = r.period.length;
+  const months = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([k]) => +k.slice(5) === i + 1 && +k.slice(0, 4) >= 1991 && +k.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (f) => vs.reduce((a, v) => a + v[f], 0) / Math.max(1, vs.length); return { m: i + 1, rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
+  if (r.site.wl >= 0.45) out.push(["i-waves", c.tipDrain]);
+  if (DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place)) out.push(["i-rain", c.tipNino]);
+  const bareRain = r.farm ? r.farm.grid.filter((g, i) => g.bare?.share > 0.2 && normalRain(r.clim, r.period[i].m) > 80).length : 0;
+  if (bareRain >= 2) out.push(["i-leaf", c.tipCover(bareRain)]);
+  if (d?.texture === "clay" || d?.texture === "clay_loam") out.push(["i-info", c.tipClay]);
+  if (d?.texture === "sand" || d?.texture === "sandy_loam") out.push(["i-drops", c.tipSand]);
+  if (d && (d.phClass === "acid" || d.phClass === "very_acid")) out.push(["i-alert", c.tipAcid(num(d.ph))]);
+  if (d && (d.phClass === "alkaline" || d.phClass === "very_alkaline")) out.push(["i-alert", c.tipAlkaline(num(d.ph))]);
+  if (d?.omClass === "low") out.push(["i-sprout", c.tipLowOM]);
+  if ((tr?.slopePct ?? 0) >= 8) out.push(["i-info", c.tipSlope]);
+  const dry = months.filter((x) => x.rain < 0.5 * x.et0).length;
+  if (dry >= 3 && !P.irrigation) out.push(["i-sun", c.tipDry(dry)]);
+  const hot = months.filter((x) => x.tmax >= 34).map((x) => mon(x.m));
+  if (hot.length) out.push(["i-sun", c.tipHot(andList(hot.slice(0, 4)))]);
+  const frost = months.filter((x) => x.tmin <= 3).map((x) => mon(x.m));
+  if (frost.length) out.push(["i-alert", c.tipFrost(andList(frost.slice(0, 4)))]);
+  if (P.crops.some((id) => CEREALS.has(id))) out.push(["i-sprout", c.tipBurn]);
+  out.push(["i-user", c.checkLocal]);
+  return out;
+}
+const tipList = (items) => h("ul", { class: "tips" }, ...items.map(([ic, tx]) => h("li", {}, h("span", { class: "ic" }, icon(ic)), h("span", {}, tx))));
+// Other strategies, judged on the same years: what the farmer does today and single-plot rotations.
+function strategies(r) {
+  const c = C(), out = [], seen = new Set([sig(r.farm)]);
+  if (r.today) { out.push({ label: c.stratToday, f: r.today }); seen.add(sig(r.today)); }
+  let n = 1;
+  for (const f of r.others) { if (seen.has(sig(f))) continue; seen.add(sig(f)); out.push({ label: c.stratOption(++n), f }); if (out.length >= 3) break; }
+  return out;
+}
+function sig(f) { return f.parcels.map((p) => p.d.steps.map((s) => s.crop + s.t0).join(",")).join("|"); }
+function stratCard(s, r) {
+  const f = s.f, N = r.period.length;
+  return h("button", { class: "strat", onclick: () => explainSheet(`${s.label}: ${headline(f)}`, f, r) },
+    h("small", {}, s.label), h("b", {}, headline(f)), verdictEl(f.verdict),
+    h("span", { class: "small" }, `${C().kLoss}: ${frac(f.anyLoss).toLowerCase()} · ${C().kCovered}: ${C().ofMonths(Math.round(f.covered * N), N)}`),
+    h("span", { class: "more" }, C().seeWhy, icon("i-chev-r")));
+}
+
+/* ---------- the plot ---------- */
+function viewTerreno() {
+  return withResults((r) => {
+    const c = C(), P = state.plan, tr = r.terrain, d = describeSoil(tr?.soil), wl = r.site.wl;
+    const months = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([k]) => +k.slice(5) === i + 1 && +k.slice(0, 4) >= 1991 && +k.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (f) => vs.reduce((a, v) => a + v[f], 0) / Math.max(1, vs.length); return { m: i + 1, rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
+    const annual = months.reduce((a, x) => a + x.rain, 0), wet = months.filter((x) => x.rain >= x.et0 * 0.8).map((x) => mon(x.m)), dry = months.filter((x) => x.rain < 0.5 * x.et0).map((x) => mon(x.m));
+    const tmin = Math.min(...months.map((x) => x.tmin)), tmax = Math.max(...months.map((x) => x.tmax));
+    const slope = tr?.slopePct, slopeW = slope == null ? "—" : slope < 2 ? c.flat : slope < 8 ? c.gentle : c.steep;
+    const row = (k, v, note) => h("div", { class: "trow" }, h("span", {}, k), h("div", {}, h("b", {}, v), note ? h("small", {}, note) : null));
+    const wlW = wl >= 0.6 ? c.high : wl >= 0.35 ? c.medium : c.low;
+    const wlWhy = P.waterlog ? c.wlYouSaid : tr?.pilotWater != null ? c.wlSat : c.wlEstimated;
+    const mx = Math.max(...months.map((x) => Math.max(x.rain, x.et0)), 1);
+    const last = r.clim.last, lm = r.clim.months[last], lmNormal = normalRain(r.clim, +last.slice(5));
+    const noaa = DATA.outlook?.official?.noaa, erfen = DATA.outlook?.official?.erfen;
+    put($("#view"), h("div", { class: "res terreno" },
+      resHead(P),
+      h("div", { class: "col-left" },
+        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.yourPlot),
+          row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
+          row(c.slope, slopeW, slope != null ? `${num(slope)} %` : null),
+          row(c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null),
+          row(c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null),
+          row(c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null),
+          row(c.waterlog, wlW, wlWhy),
+          h("div", { class: "q", style: { marginTop: "4px" } }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); render(); })),
+          h("p", { class: "small" }, d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain))),
+      h("div", { class: "col-right" },
+        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.climate),
+          h("div", { class: "kpis" }, h("div", {}, h("b", {}, `${Math.round(annual).toLocaleString(state.lang)} mm`), h("small", {}, c.rainYear)), h("div", {}, h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`), h("small", {}, c.tempRange)), h("div", {}, h("b", {}, String(dry.length)), h("small", {}, c.dryMonths))),
+          h("div", { class: "clim-bars" }, ...months.map((x) => h("div", { class: "cb" }, h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1])))),
+          h("div", { class: "legend" }, h("span", {}, h("i", { class: "sw", style: { background: "var(--rain)" } }), c.lgRain), h("span", {}, h("i", { class: "sw", style: { background: "#C7CCD4" } }), c.lgNeed)),
+          h("p", { class: "small" }, wet.length ? c.wetMonths(andList(wet)) : "", " ", dry.length ? c.dryList(andList(dry)) : "")),
+        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.thisYear),
+          lm ? row(`${cap(S().monthsLong[+last.slice(5) - 1])} ${last.slice(0, 4)}`, `${Math.round(lm.rain)} mm`, c.vsNormal(Math.round(lmNormal))) : null,
+          noaa ? h("p", {}, c.ninoNow(noaa.chance_pct), h("br"), h("small", { class: "small" }, `NOAA · ${noaa.issued}`)) : null,
+          erfen && COAST(P.place) ? h("p", { class: "small" }, `ERFEN (${erfen.issued}): ${es() ? erfen.es : erfen.en}`) : null),
+        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r))))));
   });
 }
 
@@ -459,7 +611,7 @@ function money(f) {
 function viewComparar() {
   return withResults((r) => {
     const c = C(), P = state.plan, rec = r.farm, N = r.period.length;
-    if (!state.custom || state.customKey !== JSON.stringify(P)) { state.custom = customFrom(rec); state.customKey = JSON.stringify(P); }
+    if (!state.custom || state.customKey !== JSON.stringify(P)) { state.custom = customFrom(r.today || rec); state.customKey = JSON.stringify(P); }
     const K = state.custom, redo = () => viewComparar();
     const mine = r.evalFarm(K.map((pc) => ({ share: (+pc.area || 0) / (P.area || 1), steps: pc.steps })));
     const choices = [...new Set([...P.crops.filter((id) => id !== "mulch"), ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id])])];
@@ -605,7 +757,7 @@ function renderChrome(r) {
   const c = C(), P = state.plan, isRes = RESULTS.includes(r);
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
-  const tabs = [["plan", c.nav.plan, "i-sprout"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["pasado", c.nav.past, "i-history"]];
+  const tabs = [["plan", c.nav.plan, "i-sprout"], ["terreno", c.nav.plot, "i-pin"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["pasado", c.nav.past, "i-history"]];
   put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; }, style: { minHeight: "40px", fontSize: "15px" } }, c.changeData) : null, langBtn()));
@@ -615,7 +767,7 @@ function renderChrome(r) {
 async function render() {
   const { r, arg } = route();
   renderChrome(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), plan: viewPlan, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
   try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {

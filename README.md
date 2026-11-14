@@ -15,6 +15,7 @@ Each route has its own layout on a computer and on a phone, and fits one screen 
 | `#/` | Landing: headline, photo with a sample farm calendar, how it works, NASA data | Same pitch, button within thumb reach |
 | `#/planear` | Map on the left (click to mark the plot), all questions on the right | Four steps: where, when, which crops, land and water |
 | `#/plan` | Answer, figures and land per crop on the left; farm calendar with monthly rain on the right; top ideas | Answer, figures, farm calendar, link to ideas |
+| `#/terreno` | The plot: elevation and slope (Copernicus DEM via Open-Meteo), soil texture, pH and organic matter (ISRIC SoilGrids), waterlogging (soil + flatness, Landsat/JRC in pilot zones, or the farmer's answer), climate of the place, this year (last month vs normal, El Niño), practical tips | Same, stacked |
 | `#/probar` | Ideas that would do better (each checked by re-running the planner), when to sow each crop | Same, stacked |
 | `#/comparar` | Build your own plan (plots, crops, months, land) next to both calendars and a comparison table | Same, stacked |
 | `#/pasado` | The plan on every real run of years since 1981 | Same |
@@ -35,6 +36,8 @@ Interface text is in plain language (Spanish first, English toggle): no jargon, 
 How the global planner works (`app/climate.js`, `app/planner.js`):
 - **NASA POWER** monthly climate for the point, 1981 to last month (monthly API plus daily data for the current year), fetched live from the browser. ET0 is FAO-56 Penman-Monteith from POWER's monthly means (`T2M`, `T2M_RANGE`, `RH2M`, `WS2M`, `ALLSKY_SFC_SW_DWN`).
 - Months that already happened use the real climate. Future months are tested on every real run of consecutive years since 1981 (about 40), optionally only dry, wet or strong El Niño years.
+- The plot changes the plan: water left in the soil after the rains counts for the next crop (bucket sized by soil texture), crops that cannot stand standing water can drown in very wet months on plots that hold water, soil pH outside a crop's range lowers its harvest, and bare soil on a slope loses more.
+- Strategies shown side by side: the recommended farm plan, what the farmer does today (their crops, no straw cover) and other rotations, each with why, risks, what we don't know and questions for the agronomist.
 - Each planting: water need = FAO-56 crop coefficients × ET0; lost when rain covers under 20 % of the need (no irrigation), or when a month is colder or hotter than the crop's ECOCROP limits (with a margin, since these are monthly means); yield share = FAO-33 Ky response.
 - The best sequence is found by dynamic programming over months, weighing harvests, water deficit, failures, bare-soil months (rain on bare soil, bare soil in the sun) and rotation rules (no crop back to back, legume after a cereal, not two cereals in a row), by the farmer's priority (soil, water or income). Straw left after a cereal covers the soil if "keep the straw" is picked.
 - Wheat, barley, potato, sunflower and chickpea were added for use outside the tropics with approximate FAO-56 / ECOCROP values (flagged in the app).

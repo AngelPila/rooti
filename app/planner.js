@@ -48,32 +48,43 @@ export function samples(clim, period, mode = "all") {
 }
 
 // One planting of one crop starting at month t of one sample.
-function planting(crop, id, t, sample, irrigation) {
+// site: { awc: mm the root zone holds, wl: 0..1 how readily the plot stays waterlogged, ph: topsoil pH or null }
+function planting(crop, id, t, sample, irrigation, site, store0) {
   const L = cropMonths(crop), k = crop.kc || {}, kmid = mid(k.mid) ?? 0.9;
   const kin = mid(k.ini) ?? kmid, kend = mid(k.end) ?? kmid;
   const ms = sample.months.slice(t, t + L);
   const kcs = ms.map((_, i) => (i === 0 ? kin : i === L - 1 ? kend : kmid));
   const need = ms.reduce((s, c, i) => s + kcs[i] * c.et0, 0), rain = ms.reduce((s, c) => s + c.rain, 0);
-  const supply = rain + (irrigation ? Math.max(0, need - rain) : 0), ratio = need > 0 ? supply / need : 1;
+  // Water left in the soil from earlier months counts too (the "humedad residual" farmers sow on after the rains).
+  const carry = store0 ?? 0;
+  const supply = rain + carry + (irrigation ? Math.max(0, need - rain - carry) : 0), ratio = need > 0 ? supply / need : 1;
   const [tlo, thi] = (crop.temp_abs_c || [-50, 60]).map(Number), [olo, ohi] = (crop.temp_opt_c || [tlo, thi]).map(Number);
   const coldM = ms.findIndex((c) => c.tmin < tlo - COLD_MARGIN), hotM = ms.findIndex((c) => c.tmax > thi + HEAT_MARGIN);
   const tMean = mean(ms.map((c) => c.t));
-  const waterFail = !irrigation && ratio < FAIL_RATIO, failed = waterFail || coldM >= 0 || hotM >= 0;
-  const tempF = tMean < olo - 3 || tMean > ohi + 3 ? 0.6 : tMean < olo || tMean > ohi ? 0.85 : 1;
   const fTol = lvl(crop.flood_tolerance), dTol = lvl(crop.drought_tolerance), ky = mid(crop.ky) ?? 1;
-  const wet = id !== "rice" && rain > 2 * need && fTol < 1 ? 0.85 : 1;
-  const yieldShare = failed ? 0 : clamp01(1 - ky * (1 - Math.min(1, ratio))) * tempF * wet;
+  // Waterlogging: months whose rain far exceeds what evaporates, on a plot that holds water. Rice is grown flooded.
+  const wlSev = ms.map((c) => (id === "rice" ? 0 : clamp01((c.rain - c.et0 - 80) / 250) * (site?.wl ?? 0.25) * (1 - fTol)));
+  const wlMax = Math.max(0, ...wlSev), drowned = wlSev.filter((x) => x >= 0.5).length >= 2 || wlMax >= 0.75;
+  const waterFail = !irrigation && ratio < FAIL_RATIO, failed = waterFail || coldM >= 0 || hotM >= 0 || drowned;
+  const tempF = tMean < olo - 3 || tMean > ohi + 3 ? 0.6 : tMean < olo || tMean > ohi ? 0.85 : 1;
+  // Soil pH outside what the crop takes lowers the harvest (FAO ECOCROP ranges).
+  const [plo, phi] = (crop.ph || [0, 14]).map(Number), [palo, pahi] = (crop.ph_abs || [0, 14]).map(Number), ph = site?.ph;
+  const phF = ph == null ? 1 : ph < palo || ph > pahi ? 0.6 : ph < plo - 0.5 || ph > phi + 0.5 ? 0.85 : 1;
+  const yieldShare = failed ? 0 : clamp01(1 - ky * (1 - Math.min(1, ratio))) * tempF * phF * (1 - 0.6 * wlMax);
+  let st = carry;
   const cells = ms.map((c, i) => {
-    const n = kcs[i] * c.et0, sup = c.rain + (irrigation ? Math.max(0, n - c.rain) : 0);
+    const n = kcs[i] * c.et0, sup = c.rain + Math.min(st, n) + (irrigation ? Math.max(0, n - c.rain - st) : 0);
+    st = Math.max(0, Math.min(site?.awc ?? 90, st + c.rain - n));
     let kind = "ok", sev = 0;
     if (sup < n) { sev = clamp01((1 - sup / n) * (1 - 0.6 * dTol)); kind = sev > 0.15 ? "water_shortage" : "ok"; }
-    if (id !== "rice" && c.rain > 1.8 * n && fTol < 1) { kind = "excess_rain"; sev = clamp01(((c.rain / n - 1.8) / 2) * (1 - fTol)); }
+    if (wlSev[i] > 0.2) { kind = "waterlogged"; sev = clamp01(wlSev[i] * 1.3); }
     if (c.tmin < tlo - COLD_MARGIN) { kind = "too_cold"; sev = 1; } else if (c.tmax > thi + HEAT_MARGIN) { kind = "too_hot"; sev = 1; }
     else if (c.t < olo - 3 || c.t > ohi + 3) { kind = c.t < olo ? "cool" : "warm"; sev = Math.max(sev, 0.5); }
     if (waterFail) { kind = "water_shortage"; sev = 1; }
+    if (drowned && wlSev[i] > 0.2) { kind = "waterlogged"; sev = 1; }
     return { crop: id, kind, sev, rain: c.rain, need: n, obs: !!c.obs };
   });
-  return { failed, yieldShare, ratio, rain, need, tMean, cold: coldM >= 0, hot: hotM >= 0, waterFail, cells };
+  return { failed, yieldShare, ratio, rain, need, tMean, cold: coldM >= 0, hot: hotM >= 0, waterFail, drowned, phF, cells };
 }
 const bareCell = (c) => (c.rain >= 40
   ? { crop: null, kind: "rain_on_bare", sev: clamp01(c.rain / 200), rain: c.rain, need: 0, obs: !!c.obs }
@@ -81,7 +92,7 @@ const bareCell = (c) => (c.rain >= 40
 const coverCell = (c) => ({ crop: "mulch", kind: "covered", sev: 0, rain: c.rain, need: 0, obs: !!c.obs });
 const levelOf = (k, sev) => (k === "ok" || k === "covered" ? "good" : sev >= 0.8 ? "danger" : "care");
 
-export function plan(clim, crops, picked, { start, end, irrigation = false, priority = "soil", mode = "all" }) {
+export function plan(clim, crops, picked, { start, end, irrigation = false, priority = "soil", mode = "all", site = null, current = null }) {
   const period = monthsBetween(start, end), N = period.length;
   const S = samples(clim, period, mode);
   if (!S.length) return { period, samples: S, plans: [] };
@@ -89,17 +100,20 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
   const useMulch = picked.includes("mulch"), ids = picked.filter((id) => id !== "mulch" && crops[id]);
 
   // Planting table: every crop at every start month, over every sample.
+  const awc = site?.awc ?? 90;
+  const storeAt = S.map((s) => { let st = 0; const out = []; for (const c of s.months) { out.push(st); st = Math.max(0, Math.min(awc, st + c.rain - 0.7 * c.et0)); } return out; });
   const tab = {};
   const all = Object.keys(crops).filter((id) => crops[id].cycle_days);
   for (const id of all) {
     const L = cropMonths(crops[id]);
     tab[id] = [];
     for (let t = 0; t + L <= N; t++) {
-      const runs = S.map((s) => planting(crops[id], id, t, s, irrigation));
+      const runs = S.map((s, si) => planting(crops[id], id, t, s, irrigation, site, storeAt[si][t]));
       tab[id][t] = { L, runs, fail: mean(runs.map((r) => (r.failed ? 1 : 0))), yld: mean(runs.map((r) => r.yieldShare)), deficit: mean(runs.map((r) => clamp01(1 - r.ratio))) };
     }
   }
-  const bareSev = period.map((_, t) => mean(S.map((s) => bareCell(s.months[t]).sev)));
+  const slopeF = 1 + Math.min(1, (site?.slope ?? 0) / 12);
+  const bareSev = period.map((_, t) => mean(S.map((s) => Math.min(1, bareCell(s.months[t]).sev * slopeF))));
 
   // Best sequence by dynamic programming over (month, previous crop, straw on the ground).
   function best(allowed, firstForced) {
@@ -164,7 +178,7 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
 
   // ---------- the farm: land split into plots that run side by side ----------
   // Any arrangement (the recommended one or the farmer's own) is judged the same way, on the same years.
-  function evalFarm(parcelsIn) {
+  function evalFarm(parcelsIn, opt = {}) {
     const tot = Math.max(1, parcelsIn.reduce((x, p) => x + (p.share || 0), 0));
     const parcels = parcelsIn.map((pc, k) => {
       const steps = [], errors = [];
@@ -175,7 +189,7 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
         if (st.t0 < end) { errors.push({ ...st, why: "overlap" }); continue; }
         steps.push({ crop: st.crop, t0: st.t0, t1: st.t0 + row.L }); end = st.t0 + row.L;
       }
-      return { share: (pc.share || 0) / tot, d: describe({ steps, v: 0 }, k), errors };
+      return { share: (pc.share || 0) / tot, d: describe({ steps, v: 0 }, k, opt.noMulch), errors };
     });
     const per = S.map((_, si) => {
       let harvest = 0, planted = 0, lost = 0, loss = 0;
@@ -218,17 +232,22 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
     let sh = w.map((x) => Math.max(0.15, x / ws)); const t2 = sh.reduce((a, b) => a + b, 0); sh = sh.map((x) => x / t2);
     farm = evalFarm(uniqL.map((r, k) => ({ share: sh[k], steps: r.steps.map((x) => ({ crop: x.crop, t0: x.t0 })) })));
   }
-  return { period, samples: S, plans, windows, substitutes, farm, evalFarm, monthsOf: (id) => cropMonths(crops[id]) };
+  const asFarm = (r) => evalFarm([{ share: 1, steps: r.steps.map((x) => ({ crop: x.crop, t0: x.t0 })) }]);
+  const todayIds = (current || []).filter((id) => crops[id]);
+  // What the farmer does today: their crops only, and no straw cover (most burn or leave the field bare).
+  const today = todayIds.length ? evalFarm([{ share: 1, steps: best(todayIds).steps.map((x) => ({ crop: x.crop, t0: x.t0 })) }], { noMulch: true }) : null;
+  const others = uniq.filter((r) => r.steps.length).slice(0, 4).map(asFarm);
+  return { period, samples: S, plans, windows, substitutes, farm, today, others, evalFarm, monthsOf: (id) => cropMonths(crops[id]) };
 
   // Month-by-month picture and outcome of one plan.
-  function describe(r, i) {
+  function describe(r, i, noMulch = false) {
     const perSample = S.map((s, si) => {
       const cells = [];
       let cover = false, t = 0;
       for (const st of r.steps) {
         for (; t < st.t0; t++) cells.push(cover ? coverCell(s.months[t]) : bareCell(s.months[t]));
         cells.push(...tab[st.crop][st.t0].runs[si].cells);
-        t = st.t1; cover = useMulch && CEREALS.has(st.crop);
+        t = st.t1; cover = !noMulch && useMulch && CEREALS.has(st.crop);
       }
       for (; t < N; t++) cells.push(cover ? coverCell(s.months[t]) : bareCell(s.months[t]));
       const outcomes = r.steps.map((st) => tab[st.crop][st.t0].runs[si]);
@@ -249,7 +268,7 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
       const row = tab[st.crop][st.t0], rs = row.runs;
       return { ...st, from: period[st.t0], to: period[st.t1 - 1], fail: row.fail, yld: row.yld, n: rs.length, obs: rs[0].cells.every((c) => c.obs),
                lost: rs.filter((x) => x.failed).length, cold: rs.filter((x) => x.cold).length, hot: rs.filter((x) => x.hot).length,
-               dry: rs.filter((x) => x.waterFail).length, ratio: mean(rs.map((x) => x.ratio)), rain: mean(rs.map((x) => x.rain)), need: mean(rs.map((x) => x.need)) };
+               dry: rs.filter((x) => x.waterFail).length, drowned: rs.filter((x) => x.drowned).length, phF: rs[0].phF, ratio: mean(rs.map((x) => x.ratio)), rain: mean(rs.map((x) => x.rain)), need: mean(rs.map((x) => x.need)) };
     });
     const bare = months.filter((m) => !m.crop).length, covered = months.filter((m) => m.crop).length;
     const worst = Math.max(0, ...steps.map((s) => s.fail));
