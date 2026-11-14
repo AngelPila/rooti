@@ -51,14 +51,14 @@ ul { margin: 0; padding-left: 20px; }
 .pill { border-radius: 999px; background: var(--soft); padding: 10px 14px; font-size: 15px; font-weight: 700; color: var(--ink2); border: 0; min-height: 44px; }
 .chip { min-height: 48px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; padding: 0 14px; font-size: 16px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .logo { width: 32px; height: 32px; border-radius: 9px; background: var(--brand); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
-.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; background: var(--soft); border-radius: 12px; }
-.seg button { min-height: 48px; border: 1.5px solid transparent; border-radius: 9px; background: transparent; font-size: 16px; font-weight: 600; color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: auto; gap: 4px; padding: 4px; background: var(--soft); border-radius: 12px; }
+.seg button { min-height: 48px; white-space: nowrap; border: 1.5px solid transparent; border-radius: 9px; background: transparent; font-size: 16px; font-weight: 600; color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; }
 .seg button[aria-pressed="true"] { background: #fff; border-color: var(--line); color: var(--ink); font-weight: 700; }
 .card { border: 1.5px solid var(--line); border-radius: var(--r); padding: 12px; background: #fff; }
 .card.rec { border: 2.5px solid var(--brand); background: var(--brand-soft); }
 .card.tappable { cursor: pointer; }
 .card.tappable:hover { border-color: var(--brand); }
-.badge { display: inline-flex; align-items: center; gap: 4px; background: var(--brand); color: #fff; font-size: 14px; font-weight: 700; border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+.badge { display: inline-flex; align-items: center; gap: 4px; background: var(--brand); color: #fff; font-size: 14px; font-weight: 700; border-radius: 999px; padding: 4px 10px; }
 .badge.muted { background: var(--soft); color: var(--ink2); }
 .tag-example { font-size: 14px; font-weight: 700; color: var(--ink2); background: var(--soft); border-radius: 6px; padding: 4px 8px; }
 .eyebrow-plan { color: var(--brand); font-weight: 700; font-size: 17px; }
@@ -76,9 +76,10 @@ ul { margin: 0; padding-left: 20px; }
 
 /* ---------- controls ---------- */
 .chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.chip.big { min-height: var(--tap); border-radius: 12px; padding: 0 8px; justify-content: center; font-size: 16px; white-space: nowrap; overflow: hidden; }
+.chip.big { min-height: var(--tap); border-radius: 12px; padding: 0 8px; justify-content: center; font-size: 16px; overflow: hidden; }
 .chip.big .icon:last-child { width: 14px; color: var(--ink2); }
-.desk-controls { display: grid; grid-template-columns: 1.3fr 1fr 1.3fr; gap: 16px; }
+.desk-controls { display: flex; flex-wrap: wrap; gap: 12px 16px; }
+.desk-controls > * { flex: 0 1 auto; }
 .outlook { display: flex; gap: 10px; align-items: flex-start; background: var(--sea-soft); border-radius: 12px; padding: 10px 12px; font-size: 16px; color: var(--ink2); }
 .outlook .oc-ic { width: 22px; height: 22px; color: var(--sea); margin-top: 1px; }
 .outlook b { color: var(--ink); font-weight: 600; }
@@ -108,7 +109,7 @@ ul { margin: 0; padding-left: 20px; }
 .cell .cause { position: absolute; top: 2px; right: 2px; width: 11px; height: 11px; stroke-width: 2.5; opacity: .95; }
 .cell.good { background: var(--good); } .cell.care { background: var(--care); } .cell.danger { background: var(--danger); }
 .seasons { display: grid; grid-template-columns: 5fr 6fr 1fr; gap: 3px; padding: 0 13.5px; }
-.seasons span { height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; overflow: hidden; white-space: nowrap; }
+.seasons span { height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; overflow: hidden; }
 .seasons .w, .seasons .w2 { background: var(--winter); } .seasons .s { background: var(--summer); }
 .letters { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; padding: 0 13.5px; font-size: 16px; font-weight: 700; color: var(--ink2); text-align: center; }
 .letters .now { color: var(--brand); text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 2px; }
@@ -116,7 +117,7 @@ ul { margin: 0; padding-left: 20px; }
 .plan .name { font-size: 18px; font-weight: 700; }
 .plan .sum { font-size: 16px; color: var(--ink2); }
 .plan.rec .sum { color: var(--brand); font-weight: 600; }
-.why-link { color: var(--brand); font-weight: 700; font-size: 16px; display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.why-link { color: var(--brand); font-weight: 700; font-size: 16px; display: inline-flex; align-items: center; gap: 2px; }
 .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 16px; color: var(--ink2); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .sw { width: 24px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: #fff; flex: none; }
@@ -136,7 +137,7 @@ ul { margin: 0; padding-left: 20px; }
 .find .top { position: relative; z-index: 2; background: #fff; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .find .map-host { position: absolute; inset: 0; }
 .find .bottom { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; background: #fff; border-radius: 20px 20px 0 0; padding: 16px 16px 24px; display: flex; flex-direction: column; gap: 10px; }
-.find .hint { position: absolute; z-index: 2; left: 50%; top: 60%; transform: translateX(-50%); background: rgba(17,24,39,.85); color: #fff; padding: 8px 14px; border-radius: 999px; font-size: 16px; white-space: nowrap; }
+.find .hint { position: absolute; z-index: 2; left: 50%; top: 60%; transform: translateX(-50%); background: rgba(17,24,39,.85); color: #fff; padding: 8px 14px; border-radius: 999px; font-size: 16px; }
 .search { display: flex; align-items: center; gap: 10px; min-height: 52px; border: 1.5px solid var(--line); border-radius: 12px; padding: 0 16px; color: var(--ink2); font-size: 17px; background: #fff; }
 .search input { border: 0; font: inherit; flex: 1; min-width: 0; outline: none; color: var(--ink); background: transparent; }
 .note { font-size: 16px; color: var(--ink2); }

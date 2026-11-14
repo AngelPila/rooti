@@ -103,6 +103,7 @@ function planSummary(p) {
 /* ---------------- money ---------------- */
 const ha = () => state.lot.size * (state.lot.unit === "ha" ? 1 : 0.7056);
 const usd = (x) => `${x < 0 ? "−" : "+"}$${Math.abs(Math.round(x / 10) * 10).toLocaleString(state.lang)}`;
+const usdAbs = (x) => `$${Math.abs(Math.round(x / 10) * 10).toLocaleString(state.lang)}`;
 // Dry-season money for a plan, for the whole plot: range from worst (low yield × low price − high cost) to best.
 function seasonMoney(p) {
   const id = p.rotation.dry, e = DATA.econ?.crops?.[id], A = ha();
@@ -124,7 +125,7 @@ function moneyLine(p) {
   if (m.kind === "none") return T().noExtra;
   if (m.kind === "nosale") return T().noSale;
   if (m.kind === "unknown") return null;
-  if (m.fails && m.fails / m.n >= 0.5) return h("span", { class: "lose" }, T().canLose(usd(-m.invest)));
+  if (m.fails && m.fails / m.n >= 0.5) return h("span", { class: "lose" }, T().canLose(usdAbs(m.invest)));
   return m.netLow != null ? T().moneyRange(usd(m.netLow), usd(m.netHigh)) : `${T().moneyRange(usd(m.incomeLow), usd(m.incomeHigh))} · ${T().noCost.toLowerCase()}`;
 }
 function moneyBlock(p) {
@@ -137,7 +138,7 @@ function moneyBlock(p) {
     kids.push(h("p", { class: "money-big" }, m.netLow != null ? T().moneyRange(usd(m.netLow), usd(m.netHigh)) : T().moneyRange(usd(m.incomeLow), usd(m.incomeHigh))),
       h("p", { class: "small" }, `${T().perLot(area)} · ${T().harvestQty(m.qty.toLocaleString(state.lang), m.unit)}`));
     if (m.netLow == null) kids.push(h("p", { class: "small" }, T().noCost));
-    if (m.fails) kids.push(h("p", { class: "worst" }, icon("i-x"), T().worstCase(usd(-m.invest), m.fails, m.n)));
+    if (m.fails) kids.push(h("p", { class: "worst" }, icon("i-x"), T().worstCase(usdAbs(m.invest), m.fails, m.n)));
     if (m.weak) kids.push(h("span", { class: "tag-example" }, T().weakData));
   }
   kids.push(h("p", { class: "small" }, T().moneyCheck));
@@ -324,7 +325,7 @@ function controls() {
       chip(priOpts, state.priority, T().priorityQ, (v) => { state.priority = v; store.set("priority", v); refresh(); }));
   }
   const seg = (label, opts2, cur, onPick) => h("div", { class: "plan", style: "gap:6px" }, h("p", { class: "q", style: "font-size:15px" }, label),
-    h("div", { class: "seg" }, ...opts2.map(([v, ic, l]) => h("button", { "aria-pressed": String(v === cur), onclick: () => onPick(v) }, icon(ic), l))));
+    h("div", { class: "seg" }, ...opts2.map(([v, ic, l, s]) => h("button", { "aria-pressed": String(v === cur), title: l, onclick: () => onPick(v) }, icon(ic), s || l))));
   return h("div", { class: "desk-controls" },
     seg(T().yearQ, yearOpts, state.scenario, (v) => { state.scenario = v; state.scenarioTouched = true; render(); }),
     seg(T().irrigationQ, irrOpts, irr, (v) => setLot({ irrigation: v })),
