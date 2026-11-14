@@ -1,6 +1,7 @@
+import pathlib
 import json, sys
 
-OUT = "/home/angelpilataxi/fieldshift/app/data/crops.json"
+OUT = str(pathlib.Path(__file__).resolve().parent.parent / "app" / "data" / "crops.json")
 
 F56_CH6 = "https://www.fao.org/4/x0490e/x0490e0b.htm"
 F56_CH8 = "https://www.fao.org/4/x0490e/x0490e0e.htm"
