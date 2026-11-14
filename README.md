@@ -6,7 +6,23 @@ NASA Space Apps Challenge 2026 · *Field Shift: Adapting Farms with NASA Data* �
 
 Pilot zones: Daule, Babahoyo and Quevedo (rice and maize on the Ecuadorian coast).
 
-## What it does
+## How to use it
+
+1. **Plan.** Pick any place in the world (search, GPS or tap the globe), a date range (for example 4 Mar 2023 to 7 Jun 2027) and the crops you want to grow.
+2. **Results.** Rooti builds rotations **only from those crops** and picks the planting months itself. The best candidate is shown as recommended; every other option stays on screen.
+3. **What if.** Each plan replayed on every real sequence of years since 1981.
+
+How the global planner works (`app/climate.js`, `app/planner.js`):
+- **NASA POWER** monthly climate for the point, 1981 to last month (monthly API plus daily data for the current year), fetched live from the browser. ET0 is FAO-56 Penman-Monteith from POWER's monthly means (`T2M`, `T2M_RANGE`, `RH2M`, `WS2M`, `ALLSKY_SFC_SW_DWN`).
+- Months that already happened use the real climate. Future months are tested on every real run of consecutive years since 1981 (about 40), optionally only dry, wet or strong El Niño years.
+- Each planting: water need = FAO-56 crop coefficients × ET0; lost when rain covers under 20 % of the need (no irrigation), or when a month is colder or hotter than the crop's ECOCROP limits (with a margin, since these are monthly means); yield share = FAO-33 Ky response.
+- The best sequence is found by dynamic programming over months, weighing harvests, water deficit, failures, bare-soil months (rain on bare soil, bare soil in the sun), legumes and repeating the same crop, by the farmer's priority (soil, water or income). Straw left after a cereal covers the soil if "keep the straw" is picked.
+- Wheat, barley, potato, sunflower and chickpea were added for use outside the tropics with approximate FAO-56 / ECOCROP values (flagged in the app).
+- Pilot zones (Daule, Babahoyo, Quevedo) keep the soil passport (MODIS fires) and Ecuador prices.
+
+## What the pilot version does
+
+
 
 - **My lot.** Three plans side by side: what the farmer does today, the recommended plan, and the best cash crop. Each month is shown as a traffic light (fine / caution / danger) with an icon for the risk: too dry, rain on bare soil, bare soil in the sun.
 - **Why.** Every recommendation is explained with counts of real years ("0 of 24 years with heavy soil damage"), a concrete action, and its data source.
