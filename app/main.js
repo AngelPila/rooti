@@ -3,6 +3,7 @@ import { plan as runPlanner, cropMonths } from "./planner.js?v=21";
 import { COPY } from "./copy.js?v=21";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=21";
 import { STR } from "./i18n.js?v=21";
+import { createBootcamp } from "./bootcamp.js?v=2";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -46,11 +47,9 @@ const EXAMPLE = () => ({ place: { name: "Daule", admin: "Guayas, Ecuador", lat: 
 {
   const q = new URLSearchParams(location.search);
   if (q.get("lat") && q.get("crops")) {
-    state.plan = {
-      place: { name: q.get("place") || `${(+q.get("lat")).toFixed(2)}, ${(+q.get("lon")).toFixed(2)}`, lat: +q.get("lat"), lon: +q.get("lon") },
+    state.plan = { place: { name: q.get("place") || `${(+q.get("lat")).toFixed(2)}, ${(+q.get("lon")).toFixed(2)}`, lat: +q.get("lat"), lon: +q.get("lon") },
       start: q.get("from") || iso(firstNextMonth()), end: q.get("to") || iso(addMonths(firstNextMonth(), 12)),
-      crops: q.get("crops").split(/[+ ,]/).filter(Boolean), irrigation: q.get("irr") === "1", area: +(q.get("area") || 1), unit: q.get("unit") || "ha", current: (q.get("now") || "").split(/[+ ,]/).filter(Boolean), waterlog: q.get("wl") || null
-    };
+      crops: q.get("crops").split(/[+ ,]/).filter(Boolean), irrigation: q.get("irr") === "1", area: +(q.get("area") || 1), unit: q.get("unit") || "ha", current: (q.get("now") || "").split(/[+ ,]/).filter(Boolean), waterlog: q.get("wl") || null };
   }
   if (q.get("lang")) state.lang = q.get("lang");
 }
@@ -210,6 +209,7 @@ function viewLanding() {
       h("div", { class: "l-copy" },
         h("h1", { class: "display" }, c.heroTitle), h("p", { class: "lead" }, c.heroLead),
         h("div", { class: "l-acts" }, h("button", { class: "btn dark big", onclick: start }, c.cta, icon("i-arrow-r")),
+          h("a", { class: "btn light big", href: "#/bootcamp" }, icon("i-sprout"), c.bootcamp),
           h("div", { class: "l-examples" }, h("span", { class: "small" }, c.examplesLbl), ...Object.keys(DEMOS).map((k) => h("button", { class: "chip", onclick: () => openDemo(k) }, c.demo[k])))),
         h("p", { class: "l-note" }, c.heroNote, " · ", h("span", { class: "credit" }, "Imagery: Esri World Imagery"))))));
 }
@@ -255,22 +255,18 @@ function periodStrip(d) {
   const a = new Date(d.start + "T12:00:00"), n = Math.max(0, Math.min(24, monthsIn(d)));
   return h("div", { class: "period", "aria-hidden": "true" }, ...Array.from({ length: n }, (_, i) => h("i", { class: (a.getMonth() + i) % 12 < 5 ? "w" : "s" })));
 }
-const quickDates = (d, redo) => h("div", { class: "row wrap", style: { gap: "8px" } }, ...C().quick.map(([k, l]) => {
-  const s = new Date(d.start + "T12:00:00");
-  return h("button", { class: "chip", "aria-pressed": String(monthsIn(d) === +k), onclick: () => { d.end = iso(addMonths(s, +k)); redo(); } }, l);
-}));
+const quickDates = (d, redo) => h("div", { class: "row wrap", style: { gap: "8px" } }, ...C().quick.map(([k, l]) => { const s = new Date(d.start + "T12:00:00");
+  return h("button", { class: "chip", "aria-pressed": String(monthsIn(d) === +k), onclick: () => { d.end = iso(addMonths(s, +k)); redo(); } }, l); }));
 const dateFields = (d, redo) => h("div", { class: "dates" }, ...[["start", C().from], ["end", C().to]].map(([k, l]) =>
   h("label", { class: "date" }, h("small", {}, l), h("input", { type: "date", value: d[k], onchange: (e) => { d[k] = e.target.value; redo(); } }))));
 const kind = (id) => (id === "mulch" ? C().kindCover : DATA.crops[id]?.n_fixing ? C().kindLegume : C().kindCash);
 function cropTiles(d, redo, limit) {
   const all = CROP_ORDER.filter((id) => id === "mulch" || DATA.crops[id]);
   const shown = limit && !state.showAll ? all.filter((id, i) => i < limit || d.crops.includes(id)) : all;
-  return [h("div", { class: "crops" }, ...shown.map((id) => {
-    const on = d.crops.includes(id);
+  return [h("div", { class: "crops" }, ...shown.map((id) => { const on = d.crops.includes(id);
     return h("button", { class: "crop", "aria-pressed": String(on), onclick: () => { d.crops = on ? d.crops.filter((x) => x !== id) : [...d.crops, id]; redo(); } },
-      on ? icon("i-check", "icon tick") : null, h("b", {}, cap(cropName(id))), h("small", {}, kind(id) + (id !== "mulch" ? ` · ${cropMonths(DATA.crops[id])} ${es() ? "meses" : "months"}` : "")));
-  })),
-  limit ? h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { state.showAll = !state.showAll; redo(); } }, state.showAll ? C().fewer : C().more(all.length - shown.length)) : null];
+      on ? icon("i-check", "icon tick") : null, h("b", {}, cap(cropName(id))), h("small", {}, kind(id) + (id !== "mulch" ? ` · ${cropMonths(DATA.crops[id])} ${es() ? "meses" : "months"}` : ""))); })),
+    limit ? h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { state.showAll = !state.showAll; redo(); } }, state.showAll ? C().fewer : C().more(all.length - shown.length)) : null];
 }
 function areaBox(d, redo) {
   const set = (v) => { d.area = Math.max(d.unit === "m2" ? 1 : 0.1, +v.toFixed(2)); redo(); };
@@ -280,10 +276,8 @@ function areaBox(d, redo) {
       h("button", { class: "round", "aria-label": "+", onclick: () => set(d.area + STEP[d.unit]) }, icon("i-plus"))),
     h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, C().units[u]))));
 }
-const currentChips = (d, redo) => h("div", { class: "row wrap", style: { gap: "6px" } }, ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id]).slice(0, 8).map((id) => {
-  const on = (d.current || []).includes(id);
-  return h("button", { class: "chip", "aria-pressed": String(on), onclick: () => { d.current = on ? d.current.filter((x) => x !== id) : [...(d.current || []), id]; redo(); } }, cap(cropName(id)));
-}));
+const currentChips = (d, redo) => h("div", { class: "row wrap", style: { gap: "6px" } }, ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id]).slice(0, 8).map((id) => { const on = (d.current || []).includes(id);
+  return h("button", { class: "chip", "aria-pressed": String(on), onclick: () => { d.current = on ? d.current.filter((x) => x !== id) : [...(d.current || []), id]; redo(); } }, cap(cropName(id))); }));
 const waterlogOpts = (d, redo) => h("div", { class: "opts" }, ...[["yes", C().yes], ["sometimes", C().sometimes], ["no", C().no], [null, C().dontKnow]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String((d.waterlog ?? null) === v), onclick: () => { d.waterlog = v; redo(); } }, l)));
 const irrigOpts = (d, redo) => h("div", { class: "opts" }, ...[[false, C().no], [true, C().yes]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String(d.irrigation === v), onclick: () => { d.irrigation = v; redo(); } }, l)));
 const prioOpts = (redo, short) => h("div", { class: "opts" }, ...[["soil", "i-sprout"], ["income", "i-coin"], ["water", "i-drops"]].map(([v, ic]) => h("button", { class: "opt", "aria-pressed": String(state.priority === v), onclick: () => { state.priority = v; store.set("priority", v); memo.clear(); redo(); } }, short ? null : icon(ic), C().prioShort[v])));
@@ -313,7 +307,7 @@ function viewPlanear(stepArg) {
   } else {
     const ready = d.place && d.crops.length && !err;
     body = [title(c.landQ, c.landHelp), areaBox(d, redo), h("div", { class: "q" }, h("b", {}, c.irrigQ), irrigOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.wlQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), waterlogOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo)), h("div", { class: "q" }, h("b", {}, c.prioQ), prioOpts(redo, true)), h("div", { class: "spacer" }),
-    nextBtn(ready ? c.seePlan : !d.place ? c.pickPlace : err || c.pickCrop, true, () => (ready ? submitPlan() : go(!d.place ? "planear/1" : err ? "planear/2" : "planear/3")))];
+      nextBtn(ready ? c.seePlan : !d.place ? c.pickPlace : err || c.pickCrop, true, () => (ready ? submitPlan() : go(!d.place ? "planear/1" : err ? "planear/2" : "planear/3")))];
   }
   put($("#view"), h("div", { class: "step" }, head, ...body));
 }
@@ -408,10 +402,8 @@ function farmCalendar(r, f, { compact = false, rain = false } = {}) {
       for (const st of pc.d.steps) {
         if (st.t1 <= a || st.t0 >= b) continue;
         const s0 = Math.max(a, st.t0), s1 = Math.min(b, st.t1) - 1, lv = st.fail >= 0.5 ? "danger" : st.fail > 0.15 || st.yld < 0.6 ? "care" : "good", len = s1 - s0 + 1;
-        bars.push(h("button", {
-          class: `bar ${lv}${compact ? "" : " grow"}`, style: { gridColumn: `${s0 - a + 1} / span ${len}`, animationDelay: `${150 + st.t0 * 20 + k * 80}ms` },
-          title: `${cap(cropName(st.crop))} · ${span(r.period[st.t0], r.period[st.t1 - 1])} · ${outcomeShort(st, n1)}`, onclick: () => stepSheet(r, pc, st)
-        },
+        bars.push(h("button", { class: `bar ${lv}${compact ? "" : " grow"}`, style: { gridColumn: `${s0 - a + 1} / span ${len}`, animationDelay: `${150 + st.t0 * 20 + k * 80}ms` },
+          title: `${cap(cropName(st.crop))} · ${span(r.period[st.t0], r.period[st.t1 - 1])} · ${outcomeShort(st, n1)}`, onclick: () => stepSheet(r, pc, st) },
           h("b", {}, cap(cropName(st.crop))), s0 === st.t0 && len >= 3 ? h("small", {}, outcomeShort(st, n1)) : null));
       }
       // straw on the ground between plantings
@@ -421,10 +413,8 @@ function farmCalendar(r, f, { compact = false, rain = false } = {}) {
         h("div", { class: "cal-grid track", style: { "--n": n } }, ...bars));
     });
     const rainRow = rain ? h("div", { class: "cal-row rain-row", style: { "--lab": lab } }, h("span", { class: "cal-name" }, h("b", {}, C().rain), h("small", {}, C().rainUnit)),
-      h("div", { class: "cal-grid", style: { "--n": n } }, ...months.map((p) => {
-        const v = normalRain(r.clim, p.m);
-        return h("div", { class: "rain-col" }, n <= 14 ? h("span", {}, String(Math.round(v))) : null, h("i", { style: { height: `${Math.max(3, (v / mx) * 100)}%` } }));
-      }))) : null;
+      h("div", { class: "cal-grid", style: { "--n": n } }, ...months.map((p) => { const v = normalRain(r.clim, p.m);
+        return h("div", { class: "rain-col" }, n <= 14 ? h("span", {}, String(Math.round(v))) : null, h("i", { style: { height: `${Math.max(3, (v / mx) * 100)}%` } })); }))) : null;
     blocks.push(h("div", { class: "cal-block" }, head, ...rows, rainRow));
   }
   return h("div", { class: `cal plots${compact ? " compact" : ""}` }, ...blocks);
@@ -447,11 +437,9 @@ function barSheet(r, f, k, s, pl) {
 const landList = (f) => h("ul", { class: "land" }, ...Object.values(f.byCrop).sort((a, b) => a.plantings[0].t0 - b.plantings[0].t0).map((b) =>
   h("li", { class: b.crop === "mulch" ? "straw" : "" }, h("div", {}, h("b", {}, cap(cropName(b.crop))), h("span", {}, [...b.plantings].sort((x, y) => x.t0 - y.t0).slice(0, 2).map((p) => `${fmtArea(p.share)} · ${span(p.from, p.to)}`).join("; "))),
     h("i", { style: { "--w": `${Math.round(b.area * 100)}%` } }))));
-const miniMap = (pl, v) => {
-  const d = 0.006, bb = [pl.lon - d * 2.6, pl.lat - d, pl.lon + d * 2.6, pl.lat + d].join(","), dk = demoKey(pl);
+const miniMap = (pl, v) => { const d = 0.006, bb = [pl.lon - d * 2.6, pl.lat - d, pl.lon + d * 2.6, pl.lat + d].join(","), dk = demoKey(pl);
   return h("div", { class: "mini-map desk-only" }, h("img", { alt: "", loading: "lazy", src: dk ? `img/sat/${dk}.jpg` : `${ESRI}/export?bbox=${bb}&bboxSR=4326&size=800,300&format=jpg&f=image` }), h("i", { class: v || "" }),
-    h("span", { class: "mm-label" }, h("b", {}, pl.name), `${pl.lat.toFixed(2)}, ${pl.lon.toFixed(2)}`));
-};
+    h("span", { class: "mm-label" }, h("b", {}, pl.name), `${pl.lat.toFixed(2)}, ${pl.lon.toFixed(2)}`)); };
 const resHead = (P) => h("div", { class: "res-head" }, h("div", { class: "grow" }, h("b", {}, `${P.place.name} · ${fmtArea(1)}`), h("small", {}, `${fmtDate(P.start)} – ${fmtDate(P.end)}`)),
   h("a", { class: "btn", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; } }, C().change));
 async function withResults(draw) {
@@ -635,10 +623,8 @@ async function ideas(r) {
   const cand = [];
   for (const s of r.substitutes || []) { const a = s.alts[0]; if (a) cand.push({ icon: "i-wheat", title: c.idInstead(cap(cropName(a.id)), cropName(s.id)), why: c.idInsteadWhy(cap(cropName(s.id))), P2: { ...P, crops: [...P.crops.filter((x) => x !== s.id), a.id] } }); }
   if (!P.irrigation) cand.push({ icon: "i-drops", title: c.idIrr, why: c.idIrrWhy, P2: { ...P, irrigation: true } });
-  if (!P.crops.some((id) => DATA.crops[id]?.n_fixing)) {
-    const leg = Object.values(r.windows).filter((w) => DATA.crops[w.id]?.n_fixing && !GREEN.has(w.id) && !P.crops.includes(w.id)).sort((a, b) => (b.best?.value ?? 0) - (a.best?.value ?? 0))[0];
-    if (leg && (leg.best?.value ?? 0) >= 0.5) cand.push({ icon: "i-leaf", title: c.idLegume(cropName(leg.id)), why: c.idLegumeWhy, P2: { ...P, crops: [...P.crops, leg.id] } });
-  }
+  if (!P.crops.some((id) => DATA.crops[id]?.n_fixing)) { const leg = Object.values(r.windows).filter((w) => DATA.crops[w.id]?.n_fixing && !GREEN.has(w.id) && !P.crops.includes(w.id)).sort((a, b) => (b.best?.value ?? 0) - (a.best?.value ?? 0))[0];
+    if (leg && (leg.best?.value ?? 0) >= 0.5) cand.push({ icon: "i-leaf", title: c.idLegume(cropName(leg.id)), why: c.idLegumeWhy, P2: { ...P, crops: [...P.crops, leg.id] } }); }
   if (!P.crops.includes("mulch") && P.crops.some((id) => CEREALS.has(id)) && f.covered < 0.85) cand.push({ icon: "i-sprout", title: c.idStraw, why: c.idStrawWhy, P2: { ...P, crops: [...P.crops, "mulch"] } });
   for (const it of cand) { const eff = await effect(it.P2); if (eff) out.push({ ...it, eff, apply: () => { state.undo = { plan: P, mode: state.mode }; setPlan(it.P2); render(); } }); }
   if (state.mode === "all") out.push({ icon: "i-cloud-sun", title: c.idDry, why: c.idDryWhy, eff: c.idDryEff, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "dry"; render(); } });
@@ -652,11 +638,9 @@ function viewProbar() {
     const suggested = [...new Set(list.flatMap((it) => (it.P2 ? it.P2.crops.filter((x) => !P.crops.includes(x) && r.windows[x]) : [])))];
     const N = r.period.length, lab = desktop() ? "146px" : "64px";
     const head = h("div", { class: "sow-row", style: { "--lab": lab } }, h("span"), h("div", { class: "sow-cells", style: { "--n": N } }, ...r.period.map((p, i) => h("span", { style: { textAlign: "center", fontSize: "12px", fontWeight: 700, color: "var(--ink2)", overflow: "hidden" } }, N <= 14 && desktop() ? mon(p.m) : S().months[p.m - 1]))));
-    const sowRow = (id) => {
-      const w = r.windows[id];
+    const sowRow = (id) => { const w = r.windows[id];
       return h("div", { class: "sow-row", style: { "--lab": lab } }, h("b", { style: { fontSize: desktop() ? "16px" : "13px" } }, cap(cropName(id))),
-        h("div", { class: "sow-cells", style: { "--n": N } }, ...w.starts.map((s, t) => h("i", { class: s ? s.level : "none", title: s ? `${ym(r.period[t])}: ${Math.round(s.value * 100)} %` : c.sowNone }, s && w.best && s.t === w.best.t && w.best.level !== "danger" ? "★" : ""))));
-    };
+        h("div", { class: "sow-cells", style: { "--n": N } }, ...w.starts.map((s, t) => h("i", { class: s ? s.level : "none", title: s ? `${ym(r.period[t])}: ${Math.round(s.value * 100)} %` : c.sowNone }, s && w.best && s.t === w.best.t && w.best.level !== "danger" ? "★" : "")))); };
     const byWin = new Map(), no = [];
     for (const id of picked) { const top = r.windows[id].windows[0]; if (!top) { no.push(cap(cropName(id))); continue; } const k = span(top.from, top.to); byWin.set(k, [...(byWin.get(k) || []), cropName(id)]); }
     const reads = [...[...byWin].map(([k, cs]) => c.sowRead(andList(cs), k)), ...no.map((x) => c.sowNo(x))];
@@ -837,7 +821,7 @@ function renderChrome(r) {
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sprout"], ["terreno", c.nav.plot, "i-pin"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["pasado", c.nav.past, "i-history"]];
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${c.planTitle}`)),
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.bootcamp : c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "15px" } }, c.changeData) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, icon(ic), l)));
@@ -847,7 +831,7 @@ async function render() {
   const { r, arg } = route();
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
+  const views = { "": viewLanding, bootcamp: viewBootcamp, planear: () => viewPlanear(arg), plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
   try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {

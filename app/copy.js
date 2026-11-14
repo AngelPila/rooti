@@ -2,7 +2,7 @@
 export const COPY = {
   es: {
     nav: { how: "Cómo funciona", data: "Los datos", plan: "Mi plan", plot: "Su terreno", try: "Probar", compare: "Comparar", past: "Qué pasó" },
-    cta: "Planear mi siembra", example: "Ver un ejemplo en Daule",
+    cta: "Planear mi siembra", example: "Ver un ejemplo en Daule", bootcamp: "Bootcamp para agricultores",
     heroTitle: "Sepa qué sembrar, y cuándo.",
     heroLead: "Rooti arma la rotación de su lote con el clima real de la NASA desde 1981: qué cultivo, en qué meses y en cuánta tierra. Antes de gastar en semilla.",
     heroNote: "Gratis · En español · Funciona en el celular",
@@ -109,7 +109,7 @@ export const COPY = {
   },
   en: {
     nav: { how: "How it works", data: "The data", plan: "My plan", plot: "My plot", try: "Try", compare: "Compare", past: "What if" },
-    cta: "Plan my planting", example: "See an example in Daule",
+    cta: "Plan my planting", example: "See an example in Daule", bootcamp: "Bootcamp for farmers",
     heroTitle: "Know what to plant, and when.",
     heroLead: "Rooti builds the rotation for your plot from real NASA climate since 1981: which crop, in which months and on how much land. Before you spend on seed.",
     heroNote: "Free · Works anywhere on Earth · Spanish and English · Works on your phone",
