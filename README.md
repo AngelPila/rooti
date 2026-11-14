@@ -6,6 +6,21 @@ NASA Space Apps Challenge 2026 · *Field Shift: Adapting Farms with NASA Data* �
 
 Pilot zones: Daule, Babahoyo and Quevedo (rice and maize on the Ecuadorian coast).
 
+## Screens
+
+Each route has its own layout on a computer and on a phone, and fits one screen without scrolling where possible:
+
+| Route | Computer | Phone |
+|---|---|---|
+| `#/` | Landing: headline, photo with a sample farm calendar, how it works, NASA data | Same pitch, button within thumb reach |
+| `#/planear` | Map on the left (click to mark the plot), all questions on the right | Four steps: where, when, which crops, land and water |
+| `#/plan` | Answer, figures and land per crop on the left; farm calendar with monthly rain on the right; top ideas | Answer, figures, farm calendar, link to ideas |
+| `#/probar` | Ideas that would do better (each checked by re-running the planner), when to sow each crop | Same, stacked |
+| `#/comparar` | Build your own plan (plots, crops, months, land) next to both calendars and a comparison table | Same, stacked |
+| `#/pasado` | The plan on every real run of years since 1981 | Same |
+
+Interface text is in plain language (Spanish first, English toggle): no jargon, fractions like "1 de cada 6 años" instead of percentages.
+
 ## How to use it
 
 1. **Plan.** Pick any place in the world (search, GPS or tap the globe), a date range (for example 4 Mar 2023 to 7 Jun 2027) the crops you want to grow and how much land you have (ha, m², acres or cuadras).
