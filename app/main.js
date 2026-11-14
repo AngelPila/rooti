@@ -1,8 +1,8 @@
-import { fetchClimate } from "./climate.js?v=16";
-import { plan as runPlanner, cropMonths } from "./planner.js?v=16";
-import { COPY } from "./copy.js?v=16";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=16";
-import { STR } from "./i18n.js?v=16";
+import { fetchClimate } from "./climate.js?v=18";
+import { plan as runPlanner, cropMonths } from "./planner.js?v=18";
+import { COPY } from "./copy.js?v=18";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=18";
+import { STR } from "./i18n.js?v=18";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -102,7 +102,7 @@ const monthsIn = (P) => Math.round((new Date(P.end) - new Date(P.start)) / (30.4
 
 /* ---------------- data ---------------- */
 async function loadBase() {
-  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=16").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
+  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=18").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
   DATA.crops = crops.crops; DATA.econ = econ; DATA.outlook = outlook;
 }
 function climate(pl) {
@@ -160,32 +160,45 @@ const errorCard = (msg, retry) => h("div", { class: "errorcard", role: "alert" }
 const stepIcon = (ic) => icon(ic === "calendar" ? "i-calendar" : ic === "map-pin" ? "i-pin" : "i-sprout");
 
 /* ================= landing ================= */
+// The cover is the farmer's plot seen from space, with the year's planting calendar printed on it.
+const COVERS = [
+  { k: "daule", rows: [["rice", [[1, 4, "good"]]], ["maize", [[1, 4, "good"], [5, 4, "care"]]], ["soybean", [[1, 4, "good"]]], ["mulch", [[5, 8, "straw"]]]] },
+  { k: "quevedo", rows: [["maize", [[1, 4, "good"]]], ["soybean", [[5, 4, "good"]]], ["peanut", [[1, 4, "good"]]], ["mulch", [[9, 4, "straw"]]]] },
+  { k: "iowa", rows: [["maize", [[5, 4, "good"]]], ["soybean", [[5, 4, "good"]]], ["bare", [[1, 4, "bare"], [9, 4, "bare"]]]] },
+];
+let coverTimer = null;
 function viewLanding() {
   const c = C();
-  const sample = h("div", { class: "l-card" }, h("small", { class: "muted" }, c.sampleCard), h("b", { class: "t" }, c.sampleTitle),
-    h("div", { class: "cal", style: { "--lab": "48px" } },
-      h("div", { class: "cal-row cal-head" }, h("span"), h("div", { class: "cal-grid", style: { "--n": 12 } }, ...S().months.map((m) => h("span", {}, m)))),
-      ...[[S().crops.potato, [[1, 4, "2,6 ha", "good"], [5, 4, "2,4 ha", "good"], [9, 4, "2,6 ha", "good"]]], [S().crops.maize, [[1, 4, "2,4 ha", "good"], [5, 4, "2,6 ha", "care"], [9, 4, "2,4 ha", "good"]]]].map(([n, bars]) =>
-        h("div", { class: "cal-row" }, h("span", { class: "cal-name" }, n), h("div", { class: "cal-grid", style: { "--n": 12 } }, ...bars.map(([a, l, t, lv]) => h("div", { class: `bar ${lv}`, style: { gridColumn: `${a} / span ${l}`, height: "26px" } }, h("b", {}, t))))))),
-    h("span", { class: "verdict v-good", style: { fontSize: "14px" } }, c.sampleVerdict));
+  clearInterval(coverTimer);
   const start = () => { state.draft = null; go("planear"); };
-  const example = () => { setPlan(EXAMPLE()); memo.clear(); go("plan"); };
-  put($("#view"), h("div", { class: "landing" },
-    h("nav", { class: "l-nav" }, brand(), h("div", { class: "l-links" },
-      h("a", { class: "txt", href: "#how" }, c.nav.how), h("a", { class: "txt", href: "#data" }, c.nav.data), langBtn(),
-      h("button", { class: "btn dark", onclick: start }, c.cta))),
-    h("section", { class: "l-hero" },
-      h("div", { class: "l-photo" }, h("img", { src: "img/rice.jpg", alt: es() ? "Arrozal" : "Rice field" }), sample),
+  const openDemo = (k) => { setPlan(demoPlan(k)); state.mode = "all"; memo.clear(); go("plan"); };
+  const imgs = COVERS.map((cv, i) => h("img", { class: `cv-img${i === 0 ? " on" : ""}`, src: `img/sat/${cv.k}.jpg`, alt: c.demo[cv.k] }));
+  const overlay = h("div", { class: "cv-cal" }), label = h("button", { class: "cv-label" });
+  let i = 0;
+  const show = (n) => {
+    i = n; const cv = COVERS[n], D = DEMOS[cv.k];
+    imgs.forEach((im, j) => im.classList.toggle("on", j === n));
+    put(label, h("span", { class: "dot" }), h("b", {}, c.demo[cv.k]), h("small", {}, `${D.place.lat.toFixed(2)}, ${D.place.lon.toFixed(2)} · NASA POWER 1981–2026`), icon("i-arrow-r"));
+    label.onclick = () => openDemo(cv.k);
+    put(overlay, h("div", { class: "cal-row cal-head" }, h("span"), h("div", { class: "cal-grid", style: { "--n": 12 } }, ...S().months.map((mm) => h("span", {}, mm)))),
+      ...cv.rows.map(([id, bars]) => h("div", { class: "cal-row" }, h("span", { class: "cal-name" }, id === "bare" ? c.bare : cap(cropName(id))),
+        h("div", { class: "cal-grid", style: { "--n": 12 } }, ...bars.map(([a, l, lv], bi) => h("div", { class: `bar grow ${lv}`, style: { gridColumn: `${a} / span ${l}`, animationDelay: `${120 + bi * 140}ms` } }, h("b", {}, "")))))));
+  };
+  show(0);
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) coverTimer = setInterval(() => { if (!document.querySelector(".cover")) return clearInterval(coverTimer); show((i + 1) % COVERS.length); }, 5200);
+  put($("#view"), h("div", { class: "landing v2" },
+    h("header", { class: "cover" }, ...imgs, h("div", { class: "cv-scrim" }),
+      h("nav", { class: "l-nav" }, h("a", { class: "brand light", href: "#/" }, h("span", { class: "logo" }, icon("i-sprout")), h("b", {}, "Rooti")),
+        h("div", { class: "l-links" }, h("a", { class: "txt", href: "#how" }, c.nav.how), langBtn(), h("button", { class: "btn dark", onclick: start }, c.cta))),
+      h("div", { class: "cv-bottom" }, label, overlay)),
+    h("section", { class: "l-body" },
+      h("div", { class: "l-facts", id: "how" },
+        ...c.facts.map(([n, t]) => h("div", {}, h("b", { class: "display" }, n), h("span", {}, t)))),
       h("div", { class: "l-copy" },
         h("h1", { class: "display" }, c.heroTitle), h("p", { class: "lead" }, c.heroLead),
-        h("ul", { class: "l-steps l-steps-phone" }, ...c.steps.map(([ic, t]) => h("li", {}, stepIcon(ic), t))),
-        h("div", { class: "l-acts" }, h("button", { class: "btn dark big", onclick: start }, c.cta, icon("i-arrow-r"))),
-        h("div", { class: "l-examples" }, h("span", { class: "small" }, c.examplesLbl), ...Object.keys(DEMOS).map((k) => h("button", { class: "chip", onclick: () => { setPlan(demoPlan(k)); state.mode = "all"; memo.clear(); go("plan"); } }, c.demo[k]))),
-        h("p", { class: "l-note" }, c.heroNote))),
-    h("section", { class: "l-band", id: "how" },
-      ...c.steps.map(([ic, t, d]) => h("div", {}, stepIcon(ic), h("span", {}, h("b", {}, t), h("p", {}, d)))),
-      h("div", { class: "data", id: "data" }, h("b", {}, c.dataTitle), h("p", {}, c.dataText))),
-    h("p", { class: "l-credit" }, "Foto: “Oryza sativa in Kadavoor”, Jeevan Jose, CC BY-SA 4.0")));
+        h("div", { class: "l-acts" }, h("button", { class: "btn dark big", onclick: start }, c.cta, icon("i-arrow-r")),
+          h("div", { class: "l-examples" }, h("span", { class: "small" }, c.examplesLbl), ...Object.keys(DEMOS).map((k) => h("button", { class: "chip", onclick: () => openDemo(k) }, c.demo[k])))),
+        h("p", { class: "l-note" }, c.heroNote, " · ", h("span", { class: "credit" }, "Imagery: Esri World Imagery"))))));
 }
 
 /* ================= planner ================= */
@@ -354,7 +367,7 @@ function farmCalendar(r, f, { compact = false, rain = false } = {}) {
         for (let t = a; t < b; t++) { const cc = f.grid[t][k]; if (!cc || cc.share < 0.001) continue; const last = items[items.length - 1];
           if (last && last.t1 === t - 1) { last.t1 = t; last.share = Math.max(last.share, cc.share); last.ls.push(...cc.levels); } else items.push({ t0: t, t1: t, share: cc.share, ls: [...cc.levels] }); }
         return [h("div", { class: "cal-row" }, h("span", { class: "cal-name" }, k === "bare" ? C().bare : cap(cropName(k))),
-          h("div", { class: "cal-grid", style: { "--n": n } }, ...items.map((s) => h("button", { class: `bar ${k === "bare" ? "bare" : "straw"}`, style: { gridColumn: `${s.t0 - a + 1} / span ${s.t1 - s.t0 + 1}` }, onclick: () => barSheet(r, f, k, s, null) },
+          h("div", { class: "cal-grid", style: { "--n": n } }, ...items.map((s) => h("button", { class: `bar ${k === "bare" ? "bare" : "straw"}${compact ? "" : " grow"}`, style: { gridColumn: `${s.t0 - a + 1} / span ${s.t1 - s.t0 + 1}`, animationDelay: `${300 + s.t0 * 25}ms` }, onclick: () => barSheet(r, f, k, s, null) },
             h("b", {}, fmtArea(s.share)), k === "mulch" ? h("small", {}, C().coversSoil) : null))))];
       }
       // Crops: one bar per planting, for its whole duration; plantings of the same crop that overlap go on separate lanes.
@@ -365,7 +378,7 @@ function farmCalendar(r, f, { compact = false, rain = false } = {}) {
       return lanes.map((ln, li) => h("div", { class: "cal-row" }, h("span", { class: "cal-name" }, li === 0 ? cap(cropName(k)) : ""),
         h("div", { class: "cal-grid", style: { "--n": n } }, ...ln.map((g) => {
           const pl = g.pl[0], s0 = Math.max(a, g.t0), s1 = Math.min(b, g.t1) - 1, lv = pl.fail >= 0.5 ? "danger" : pl.fail > 0.15 || pl.yld < 0.6 ? "care" : "good";
-          return h("button", { class: `bar ${lv}`, style: { gridColumn: `${s0 - a + 1} / span ${s1 - s0 + 1}` }, title: `${cap(cropName(k))} · ${fmtArea(g.share)} · ${span(r.period[g.t0], r.period[g.t1 - 1])}`, onclick: () => barSheet(r, f, k, { share: g.share, t0: g.t0, t1: g.t1 - 1 }, pl) },
+          return h("button", { class: `bar ${lv}${compact ? "" : " grow"}`, style: { gridColumn: `${s0 - a + 1} / span ${s1 - s0 + 1}`, animationDelay: `${150 + g.t0 * 25 + li * 90}ms` }, title: `${cap(cropName(k))} · ${fmtArea(g.share)} · ${span(r.period[g.t0], r.period[g.t1 - 1])}`, onclick: () => barSheet(r, f, k, { share: g.share, t0: g.t0, t1: g.t1 - 1 }, pl) },
             h("b", {}, fmtArea(g.share)), s0 === g.t0 ? h("small", {}, outcomeShort(pl, n1)) : null);
         }))));
     });
@@ -388,8 +401,9 @@ function barSheet(r, f, k, s, pl) {
 const landList = (f) => h("ul", { class: "land" }, ...Object.values(f.byCrop).sort((a, b) => a.plantings[0].t0 - b.plantings[0].t0).map((b) =>
   h("li", { class: b.crop === "mulch" ? "straw" : "" }, h("div", {}, h("b", {}, cap(cropName(b.crop))), h("span", {}, [...b.plantings].sort((x, y) => x.t0 - y.t0).slice(0, 2).map((p) => `${fmtArea(p.share)} · ${span(p.from, p.to)}`).join("; "))),
     h("i", { style: { "--w": `${Math.round(b.area * 100)}%` } }))));
-const miniMap = (pl) => { const d = 0.006, bb = [pl.lon - d * 2.6, pl.lat - d, pl.lon + d * 2.6, pl.lat + d].join(",");
-  return h("div", { class: "mini-map desk-only" }, h("img", { alt: "", loading: "lazy", src: `${ESRI}/export?bbox=${bb}&bboxSR=4326&size=800,300&format=jpg&f=image` }), h("i")); };
+const miniMap = (pl, v) => { const d = 0.006, bb = [pl.lon - d * 2.6, pl.lat - d, pl.lon + d * 2.6, pl.lat + d].join(","), dk = demoKey(pl);
+  return h("div", { class: "mini-map desk-only" }, h("img", { alt: "", loading: "lazy", src: dk ? `img/sat/${dk}.jpg` : `${ESRI}/export?bbox=${bb}&bboxSR=4326&size=800,300&format=jpg&f=image` }), h("i", { class: v || "" }),
+    h("span", { class: "mm-label" }, h("b", {}, pl.name), `${pl.lat.toFixed(2)}, ${pl.lon.toFixed(2)}`)); };
 const resHead = (P) => h("div", { class: "res-head" }, h("div", { class: "grow" }, h("b", {}, `${P.place.name} · ${fmtArea(1)}`), h("small", {}, `${fmtDate(P.start)} – ${fmtDate(P.end)}`)),
   h("a", { class: "btn", href: "#/planear", onclick: () => { state.draft = null; } }, C().change));
 async function withResults(draw) {
@@ -409,7 +423,7 @@ function viewPlan() {
     put($("#view"), h("div", { class: "res" },
       resHead(P),
       h("div", { class: "col-left" },
-        miniMap(P.place),
+        miniMap(P.place, f.verdict),
         h("section", { class: "card answer" },
           h("p", { class: "lbl" }, c.best), h("h2", { class: "display" }, headline(f)), verdictEl(f.verdict), kpis(f, r),
           h("button", { class: "link", style: { alignSelf: "flex-start", fontSize: "15px" }, onclick: () => explainSheet(headline(f), f, r) }, c.whyThis),
