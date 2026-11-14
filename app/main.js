@@ -8,7 +8,8 @@ const ZONE_NAMES = { babahoyo: "Babahoyo", daule: "Daule", quevedo: "Quevedo" };
 const DEFAULT_LOT = { zone: "daule", name: "Lote 3", crop: "rice", irrigation: "no", size: 5.2, unit: "ha" };
 const ROUTES = ["inicio", "configurar", "lote", "porque", "pasado", "preguntar", "pasaporte"];
 const NAV = [["lote", "i-sprout", "lot"], ["pasado", "i-history", "past"], ["preguntar", "i-chat", "ask"], ["pasaporte", "i-badge", "passport"]];
-const CAUSE_ICON = { water_shortage: "i-drop-off", excess_rain: "i-rain", rain_on_bare: "i-rain", bare_in_sun: "i-sun" };
+const CAUSE_ICON = { water_shortage: "i-drop-off", excess_rain: "i-rain", rain_on_bare: "i-rain", bare_in_sun: "i-sun", waterlogged: "i-waves" };
+const WATERLOG_LEVEL = { yes: 0.8, sometimes: 0.4, no: 0.05 };
 const LEVEL_ICON = { good: "i-check", care: "i-minus", danger: "i-x" };
 const NOW_MONTH = new Date().getMonth();
 
@@ -56,15 +57,21 @@ function icon(id, cls = "icon") {
 /* ---------------- data ---------------- */
 function ok(r) { if (!r.ok) throw new Error(r.status); return r.json(); }
 async function loadBase() {
-  const [zones, crops, outlook] = await Promise.all([fetch("data/zones.json").then(ok), fetch("data/crops.json").then(ok), fetch("data/outlook.json").then(ok).catch(() => null)]);
-  DATA.zones = zones; DATA.crops = crops.crops; DATA.outlook = outlook;
+  const [zones, crops, outlook, water] = await Promise.all([fetch("data/zones.json").then(ok), fetch("data/crops.json").then(ok), fetch("data/outlook.json").then(ok).catch(() => null), fetch("data/surface_water.json").then(ok).catch(() => null)]);
+  DATA.zones = zones; DATA.crops = crops.crops; DATA.outlook = outlook; DATA.water = water;
   const noaa = outlook?.official?.noaa;
   if (noaa?.status?.includes("El Niño") && (noaa.chance_pct ?? 0) >= 70 && !state.scenarioTouched) state.scenario = "strong_nino";
 }
 async function zoneData(z) { return (DATA.byZone[z] ||= await fetch(`data/${z}.json`).then(ok)); }
 async function fireData(z) { if (!(z in DATA.fires)) DATA.fires[z] = await fetch(`data/fires_${z}.json`).then(ok).catch(() => null); return DATA.fires[z]; }
+// Satellite answer to "does it get waterlogged?", which the farmer can correct.
+function satWaterlog() {
+  const idx = DATA.water?.zones?.[state.lot.zone]?.waterlogging_index ?? 0;
+  return idx >= 0.4 ? "yes" : idx >= 0.15 ? "sometimes" : "no";
+}
+const waterlogAnswer = () => state.lot.waterlog || satWaterlog();
 function opts() {
-  return { scenario: state.scenario, irrigation: state.lot.irrigation === "yes", weights: PRIORITY_WEIGHTS[state.priority], current: { wet: state.lot.crop === "other" ? "maize" : state.lot.crop, dry: "fallow" } };
+  return { scenario: state.scenario, irrigation: state.lot.irrigation === "yes", weights: PRIORITY_WEIGHTS[state.priority], waterlogging: WATERLOG_LEVEL[waterlogAnswer()], current: { wet: state.lot.crop === "other" ? "maize" : state.lot.crop, dry: "fallow" } };
 }
 const memo = new Map();
 const cached = (key, fn) => (memo.has(key) ? memo.get(key) : (memo.set(key, fn()), memo.get(key)));
@@ -132,6 +139,7 @@ function monthSentence(p, c) {
     rain_on_bare: `Llueven ${mm} sobre suelo sin cultivo: el agua se lleva el suelo.`,
     bare_in_sun: `Sin cultivo y casi sin lluvia (${mm}): el sol quema el suelo.`,
     covered: `La paja cubre el suelo. Llueven ${mm}.`,
+    waterlogged: `Llueven ${mm} y su lote se encharca: ${crop} sufre con el agua estancada.`,
     ok: `${cropName(c.crop)}: la lluvia alcanza (${mm}).`,
   } : {
     water_shortage: c.failed ? `${mm} of rain and ${crop} needs ${c.need} mm: without irrigation it fails.` : `${mm} of rain and ${crop} needs ${c.need} mm.`,
@@ -139,6 +147,7 @@ function monthSentence(p, c) {
     rain_on_bare: `${mm} of rain on bare soil: water washes the soil away.`,
     bare_in_sun: `No crop and little rain (${mm}): the sun burns the soil.`,
     covered: `Straw covers the soil. ${mm} of rain.`,
+    waterlogged: `${mm} of rain and your plot gets waterlogged: ${crop} suffers in standing water.`,
     ok: `${cropName(c.crop)}: rain is enough (${mm}).`,
   };
   return S[c.kind] || "";
@@ -216,6 +225,9 @@ function viewSetup() {
       choice("rice", "crop", T().crops.rice, photo("img/rice.jpg")), choice("maize", "crop", T().crops.maize, photo("img/maize.jpg")), choice("other", "crop", T().other, photo(null)))),
     h("div", { class: "plan" }, h("p", { class: "q" }, T().qIrrigation), h("div", { class: "choices" },
       choice("yes", "irrigation", T().yes), choice("sometimes", "irrigation", T().sometimes), choice("no", "irrigation", T().no))),
+    h("div", { class: "plan" }, h("p", { class: "q" }, T().qWaterlog), h("div", { class: "choices" },
+      ...["yes", "sometimes", "no"].map((val) => h("button", { class: "choice", "aria-pressed": String(waterlogAnswer() === val), onclick: () => save({ waterlog: val }) }, T()[val]))),
+      lot.waterlog ? null : h("p", { class: "note" }, icon("i-sat"), " ", T().satMarked)),
     h("div", { class: "plan" }, h("p", { class: "q" }, T().qSize), h("div", { class: "row" },
       h("div", { class: "stepper" },
         h("button", { "aria-label": "−", onclick: () => save({ size: Math.max(0.1, +(lot.size - step).toFixed(1)) }) }, "−"), size,
@@ -279,7 +291,7 @@ function planCard(p) {
 function legend() {
   return h("div", { class: "legend" },
     ...["good", "care", "danger"].map((l) => h("span", {}, h("i", { class: `sw ${l}` }, icon(LEVEL_ICON[l])), T().level[l])),
-    ...[["i-drop-off", "water_shortage"], ["i-sun", "bare_in_sun"], ["i-rain", "rain_on_bare"]].map(([ic, k]) => h("span", {}, icon(ic), T().cause[k])));
+    ...[["i-drop-off", "water_shortage"], ["i-sun", "bare_in_sun"], ["i-rain", "rain_on_bare"], ["i-waves", "waterlogged"]].map(([ic, k]) => h("span", {}, icon(ic), T().cause[k])));
 }
 async function viewLot() {
   const v = $("#view"); v.className = "view";

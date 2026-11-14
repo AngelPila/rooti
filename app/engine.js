@@ -49,6 +49,8 @@ function climateFor(zone, scenarioKey) {
   return { sc, normal: zone.climatology_1991_2020, nYears: scenarioKey === "neutral" ? 30 : enso[scenarioKey]?.n_years };
 }
 
+let CURRENT_WATERLOG = 0;
+const opts_waterlogging = () => CURRENT_WATERLOG;
 function seasonCrop(zone, crop, season, scenarioKey, irrigation) {
   const S = SEASONS[season];
   const { sc, normal } = climateFor(zone, scenarioKey);
@@ -85,7 +87,9 @@ function seasonCrop(zone, crop, season, scenarioKey, irrigation) {
   const excess = ratio != null && ratio > 1.6 ? Math.min(1, (ratio - 1.6) / 2) : 0;
   const failed = ratio != null && ratio < FAIL_RATIO;
   const drought = failed ? 1 : clamp01(deficit * (1 - 0.7 * dTol));
-  const flood = clamp01((excess + heavy / 40) * (1 - 0.8 * fTol));
+  // Waterlogging: how often the land stays under water (JRC Global Surface Water, confirmed by the farmer), rainy season only.
+  const waterlog = season === "wet" ? (opts_waterlogging(crop) ?? 0) * (1 - fTol) * clamp01(rain / Math.max(rainNormal, 1)) : 0;
+  const flood = clamp01((excess + heavy / 40) * (1 - 0.8 * fTol) + waterlog);
   const heatTol = crop.temp_stress_c >= 40 ? 1 : crop.temp_stress_c >= 35 ? 0.5 : 0;
   // Calibrated so a few extra hot days are a caution, not a failure (POWER Tmax runs warm, see provenance).
   const heat = clamp01((Math.max(0, heatDelta) / 40 + Math.max(0, tmaxDelta) / 4) * (1 - 0.7 * heatTol));
@@ -98,6 +102,7 @@ function seasonCrop(zone, crop, season, scenarioKey, irrigation) {
 
 export function scoreRotation(zone, crops, rotation, opts) {
   const { scenario = "normal", irrigation = false, weights = { water: 1, soil: 1, income: 1 } } = opts;
+  CURRENT_WATERLOG = opts.waterlogging ?? 0;
   const key = opts.climate || SCENARIOS[scenario].key;
   const get = (id) => (id === "fallow" ? FALLOW : id === "mulch" ? MULCH : { id, ...crops[id] });
   const wet = seasonCrop(zone, get(rotation.wet), "wet", key, irrigation);
@@ -186,6 +191,8 @@ export function riskCalendar(zone, crops, rotation, opts) {
       let kind = "ok", severity = 0;
       if (supply < need) { severity = clamp01((1 - supply / need) * (1 - 0.6 * dTol)); kind = severity > 0.15 ? "water_shortage" : "ok"; }
       if (sc.rain_mm[m - 1] > 1.8 * need && fTol < 1) { kind = "excess_rain"; severity = clamp01((sc.rain_mm[m - 1] / need - 1.8) / 2 * (1 - fTol)); }
+      const wl = (opts.waterlogging ?? 0) * (1 - fTol) * (season === "wet" ? clamp01(sc.rain_mm[m - 1] / 150) : 0);
+      if (wl > Math.max(0.15, severity)) { kind = "waterlogged"; severity = clamp01(wl); }
       if (seasonFails) { kind = "water_shortage"; severity = 1; }
       cell[m - 1] = { month: m, crop: id, kind, severity: +severity.toFixed(2), rain: Math.round(sc.rain_mm[m - 1]), need: Math.round(need), failed: seasonFails };
     });
