@@ -1,8 +1,8 @@
-import { fetchClimate } from "./climate.js?v=14";
-import { plan as runPlanner, cropMonths } from "./planner.js?v=14";
-import { COPY } from "./copy.js?v=14";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=14";
-import { STR } from "./i18n.js?v=14";
+import { fetchClimate } from "./climate.js?v=16";
+import { plan as runPlanner, cropMonths } from "./planner.js?v=16";
+import { COPY } from "./copy.js?v=16";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=16";
+import { STR } from "./i18n.js?v=16";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -25,12 +25,22 @@ const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0
 const firstNextMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 1); };
 const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 0);
 const state = {
-  lang: store.get("lang", "es"),
+  lang: store.get("lang", (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en"),
   plan: store.get("plan3", null),
   priority: store.get("priority", "soil"),
   mode: "all",
   draft: null, custom: null, customKey: null, undo: null, pastBase: undefined, showAll: false, saved: store.get("saved3", null),
 };
+// Ready-made examples: their climate and plot data ship with the app, so the demo works even without internet.
+const DEMOS = {
+  daule: { place: { name: "Daule", admin: "Guayas, Ecuador", lat: -1.86, lon: -79.98 }, crops: ["maize", "soybean", "rice", "mulch"], current: ["rice"], area: 5.2 },
+  quevedo: { place: { name: "Quevedo", admin: "Los Ríos, Ecuador", lat: -1.03, lon: -79.46 }, crops: ["maize", "soybean", "peanut", "mulch"], current: ["maize"], area: 3 },
+  iowa: { place: { name: "Ames", admin: "Iowa, USA", lat: 42.03, lon: -93.62 }, crops: ["maize", "soybean", "wheat"], current: ["maize"], area: 40, unit: "acre" },
+};
+const demoKey = (pl) => Object.keys(DEMOS).find((k) => Math.abs(DEMOS[k].place.lat - pl.lat) < 0.01 && Math.abs(DEMOS[k].place.lon - pl.lon) < 0.01);
+const demoData = {};
+const loadDemo = (k) => (demoData[k] ||= fetch(`data/demo/${k}.json`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }));
+const demoPlan = (k) => { const s = firstNextMonth(), D = DEMOS[k]; return { place: D.place, start: iso(s), end: iso(addMonths(s, 12)), crops: D.crops, current: D.current, irrigation: false, area: D.area, unit: D.unit || "ha", waterlog: null }; };
 const EXAMPLE = () => ({ place: { name: "Daule", admin: "Guayas, Ecuador", lat: -1.86, lon: -79.98 }, start: iso(firstNextMonth()), end: iso(addMonths(firstNextMonth(), 12)), crops: ["maize", "soybean", "mulch"], irrigation: false, area: 5.2, unit: "ha" });
 // A plan can come in the link: ?lat=-1.86&lon=-79.98&place=Daule&from=2026-12-01&to=2027-11-30&crops=maize+soybean&area=5
 {
@@ -92,12 +102,12 @@ const monthsIn = (P) => Math.round((new Date(P.end) - new Date(P.start)) / (30.4
 
 /* ---------------- data ---------------- */
 async function loadBase() {
-  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=14").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
+  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=16").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
   DATA.crops = crops.crops; DATA.econ = econ; DATA.outlook = outlook;
 }
 function climate(pl) {
-  const k = `${pl.lat.toFixed(2)},${pl.lon.toFixed(2)}`;
-  return (DATA.clim[k] ||= fetchClimate(pl.lat, pl.lon).catch((e) => { delete DATA.clim[k]; throw e; }));
+  const k = `${pl.lat.toFixed(2)},${pl.lon.toFixed(2)}`, dk = demoKey(pl);
+  return (DATA.clim[k] ||= (dk ? loadDemo(dk).then((d) => d.clim) : fetchClimate(pl.lat, pl.lon)).catch((e) => { delete DATA.clim[k]; throw e; }));
 }
 // Plot data: elevation, slope and soil for any point; in the pilot zones our own soil and satellite water data.
 async function terrain(pl) {
@@ -109,7 +119,8 @@ async function terrain(pl) {
       const so = zd?.soil; if (so?.clay) pilotSoil = { clay: so.clay.value_0_30cm, sand: so.sand.value_0_30cm, phh2o: so.phh2o.value_0_30cm, soc: so.soc.value_0_30cm, nitrogen: so.nitrogen?.value_0_30cm };
       pilotWater = sw?.zones?.[z]?.waterlogging_index ?? null;
     }
-    const t = await fetchTerrain(pl.lat, pl.lon, pilotSoil).catch(() => ({ soil: null }));
+    const dk = demoKey(pl);
+    const t = dk ? await loadDemo(dk).then((d) => d.terrain) : await fetchTerrain(pl.lat, pl.lon, pilotSoil).catch(() => ({ soil: null }));
     return { ...t, pilotWater, zone: z };
   })();
   return DATA.terrain[k];
@@ -168,7 +179,8 @@ function viewLanding() {
       h("div", { class: "l-copy" },
         h("h1", { class: "display" }, c.heroTitle), h("p", { class: "lead" }, c.heroLead),
         h("ul", { class: "l-steps l-steps-phone" }, ...c.steps.map(([ic, t]) => h("li", {}, stepIcon(ic), t))),
-        h("div", { class: "l-acts" }, h("button", { class: "btn dark big", onclick: start }, c.cta, icon("i-arrow-r")), h("button", { class: "link", onclick: example }, c.example)),
+        h("div", { class: "l-acts" }, h("button", { class: "btn dark big", onclick: start }, c.cta, icon("i-arrow-r"))),
+        h("div", { class: "l-examples" }, h("span", { class: "small" }, c.examplesLbl), ...Object.keys(DEMOS).map((k) => h("button", { class: "chip", onclick: () => { setPlan(demoPlan(k)); state.mode = "all"; memo.clear(); go("plan"); } }, c.demo[k]))),
         h("p", { class: "l-note" }, c.heroNote))),
     h("section", { class: "l-band", id: "how" },
       ...c.steps.map(([ic, t, d]) => h("div", {}, stepIcon(ic), h("span", {}, h("b", {}, t), h("p", {}, d)))),
@@ -453,7 +465,7 @@ function explain(f, r) {
   if (crops.some((id) => DATA.crops[id]?.approximate)) unknown.push(c.approx);
   if (!nearPilot(state.plan.place)) unknown.push(c.unkPrices);
   ask.unshift(c.askVariety(cropName(crops[0] || "maize").toLowerCase()));
-  if (r.site.wl >= 0.45) ask.push(c.askDrain);
+  if (r.site.wl >= 0.5) ask.push(c.askDrain);
   if (d && (d.phClass === "acid" || d.phClass === "very_acid")) ask.push(c.askLime);
   return { why: why.slice(0, 4), risks: risks.slice(0, 4), unknown, ask: [...new Set(ask)].slice(0, 4) };
 }
@@ -467,7 +479,7 @@ function explainSheet(title, f, r) {
 function tipsFor(r) {
   const c = C(), out = [], tr = r.terrain, d = describeSoil(tr?.soil), P = state.plan, N = r.period.length;
   const months = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([k]) => +k.slice(5) === i + 1 && +k.slice(0, 4) >= 1991 && +k.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (f) => vs.reduce((a, v) => a + v[f], 0) / Math.max(1, vs.length); return { m: i + 1, rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
-  if (r.site.wl >= 0.45) out.push(["i-waves", c.tipDrain]);
+  if (r.site.wl >= 0.5) out.push(["i-waves", c.tipDrain]);
   if (DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place)) out.push(["i-rain", c.tipNino]);
   const bareRain = r.farm ? r.farm.grid.filter((g, i) => g.bare?.share > 0.2 && normalRain(r.clim, r.period[i].m) > 80).length : 0;
   if (bareRain >= 2) out.push(["i-leaf", c.tipCover(bareRain)]);

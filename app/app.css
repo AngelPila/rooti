@@ -384,3 +384,7 @@ body.results .bottom-nav { grid-template-columns: repeat(5, 1fr) !important; }
   .terreno .card { padding: 16px 20px; }
   ul.tips { gap: 7px; }
 }
+
+.l-examples { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.l-examples .chip { font-size: 14px; padding: 8px 12px; }
+@media (min-width: 1024px) { .l-copy { gap: 22px; } }

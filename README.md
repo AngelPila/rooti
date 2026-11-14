@@ -6,6 +6,16 @@ NASA Space Apps Challenge 2026 · *Field Shift: Adapting Farms with NASA Data* �
 
 Pilot zones: Daule, Babahoyo and Quevedo (rice and maize on the Ecuadorian coast).
 
+## Try it
+
+```bash
+cd app && python3 -m http.server 8765    # then open http://localhost:8765
+```
+
+On the landing page, tap one of the examples — **Daule, Ecuador (rice in El Niño)**, **Quevedo, Ecuador (maize and soybean)** or **Iowa, USA (corn and soybean)**. Their climate and plot data ship with the app (`app/data/demo/`), so they work without internet. Any other place on Earth fetches NASA POWER and soil data live. Add `?lang=en` or `?lang=es` to force a language.
+
+Submission texts, demo script and judging notes: [`docs/SUBMISSION.md`](docs/SUBMISSION.md). Sources: [`docs/REFERENCES.md`](docs/REFERENCES.md). Use of AI: [`SI_USAGE.md`](SI_USAGE.md).
+
 ## Screens
 
 Each route has its own layout on a computer and on a phone, and fits one screen without scrolling where possible:

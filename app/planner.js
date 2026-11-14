@@ -207,7 +207,7 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
     const covered = parcels.reduce((x, pc) => x + pc.share * pc.d.covered, 0) / N;
     const anyLoss = mean(per.map((x) => (x.lostShare > 0 ? 1 : 0))), bigLoss = mean(per.map((x) => (x.lostShare >= 0.5 ? 1 : 0)));
     const harvest = mean(per.map((x) => x.harvest)), loss = mean(per.map((x) => x.loss));
-    const verdict = !parcels.some((pc) => pc.d.steps.length) || bigLoss >= 0.3 ? "danger" : anyLoss >= 0.3 || covered < 0.5 || loss > 2.5 ? "care" : "good";
+    const verdict = !parcels.some((pc) => pc.d.steps.length) || bigLoss >= 0.3 ? "danger" : anyLoss >= 0.3 || loss > 2.5 ? "care" : "good"; // bare soil only counts when it actually loses soil (cold winters do not)
     // Month by month, which crop is on how much of the land, for the farm calendar.
     const grid = period.map((pp, t) => {
       const here = {};

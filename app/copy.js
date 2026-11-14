@@ -102,6 +102,7 @@ export const COPY = {
     thisYear: "Este año", vsNormal: (n) => `lo normal: ${n} mm`, ninoNow: (p) => `El Niño está en curso: ${Math.round(p / 10)} de cada 10 probabilidades de que sea fuerte hasta marzo.`,
     climate: "El clima de su lugar", rainYear: "de lluvia al año", tempRange: "de mínima a máxima", dryMonths: "meses secos",
     lgRain: "Lluvia", lgNeed: "Agua que pide la atmósfera", wetMonths: (m) => `Llueve bien en ${m}.`, dryList: (m) => `Seco en ${m}.`,
+    examplesLbl: "Vea un ejemplo:", demo: { daule: "Daule · arroz con El Niño", quevedo: "Quevedo · maíz y soya", iowa: "Iowa, EE. UU. · maíz y soya" },
     close: "Cerrar", checkLocal: "Confírmelo con su técnico antes de cambiar.", approx: "Algunos cultivos usan datos aproximados.",
   },
   en: {
@@ -109,7 +110,7 @@ export const COPY = {
     cta: "Plan my planting", example: "See an example in Daule",
     heroTitle: "Know what to plant, and when.",
     heroLead: "Rooti builds the rotation for your plot from real NASA climate since 1981: which crop, in which months and on how much land. Before you spend on seed.",
-    heroNote: "Free · In Spanish and English · Works on your phone",
+    heroNote: "Free · Works anywhere on Earth · Spanish and English · Works on your phone",
     steps: [["map-pin", "Tell it where", "Anywhere in the world, or tap the map."], ["calendar", "Pick dates and crops", "From when to when, and what you want to grow."], ["sprout", "See your plan", "What to plant, in which months and on how much land."]],
     dataTitle: "With NASA data", dataText: "Rain and temperature for every month since 1981, measured by NASA satellites.",
     sampleCard: "Your plan · 5 ha · 2027", sampleTitle: "Potato and maize, always both", sampleVerdict: "Would go well · soil covered all year",
@@ -204,6 +205,7 @@ export const COPY = {
     thisYear: "This year", vsNormal: (n) => `normal: ${n} mm`, ninoNow: (p) => `El Niño is under way: ${p}% chance it stays strong until March.`,
     climate: "Your place's climate", rainYear: "of rain a year", tempRange: "from low to high", dryMonths: "dry months",
     lgRain: "Rain", lgNeed: "Water the air takes", wetMonths: (m) => `Good rain in ${m}.`, dryList: (m) => `Dry in ${m}.`,
+    examplesLbl: "Try an example:", demo: { daule: "Daule, Ecuador · rice in El Niño", quevedo: "Quevedo, Ecuador · maize and soybean", iowa: "Iowa, USA · corn and soybean" },
     close: "Close", checkLocal: "Check with your agronomist before changing.", approx: "Some crops use approximate data.",
   },
 };
