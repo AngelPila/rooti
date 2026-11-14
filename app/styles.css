@@ -220,3 +220,40 @@ ul { margin: 0; padding-left: 20px; }
   .years { grid-template-columns: repeat(8, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* timeline: what is on the field, coloured by risk */
+.tl { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
+.tl-span { position: relative; height: 40px; }
+.tl-fill { display: flex; gap: 1px; height: 100%; border-radius: 6px; overflow: hidden; }
+.tl-m { flex: 1; border: 0; padding: 0; cursor: pointer; }
+.tl-m.good { background: var(--good); } .tl-m.care { background: var(--care); }
+.tl-m.danger { background: var(--danger) repeating-linear-gradient(135deg, rgba(255,255,255,.18) 0 4px, transparent 4px 9px); }
+.tl-lbl { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 10px; color: #fff; font-weight: 700; font-size: 15px; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-lbl.short { padding: 0 4px; font-size: 12px; justify-content: center; }
+@media (max-width: 600px) { .tl-lbl.short { display: none; } .tl-lbl { padding: 0 6px; font-size: 14px; } }
+.sw-flat { width: 18px; height: 18px; border-radius: 4px; display: inline-block; }
+.sw-flat.good { background: var(--good); } .sw-flat.care { background: var(--care); }
+.sw-flat.danger { background: var(--danger) repeating-linear-gradient(135deg, rgba(255,255,255,.25) 0 3px, transparent 3px 7px); }
+.legend-hint { color: var(--ink2); }
+/* forecast: one line */
+.season-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 16px; color: #1E3A8A; }
+.season-line .icon { width: 20px; height: 20px; }
+.season-line span { color: var(--ink2); }
+/* why */
+.todo .try { font-weight: 700; color: var(--brand); }
+details.unknown { display: block; }
+details.unknown summary { font-weight: 700; color: var(--ink); cursor: pointer; }
+details.unknown ul { margin-top: 8px; padding-left: 20px; }
+.why > .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 600; font-size: 17px; }
+.why > .check .icon { width: 20px; height: 20px; margin-top: 2px; }
+/* passport */
+.pp-answer { border-radius: var(--r); padding: 18px; display: flex; flex-direction: column; gap: 6px; }
+.pp-answer.good { background: #E7F4EC; } .pp-answer.danger { background: #FBE9E9; }
+.pp-q { font-size: 17px; color: var(--ink2); }
+.pp-a { font-size: 22px; font-weight: 700; }
+.pp-answer small { display: inline-flex; gap: 6px; align-items: center; color: var(--ink2); font-size: 15px; }
+.pp-years { list-style: none; padding: 0; display: flex; flex-direction: column; }
+.pp-years li { display: flex; justify-content: space-between; padding: 12px 2px; font-size: 17px; }
+.pp-years .ok { color: var(--good); font-weight: 600; } .pp-years .bad { color: var(--danger); font-weight: 600; }
+@media (min-width: 1024px) { .chips { max-width: 620px; } }
+.pp-years, .pp-answer { max-width: 640px; }

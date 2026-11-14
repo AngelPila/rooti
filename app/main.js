@@ -1,5 +1,5 @@
-import { recommendPlans, realPast } from "./engine.js";
-import { STR } from "./i18n.js";
+import { recommendPlans, realPast } from "./engine.js?v=3";
+import { STR } from "./i18n.js?v=3";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -7,7 +7,7 @@ const PRIORITY_WEIGHTS = { soil: { water: 1, soil: 3, income: 1 }, water: { wate
 const ZONE_NAMES = { babahoyo: "Babahoyo", daule: "Daule", quevedo: "Quevedo" };
 const DEFAULT_LOT = { zone: "daule", name: "Lote 3", crop: "rice", irrigation: "no", size: 5.2, unit: "ha" };
 const ROUTES = ["inicio", "configurar", "lote", "porque", "pasado", "preguntar", "pasaporte"];
-const NAV = [["lote", "i-sprout", "lot"], ["pasado", "i-history", "past"], ["preguntar", "i-chat", "ask"], ["pasaporte", "i-badge", "passport"]];
+const NAV = [["lote", "i-sprout", "lot"], ["pasado", "i-history", "past"], ["pasaporte", "i-badge", "passport"]];
 const CAUSE_ICON = { water_shortage: "i-drop-off", excess_rain: "i-rain", rain_on_bare: "i-rain", bare_in_sun: "i-sun", waterlogged: "i-waves" };
 const WATERLOG_LEVEL = { yes: 0.8, sometimes: 0.4, no: 0.05 };
 const LEVEL_ICON = { good: "i-check", care: "i-minus", danger: "i-x" };
@@ -130,18 +130,15 @@ function moneyLine(p) {
 }
 function moneyBlock(p) {
   const m = seasonMoney(p), area = `${state.lot.size.toLocaleString(state.lang)} ${state.lot.unit === "ha" ? "ha" : T().unitCuadra}`;
-  const kids = [h("b", {}, T().money), h("p", { class: "small" }, T().moneySame(cropName(p.rotation.wet).toLowerCase()))];
-  if (m.kind === "none") kids.push(h("p", { class: "money-big" }, T().noExtra));
-  else if (m.kind === "nosale") kids.push(h("p", { class: "money-big" }, T().noSale));
-  else if (m.kind === "unknown") kids.push(h("p", {}, T().noCost));
-  else {
+  if (m.kind !== "money") return null;
+  const kids = [h("b", {}, T().money)];
+  {
     kids.push(h("p", { class: "money-big" }, m.netLow != null ? T().moneyRange(usd(m.netLow), usd(m.netHigh)) : T().moneyRange(usd(m.incomeLow), usd(m.incomeHigh))),
       h("p", { class: "small" }, `${T().perLot(area)} · ${T().harvestQty(m.qty.toLocaleString(state.lang), m.unit)}`));
     if (m.netLow == null) kids.push(h("p", { class: "small" }, T().noCost));
     if (m.fails) kids.push(h("p", { class: "worst" }, icon("i-x"), T().worstCase(usdAbs(m.invest), m.fails, m.n)));
     if (m.weak) kids.push(h("span", { class: "tag-example" }, T().weakData));
   }
-  kids.push(h("p", { class: "small" }, T().moneyCheck));
   return h("div", { class: "money" }, ...kids);
 }
 
@@ -179,6 +176,16 @@ function skeleton() {
 const errorCard = (retry) => h("div", { class: "errorcard", role: "alert" }, icon("i-wifi-off"), h("b", { style: "flex:1" }, T().loadError), h("button", { class: "btn", onclick: retry }, T().retry));
 
 // One month of one plan: the level is the big shape, the cause a small corner icon.
+// What is on the field each month, merged into labelled spans; each month keeps its colour and opens its sheet.
+const fieldOf = (c) => (c.crop ? c.crop : "bare");
+const fieldName = (k) => (k === "bare" ? T().bareShort : k === "mulch" ? T().mulchShort : cropName(k));
+function timeline(p) {
+  const spans = [];
+  p.calendar.forEach((c) => { const k = fieldOf(c), last = spans[spans.length - 1]; if (last && last.k === k) last.ms.push(c); else spans.push({ k, ms: [c] }); });
+  return h("div", { class: "tl" }, ...spans.map((sp) => h("div", { class: "tl-span", style: `grid-column: span ${sp.ms.length}` },
+    h("div", { class: "tl-fill" }, ...sp.ms.map((c) => h("button", { class: `tl-m ${c.level}`, "aria-label": `${T().monthsLong[c.month - 1]}: ${fieldName(sp.k)}, ${T().level[c.level]}`, onclick: (e) => { e.stopPropagation(); openMonth(p, c); } }))),
+    h("span", { class: `tl-lbl${sp.ms.length < 2 ? " short" : ""}` }, fieldName(sp.k)))));
+}
 function cell(p, c) {
   return h("button", { class: `cell ${c.level}`, "aria-label": `${T().monthsLong[c.month - 1]}: ${T().level[c.level]}, ${T().cause[c.kind]}`, onclick: (e) => { e.stopPropagation(); openMonth(p, c); } },
     icon(LEVEL_ICON[c.level], "icon lvl"), c.level !== "good" && CAUSE_ICON[c.kind] ? icon(CAUSE_ICON[c.kind], "icon cause") : null);
@@ -300,8 +307,7 @@ function seasonCard() {
   const o = DATA.outlook, z = o?.zones?.[state.lot.zone], noaa = o?.official?.noaa;
   if (!z?.last_month || !noaa?.chance_pct) return outlookLine();
   const lm = z.last_month, mon = T().monthsLong[+lm.month.slice(5) - 1];
-  return h("div", { class: "season-card" }, icon("i-rain", "icon sc-ic"),
-    h("div", {}, h("b", {}, T().thisYear), h("p", {}, `${mon[0].toUpperCase()}${mon.slice(1)} ${T().alreadyFell("", lm.rain_mm, lm.normal_mm).trim()} ${T().official(noaa.chance_pct)}`)));
+  return h("p", { class: "season-line", title: `${mon[0].toUpperCase()}${mon.slice(1)} ${T().alreadyFell("", lm.rain_mm, lm.normal_mm).trim()}` }, icon("i-rain"), h("b", {}, T().thisYear), h("span", {}, T().official(noaa.chance_pct)));
 }
 function outlookLine() {
   const z = DATA.outlook?.zones?.[state.lot.zone];
@@ -317,19 +323,13 @@ function controls() {
   const irrOpts = [["no", "i-drop-off", T().irrigation.no], ["yes", "i-rain", T().irrigation.yes]];
   const priOpts = [["water", "i-rain", T().priority.water], ["income", "i-coin", T().priority.income], ["soil", "i-sprout", T().priority.soil]];
   const irr = state.lot.irrigation === "yes" ? "yes" : "no";
-  if (!desktop()) {
+  {
     const chip = (opts2, cur, title, onPick) => { const o = opts2.find(([v]) => v === cur); return h("button", { class: "chip big", onclick: () => choiceSheet(title, opts2, cur, onPick) }, icon(o[1]), o[3] || o[2], icon("i-chev-d")); };
     return h("div", { class: "chips" },
       chip(yearOpts, state.scenario, T().yearQ, (v) => { state.scenario = v; state.scenarioTouched = true; render(); }),
       chip(irrOpts, irr, T().qIrrigation, (v) => setLot({ irrigation: v })),
       chip(priOpts, state.priority, T().priorityQ, (v) => { state.priority = v; store.set("priority", v); refresh(); }));
   }
-  const seg = (label, opts2, cur, onPick) => h("div", { class: "plan", style: "gap:6px" }, h("p", { class: "q", style: "font-size:15px" }, label),
-    h("div", { class: "seg" }, ...opts2.map(([v, ic, l, s]) => h("button", { "aria-pressed": String(v === cur), title: l, onclick: () => onPick(v) }, icon(ic), s || l))));
-  return h("div", { class: "desk-controls" },
-    seg(T().yearQ, yearOpts, state.scenario, (v) => { state.scenario = v; state.scenarioTouched = true; render(); }),
-    seg(T().irrigationQ, irrOpts, irr, (v) => setLot({ irrigation: v })),
-    seg(T().priorityQ, priOpts, state.priority, (v) => { state.priority = v; store.set("priority", v); refresh(); }));
 }
 function planCard(p) {
   const rec = p.role === "best", saved = state.saved && state.saved.key === JSON.stringify(p.rotation);
@@ -337,14 +337,13 @@ function planCard(p) {
     onclick: () => go(`porque/${p.role}`), onkeydown: (e) => { if (e.key === "Enter") go(`porque/${p.role}`); } },
     h("div", { class: "row between" }, h("span", { class: "name" }, planName(p)),
       rec ? h("span", { class: "badge" }, icon("i-star"), T().recommended) : p.role === "today" ? h("span", { class: "badge muted" }, T().today) : null),
-    h("div", { class: "months" }, ...p.calendar.map((c) => cell(p, c))),
+    timeline(p),
     moneyLine(p) ? h("p", { class: "money-line" }, icon("i-coin"), moneyLine(p)) : null,
     h("div", { class: "row between" }, h("span", { class: "sum" }, saved ? T().saved + " · " : null, planSummary(p)), h("span", { class: "why-link" }, T().whyLink, icon("i-chev-r"))));
 }
 function legend() {
   return h("div", { class: "legend" },
-    ...["good", "care", "danger"].map((l) => h("span", {}, h("i", { class: `sw ${l}` }, icon(LEVEL_ICON[l])), T().level[l])),
-    ...[["i-drop-off", "water_shortage"], ["i-sun", "bare_in_sun"], ["i-rain", "rain_on_bare"], ["i-waves", "waterlogged"]].map(([ic, k]) => h("span", {}, icon(ic), T().cause[k])));
+    ...["good", "care", "danger"].map((l) => h("span", {}, h("i", { class: `sw-flat ${l}` }), T().level[l])), h("span", { class: "legend-hint" }, T().tapMonth));
 }
 async function viewLot() {
   const v = $("#view"); v.className = "view";
@@ -386,8 +385,6 @@ function reasons(zone, ps, role) {
       ? (es() ? `${lbl} con daño fuerte. Con ${cropName(best.rotation.dry).toLowerCase()}: ${dangBest} de ${ns}.` : `${lbl} with heavy damage. With ${cropName(best.rotation.dry).toLowerCase()}: ${dangBest} of ${ns}.`)
       : (es() ? `${lbl} con daño fuerte. Hoy: ${dangToday} de ${ns}.` : `${lbl} with heavy damage. Today: ${dangToday} of ${ns}.`))
       + (like ? (es() ? ` En todos los años: ${dangAll} de ${n}.` : ` In all years: ${dangAll} of ${n}.`) : "") });
-  const worst = yrs.filter((y) => y.level === "danger").map((y) => y.year).slice(-3);
-  if (worst.length) out.push({ lvl: "care", big: worst.join(" · "), txt: es() ? "los años más duros para este plan." : "the hardest years for this plan." });
   const failedAll = yrs.filter((y) => y.failed), failedLike = s.filter((y) => y.failed).length;
   const failedCrop = theCrop((failedAll.flatMap((y) => y.failedCrops || [])[0]) || p.rotation.dry);
   if (failedAll.length) out.push({ lvl: failedLike > ns / 2 ? "danger" : failedLike ? "care" : "good", big: es() ? `${failedLike} de ${ns}` : `${failedLike} of ${ns}`,
@@ -410,10 +407,10 @@ function whySection(zone, ps, role, compact = false) {
   return h("section", { class: `plan why${compact ? " boxed" : ""}`, style: "gap:16px" },
     compact ? h("h2", { class: "h2" }, `${T().whyLink}: ${planName(p)}`) : null,
     ...rs.map((r) => h("div", { class: "reason" }, h("span", { class: `cell ${r.lvl}`, style: "width:44px;height:44px;flex:none" }, icon(LEVEL_ICON[r.lvl], "icon lvl")), h("div", {}, h("b", {}, r.big), h("span", {}, r.txt)))),
-    h("div", { class: "todo" }, h("b", {}, T().whatToDo), h("p", {}, todoText(p, ps)), p.role !== "today" ? h("p", { class: "try" }, T().tryFirst) : null),
+    h("div", { class: "todo" }, h("b", {}, T().whatToDo), h("p", {}, todoText(p, ps), p.role !== "today" ? h("span", { class: "try" }, " " + T().tryFirst) : null)),
     moneyBlock(p),
-    ["wet", "strong_nino"].includes(state.scenario) ? h("div", { class: "planb" }, h("b", {}, T().planBTitle), h("p", {}, T().planB)) : null,
-    h("div", { class: "unknown" }, h("b", {}, T().unknownTitle), h("ul", {}, ...T().unknown.map((t) => h("li", {}, t))), h("p", { class: "check" }, icon("i-user"), T().checkLocal)),
+    h("details", { class: "unknown" }, h("summary", {}, T().unknownTitle), h("ul", {}, ...[...T().unknown, T().moneyCheck].map((t) => h("li", {}, t)))),
+    h("p", { class: "check" }, icon("i-user"), T().checkLocal),
     compact ? null : h("p", { class: "small" }, T().source),
     h("div", { class: "actions" },
       h("button", { class: "btn primary block", "aria-pressed": String(isSaved), onclick: () => savePlan(p) }, isSaved ? [icon("i-check"), T().saved] : T().save),
@@ -426,7 +423,7 @@ async function viewWhy(role = "best") {
   put(v,
     h("div", { class: "row between" }, h("a", { class: "round", href: "#/lote", "aria-label": es() ? "Atrás" : "Back" }, icon("i-back")), p.role === "best" ? h("span", { class: "badge" }, icon("i-star"), T().recommended) : null),
     h("div", {}, h("p", { class: "eyebrow-plan" }, planName(p)), h("h1", { class: "h1" }, planSummary(p))),
-    h("div", { class: "months" }, ...p.calendar.map((c) => cell(p, c))),
+    timeline(p),
     whySection(zone, ps, role));
 }
 
@@ -493,13 +490,15 @@ async function viewPassport() {
   const yrs = f ? Object.entries(f.years).filter(([, x]) => x.lot_fires_by_month) : [];
   const seasonFire = (x) => x.lot_fires_by_month.slice(4).findIndex((n) => n > 0);
   const zoneBurn = yrs.filter(([, x]) => x.zone_fires_by_month.slice(4).some((n) => n > 0)).length;
-  const row = (title, status, good, via, ic) => h("div", { class: "record" }, h("i", { class: `sw ${good ? "good" : "danger"}` }, icon(good ? "i-check" : "i-x")),
-    h("div", { style: "flex:1" }, h("b", {}, title), h("p", {}, status), h("small", {}, icon(ic), via)));
-  const fireRows = yrs.slice(-4).reverse().map(([y, x]) => { const m = seasonFire(x); return row(T().harvest(y), m < 0 ? T().noFire : T().fireSeen(T().monthsLong[m + 4]), m < 0, T().viaSat, "i-sat"); });
+  const last = yrs[yrs.length - 1], lastM = last ? seasonFire(last[1]) : -1;
+  const head = last ? h("div", { class: `pp-answer ${lastM < 0 ? "good" : "danger"}` }, h("p", { class: "pp-q" }, T().burnQ(last[0])),
+    h("p", { class: "pp-a" }, lastM < 0 ? T().noBurn : T().burnIn(T().monthsLong[lastM + 4])), h("small", {}, icon("i-sat"), T().viaSat)) : null;
+  const list = h("ul", { class: "pp-years" }, ...yrs.slice(-5, -1).reverse().map(([y, x]) => { const m = seasonFire(x);
+    return h("li", {}, h("b", {}, y), h("span", { class: m < 0 ? "ok" : "bad" }, m < 0 ? T().noBurnShort : T().burnShort(T().monthsLong[m + 4]))); }));
   put(v,
-    h("div", {}, h("h1", { class: "h1" }, T().passportTitle), h("p", { class: "sub" }, `${state.lot.name} · ${ZONE_NAMES[state.lot.zone]} · ${T().passportSub}`)),
-    state.saved ? row(T().savedPlan(state.saved.name), new Date(state.saved.date).toLocaleDateString(state.lang, { day: "numeric", month: "long", year: "numeric" }), true, T().declared, "i-user") : null,
-    ...fireRows,
+    h("div", {}, h("h1", { class: "h1" }, T().passportTitle), h("p", { class: "sub" }, `${state.lot.name} · ${ZONE_NAMES[state.lot.zone]}`)),
+    head, list,
+    state.saved ? h("p", { class: "small" }, icon("i-check"), " ", T().savedPlan(state.saved.name)) : null,
     yrs.length ? h("p", { class: "small" }, T().zoneFires(zoneBurn, yrs.length)) : null,
     h("div", { class: "row", style: "gap:10px" },
       h("button", { class: "btn primary", style: "flex:1", onclick: () => navigator.share ? navigator.share({ title: T().passportTitle, url: location.href }).catch(() => {}) : null }, icon("i-share"), T().share),
