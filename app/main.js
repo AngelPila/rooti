@@ -58,6 +58,8 @@ function ok(r) { if (!r.ok) throw new Error(r.status); return r.json(); }
 async function loadBase() {
   const [zones, crops, outlook] = await Promise.all([fetch("data/zones.json").then(ok), fetch("data/crops.json").then(ok), fetch("data/outlook.json").then(ok).catch(() => null)]);
   DATA.zones = zones; DATA.crops = crops.crops; DATA.outlook = outlook;
+  const noaa = outlook?.official?.noaa;
+  if (noaa?.status?.includes("El Niño") && (noaa.chance_pct ?? 0) >= 70 && !state.scenarioTouched) state.scenario = "strong_nino";
 }
 async function zoneData(z) { return (DATA.byZone[z] ||= await fetch(`data/${z}.json`).then(ok)); }
 async function fireData(z) { if (!(z in DATA.fires)) DATA.fires[z] = await fetch(`data/fires_${z}.json`).then(ok).catch(() => null); return DATA.fires[z]; }
@@ -66,7 +68,7 @@ function opts() {
 }
 const memo = new Map();
 const cached = (key, fn) => (memo.has(key) ? memo.get(key) : (memo.set(key, fn()), memo.get(key)));
-const plans = (zone) => cached(JSON.stringify(["p", state.lot.zone, opts()]), () => recommendPlans(zone, DATA.crops, opts()));
+const plans = (zone) => { const o = { ...opts(), years: likeYears(zone)?.years }; return cached(JSON.stringify(["p", state.lot.zone, o]), () => recommendPlans(zone, DATA.crops, o)); };
 const past = (zone, rotation) => cached(JSON.stringify(["r", state.lot.zone, rotation, opts().irrigation]), () =>
   realPast(zone, DATA.crops, rotation, { irrigation: opts().irrigation, weights: opts().weights })
     .map((y) => ({ ...y, level: y.failed || y.soilLoss === "high" ? "danger" : y.soilLoss === "medium" || y.verdict === "fair" ? "care" : "good" })));
@@ -230,6 +232,13 @@ function mapStrip(meta, levelNow) {
     h("span", { class: `lot-outline ${levelNow || ""}` }),
     h("span", { class: "lot-pill" }, h("b", {}, state.lot.name), ` · ${ZONE_NAMES[state.lot.zone]} · ${state.lot.size.toLocaleString(state.lang)} ${state.lot.unit === "ha" ? "ha" : T().unitCuadra}`));
 }
+function seasonCard() {
+  const o = DATA.outlook, z = o?.zones?.[state.lot.zone], noaa = o?.official?.noaa;
+  if (!z?.last_month || !noaa?.chance_pct) return outlookLine();
+  const lm = z.last_month, mon = T().monthsLong[+lm.month.slice(5) - 1];
+  return h("div", { class: "season-card" }, icon("i-rain", "icon sc-ic"),
+    h("div", {}, h("b", {}, T().thisYear), h("p", {}, `${mon[0].toUpperCase()}${mon.slice(1)} ${T().alreadyFell("", lm.rain_mm, lm.normal_mm).trim()} ${T().official(noaa.chance_pct)}`)));
+}
 function outlookLine() {
   const z = DATA.outlook?.zones?.[state.lot.zone];
   if (!z) return null;
@@ -240,21 +249,21 @@ function outlookLine() {
       state.scenario !== "wet" ? h("button", { class: "oc-btn", onclick: () => { state.scenario = "wet"; render(); } }, T().seeWet, icon("i-chev-r")) : null));
 }
 function controls() {
-  const yearOpts = [["dry", "i-sun", T().dry], ["normal", "i-check", T().normal], ["wet", "i-rain", T().wet]];
+  const yearOpts = [["dry", "i-sun", T().dry], ["normal", "i-check", T().normal], ["wet", "i-rain", T().wet], ["strong_nino", "i-rain", `${T().strong_nino} (${T().likeYear})`, T().strong_nino]];
   const irrOpts = [["no", "i-drop-off", T().irrigation.no], ["yes", "i-rain", T().irrigation.yes]];
   const priOpts = [["water", "i-rain", T().priority.water], ["income", "i-coin", T().priority.income], ["soil", "i-sprout", T().priority.soil]];
   const irr = state.lot.irrigation === "yes" ? "yes" : "no";
   if (!desktop()) {
-    const chip = (opts2, cur, title, onPick) => { const o = opts2.find(([v]) => v === cur); return h("button", { class: "chip big", onclick: () => choiceSheet(title, opts2, cur, onPick) }, icon(o[1]), o[2], icon("i-chev-d")); };
+    const chip = (opts2, cur, title, onPick) => { const o = opts2.find(([v]) => v === cur); return h("button", { class: "chip big", onclick: () => choiceSheet(title, opts2, cur, onPick) }, icon(o[1]), o[3] || o[2], icon("i-chev-d")); };
     return h("div", { class: "chips" },
-      chip(yearOpts, state.scenario, T().yearQ, (v) => { state.scenario = v; render(); }),
+      chip(yearOpts, state.scenario, T().yearQ, (v) => { state.scenario = v; state.scenarioTouched = true; render(); }),
       chip(irrOpts, irr, T().qIrrigation, (v) => setLot({ irrigation: v })),
       chip(priOpts, state.priority, T().priorityQ, (v) => { state.priority = v; store.set("priority", v); refresh(); }));
   }
   const seg = (label, opts2, cur, onPick) => h("div", { class: "plan", style: "gap:6px" }, h("p", { class: "q", style: "font-size:15px" }, label),
     h("div", { class: "seg" }, ...opts2.map(([v, ic, l]) => h("button", { "aria-pressed": String(v === cur), onclick: () => onPick(v) }, icon(ic), l))));
   return h("div", { class: "desk-controls" },
-    seg(T().yearQ, yearOpts, state.scenario, (v) => { state.scenario = v; render(); }),
+    seg(T().yearQ, yearOpts, state.scenario, (v) => { state.scenario = v; state.scenarioTouched = true; render(); }),
     seg(T().irrigationQ, irrOpts, irr, (v) => setLot({ irrigation: v })),
     seg(T().priorityQ, priOpts, state.priority, (v) => { state.priority = v; store.set("priority", v); refresh(); }));
 }
@@ -284,30 +293,41 @@ async function viewLot() {
   const head = desktop()
     ? h("div", { class: "row between" }, h("div", {}, h("h1", { class: "h1" }, state.lot.name), h("p", { class: "sub" }, `${ZONE_NAMES[state.lot.zone]} · ${state.lot.size.toLocaleString(state.lang)} ${state.lot.unit === "ha" ? "ha" : T().unitCuadra} · ${cropName(opts().current.wet).toLowerCase()}`)), h("div", { class: "row", style: "gap:10px" }, listenBtn(say), langToggle()))
     : h("div", { class: "strip-wrap" }, mapStrip(meta, levelNow), h("div", { class: "strip-listen" }, listenBtn(say, false)));
-  put(v, head, controls(),
+  put(v, head, controls(), seasonCard(),
     h("div", { class: "plan", style: "gap:8px" },
       h("div", { class: "seasons" }, h("span", { class: "w" }, T().winter), h("span", { class: "s" }, T().summer), h("span", { class: "w2" })),
       h("div", { class: "letters" }, ...T().months.map((m, i) => h("span", { class: i === NOW_MONTH ? "now" : null }, m))),
       ...ps.map(planCard)),
-    legend(), outlookLine(),
+    legend(),
     desktop() ? h("div", { class: "desk-grid" }, whySection(zone, ps, "best", true), await pastSection(zone, ps)) : null);
   updateMap(meta, levelNow, best);
 }
 
 /* ---------- why: one per plan ---------- */
+// Evidence uses past years like the chosen scenario (a strong El Niño is judged on very wet years), plus the total.
+function likeYears(zone) {
+  const t = state.scenario === "strong_nino" ? "wet" : ["dry", "normal", "wet"].includes(state.scenario) ? state.scenario : null;
+  if (!t) return null;
+  return { years: zone.year_types[t].years.filter((y) => y >= 2001 && y <= 2024), label: es() ? { dry: "secos", normal: "normales", wet: "muy lluviosos" }[t] : { dry: "dry", normal: "normal", wet: "very wet" }[t] };
+}
 function reasons(zone, ps, role) {
   const p = roleOf(ps, role), best = roleOf(ps, "best"), today = roleOf(ps, "today");
   const yrs = past(zone, p.rotation), n = yrs.length, cnt = (arr, l) => arr.filter((y) => y.level === l).length;
-  const out = [];
-  const dang = cnt(yrs, "danger"), dangToday = cnt(past(zone, today.rotation), "danger"), dangBest = cnt(past(zone, best.rotation), "danger");
-  out.push({ lvl: dang <= 1 ? "good" : dang <= n / 4 ? "care" : "danger", big: es() ? `${dang} de ${n}` : `${dang} of ${n}`,
-    txt: role === "today" ? (es() ? `años con daño fuerte. Con ${cropName(best.rotation.dry).toLowerCase()}: ${dangBest} de ${n}.` : `years with heavy damage. With ${cropName(best.rotation.dry).toLowerCase()}: ${dangBest} of ${n}.`)
-      : (es() ? `años con daño fuerte. Hoy: ${dangToday} de ${n}.` : `years with heavy damage. Today: ${dangToday} of ${n}.`) });
+  const like = likeYears(zone), sub = (arr) => (like ? arr.filter((y) => like.years.includes(y.year)) : arr);
+  const out = [], s = sub(yrs), ns = s.length, lbl = like ? (es() ? `años ${like.label}` : `${like.label} years`) : (es() ? "años" : "years");
+  const dang = cnt(s, "danger"), dangAll = cnt(yrs, "danger"), dangToday = cnt(sub(past(zone, today.rotation)), "danger"), dangBest = cnt(sub(past(zone, best.rotation)), "danger");
+  out.push({ lvl: dang <= Math.max(1, ns / 8) ? "good" : dang <= ns / 3 ? "care" : "danger", big: es() ? `${dang} de ${ns}` : `${dang} of ${ns}`,
+    txt: (role === "today"
+      ? (es() ? `${lbl} con daño fuerte. Con ${cropName(best.rotation.dry).toLowerCase()}: ${dangBest} de ${ns}.` : `${lbl} with heavy damage. With ${cropName(best.rotation.dry).toLowerCase()}: ${dangBest} of ${ns}.`)
+      : (es() ? `${lbl} con daño fuerte. Hoy: ${dangToday} de ${ns}.` : `${lbl} with heavy damage. Today: ${dangToday} of ${ns}.`))
+      + (like ? (es() ? ` En todos los años: ${dangAll} de ${n}.` : ` In all years: ${dangAll} of ${n}.`) : "") });
   const worst = yrs.filter((y) => y.level === "danger").map((y) => y.year).slice(-3);
   if (worst.length) out.push({ lvl: "care", big: worst.join(" · "), txt: es() ? "los años más duros para este plan." : "the hardest years for this plan." });
-  const failedYrs = yrs.filter((y) => y.failed), failed = failedYrs.length;
-  const failedCrop = cropName((failedYrs.flatMap((y) => y.failedCrops || [])[0]) || p.rotation.dry).toLowerCase();
-  if (failed) out.push({ lvl: failed > n / 2 ? "danger" : "care", big: es() ? `${failed} de ${n}` : `${failed} of ${n}`, txt: es() ? `años el ${failedCrop} se secó${opts().irrigation ? "" : " sin riego"}.` : `years the ${failedCrop} dried out${opts().irrigation ? "" : " without irrigation"}.` });
+  const failedAll = yrs.filter((y) => y.failed), failedLike = s.filter((y) => y.failed).length;
+  const failedCrop = cropName((failedAll.flatMap((y) => y.failedCrops || [])[0]) || p.rotation.dry).toLowerCase();
+  if (failedAll.length) out.push({ lvl: failedLike > ns / 2 ? "danger" : failedLike ? "care" : "good", big: es() ? `${failedLike} de ${ns}` : `${failedLike} of ${ns}`,
+    txt: es() ? `${lbl} el ${failedCrop} se secó${opts().irrigation ? "" : " sin riego"}.${like ? ` En todos los años: ${failedAll.length} de ${n}; si el verano sale seco, se pierde.` : ""}`
+      : `${lbl} the ${failedCrop} dried out${opts().irrigation ? "" : " without irrigation"}.${like ? ` In all years: ${failedAll.length} of ${n}; if the dry season turns out dry, it fails.` : ""}` });
   else if (p.rotation.dry !== "fallow" && p.rotation.dry !== "mulch") out.push({ lvl: "good", big: es() ? `${n} de ${n}` : `${n} of ${n}`, txt: es() ? `años ${cropName(p.rotation.dry).toLowerCase()} dio cosecha.` : `years ${cropName(p.rotation.dry).toLowerCase()} gave a harvest.` });
   return out;
 }
@@ -325,7 +345,8 @@ function whySection(zone, ps, role, compact = false) {
   return h("section", { class: `plan why${compact ? " boxed" : ""}`, style: "gap:16px" },
     compact ? h("h2", { class: "h2" }, `${T().whyLink}: ${planName(p)}`) : null,
     ...rs.map((r) => h("div", { class: "reason" }, h("span", { class: `cell ${r.lvl}`, style: "width:44px;height:44px;flex:none" }, icon(LEVEL_ICON[r.lvl], "icon lvl")), h("div", {}, h("b", {}, r.big), h("span", {}, r.txt)))),
-    h("div", { class: "todo" }, h("b", {}, T().whatToDo), h("p", {}, todoText(p, ps))),
+    h("div", { class: "todo" }, h("b", {}, T().whatToDo), h("p", {}, todoText(p, ps)), p.role !== "today" ? h("p", { class: "try" }, T().tryFirst) : null),
+    ["wet", "strong_nino"].includes(state.scenario) ? h("div", { class: "planb" }, h("b", {}, T().planBTitle), h("p", {}, T().planB)) : null,
     h("div", { class: "unknown" }, h("b", {}, T().unknownTitle), h("ul", {}, ...T().unknown.map((t) => h("li", {}, t))), h("p", { class: "check" }, icon("i-user"), T().checkLocal)),
     compact ? null : h("p", { class: "small" }, T().source),
     h("div", { class: "actions" },

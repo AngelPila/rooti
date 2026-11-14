@@ -222,15 +222,43 @@ export function trafficLight(cell) {
 const CASH = new Set(["soybean", "maize", "peanut", "common_bean", "sorghum", "rice"]);
 // The three plans the farmer sees: what they do today, the best dry-season choice keeping their
 // rainy-season crop, and the best cash crop (shown even when risky, so the risk is visible).
+// Score a rotation over an ensemble of real years (opts.years) instead of an averaged year: an average of a few
+// extreme years (1983, 1998) can look fine while the plan fails in most real years like it.
+function scoreOverYears(zone, crops, rotation, opts) {
+  const runs = opts.years.map((y) => scoreRotation(zone, crops, rotation, { ...opts, climate: zone.years[String(y)] }));
+  const avg = (k) => mean(runs.map((r) => r.scores[k]));
+  const base = runs[0];
+  return { ...base, scores: { water: avg("water"), soil: avg("soil"), income: avg("income"), risk: avg("risk"), total: avg("total") },
+           failShare: mean(runs.map((r) => (r.parts.some((p) => p.failed) ? 1 : 0))), nYears: runs.length };
+}
+// Calendar as frequencies over the same real years: danger if it went badly in half of them or more.
+function calendarOverYears(zone, crops, rotation, opts) {
+  const cals = opts.years.map((y) => riskCalendar(zone, crops, rotation, { ...opts, climate: zone.years[String(y)] }).map((c) => ({ ...c, level: trafficLight(c) })));
+  return cals[0].map((_, m) => {
+    const cells = cals.map((c) => c[m]), n = cells.length;
+    const share = (l) => cells.filter((c) => c.level === l).length / n;
+    const level = share("danger") >= 0.5 ? "danger" : share("danger") + share("care") >= 0.5 ? "care" : "good";
+    const bad = cells.filter((c) => c.level !== "good");
+    const kinds = bad.map((c) => c.kind), kind = level === "good" ? (cells[0].kind === "covered" ? "covered" : "ok")
+      : kinds.sort((a, b) => kinds.filter((k) => k === b).length - kinds.filter((k) => k === a).length)[0];
+    return { month: m + 1, crop: cells[0].crop, kind, level, severity: +mean(cells.map((c) => c.severity)).toFixed(2),
+             rain: Math.round(mean(cells.map((c) => c.rain))), need: Math.round(mean(cells.map((c) => c.need))),
+             failed: cells.filter((c) => c.failed).length / n >= 0.5, badYears: bad.length, nYears: n };
+  });
+}
+
 export function recommendPlans(zone, crops, opts) {
   const wet = opts.current.wet;
+  const ensemble = Array.isArray(opts.years) && opts.years.length >= 3;
+  const score = (rot) => (ensemble ? scoreOverYears(zone, crops, rot, opts) : scoreRotation(zone, crops, rot, opts));
+  const cal = (rot) => (ensemble ? calendarOverYears(zone, crops, rot, opts) : riskCalendar(zone, crops, rot, opts).map((c) => ({ ...c, level: trafficLight(c) })));
   const options = [...cropsForSeason(crops, "dry").map((c) => c.id), "fallow", "mulch"]
     .filter((id) => id !== wet || opts.irrigation);
-  const scored = options.map((dry) => scoreRotation(zone, crops, { wet, dry }, opts)).sort((a, b) => b.scores.total - a.scores.total);
-  const today = scoreRotation(zone, crops, opts.current, opts);
+  const scored = options.map((dry) => score({ wet, dry })).sort((a, b) => b.scores.total - a.scores.total);
+  const today = score(opts.current);
   const best = scored.find((r) => r.rotation.dry !== opts.current.dry) || scored[0];
   const cash = scored.find((r) => CASH.has(r.rotation.dry) && r !== best && r.rotation.dry !== opts.current.dry);
-  const withCal = (r, role) => r && { ...r, role, calendar: riskCalendar(zone, crops, r.rotation, opts).map((c) => ({ ...c, level: trafficLight(c) })) };
+  const withCal = (r, role) => r && { ...r, role, calendar: cal(r.rotation) };
   return [withCal(best, "best"), withCal(today, "today"), withCal(cash, "cash")].filter(Boolean);
 }
 

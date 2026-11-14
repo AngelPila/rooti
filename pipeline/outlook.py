@@ -105,5 +105,34 @@ for name in zones:
     print(f"{name}: P(seco/normal/lluvioso)={z['probabilities']} | análogos {counts} {sorted(analog_years)} | "
           f"acierto LOO {acc:.0%} (azar 33%) RPSS {z['skill']['rpss_vs_climatology']}")
 
+# Official forecasts: NOAA CPC ENSO discussion (fetched) and ERFEN Ecuador (entered by hand with its source).
+import html as _html, re as _re
+try:
+    page = requests.get("https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml", timeout=60).text
+    txt2 = _re.sub(r"\s+", " ", _html.unescape(_re.sub(r"<[^>]+>", " ", page)))
+    issued = _re.search(r"issued by CLIMATE PREDICTION CENTER/NCEP/NWS (\d{1,2} \w+ \d{4})", txt2)
+    status = _re.search(r"ENSO Alert System Status: ([^:]+?) Synopsis", txt2)
+    synopsis = _re.search(r"Synopsis: (.+?\))\.", txt2)
+    chance = _re.search(r"greater than a (\d+)% chance", txt2)
+    result["official"] = {"noaa": {"issued": issued.group(1) if issued else None, "status": status.group(1).strip() if status else None,
+                                   "synopsis": synopsis.group(1) if synopsis else None, "chance_pct": int(chance.group(1)) if chance else None,
+                                   "url": "https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml"}}
+except Exception as e:  # noqa: BLE001
+    result["official"] = {"noaa": {"error": str(e)[:100]}}
+result["official"]["erfen"] = {"issued": "2026-11-06", "es": "El Niño muy fuerte o extraordinario, comparable con 1982-83 y 1997-98",
+                               "en": "Very strong or extraordinary El Niño, comparable with 1982-83 and 1997-98",
+                               "url": "https://www.primicias.ec/sociedad/fenomeno-elnino-ecuador-informe-erfen-intensidad-efectos-pronosticos-lluvias-136596/"}
+
+# What already fell: last complete month vs its 1991-2020 normal, per zone (NASA POWER).
+for name in zones:
+    m = pd.read_csv(SRC / f"processed/power_monthly_{name}.csv", parse_dates=["mes"]).set_index("mes")
+    last = m["lluvia_mm"].dropna().index.max()
+    normal = m.loc["1991":"2020"]
+    normal = normal[normal.index.month == last.month]["lluvia_mm"].mean()
+    record = m[(m.index.month == last.month) & (m.index < last)]["lluvia_mm"].max()
+    result["zones"][name]["last_month"] = {"month": last.strftime("%Y-%m"), "rain_mm": round(float(m.loc[last, "lluvia_mm"])),
+                                           "normal_mm": round(float(normal)), "previous_record_mm": round(float(record)), "source": "NASA POWER"}
+    print(name, "último mes", result["zones"][name]["last_month"])
+print("NOAA", result["official"]["noaa"])
 (OUT / "outlook.json").write_text(json.dumps(result, indent=1, ensure_ascii=False))
 print("Octubre", issue_year, result["predictors_now"])
