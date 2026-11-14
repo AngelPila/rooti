@@ -3,6 +3,7 @@ import { plan as runPlanner, cropMonths } from "./planner.js?v=21";
 import { COPY } from "./copy.js?v=21";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=21";
 import { STR } from "./i18n.js?v=21";
+import { createBootcamp } from "./bootcamp.js?v=2";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -202,7 +203,7 @@ function viewLanding() {
   put($("#view"), h("div", { class: "landing v2" },
     h("header", { class: "cover" }, ...imgs, h("div", { class: "cv-scrim" }),
       h("nav", { class: "l-nav" }, h("a", { class: "brand light", href: "#/" }, h("span", { class: "logo" }, icon("i-sprout")), h("b", {}, "Rooti")),
-        h("div", { class: "l-links" }, h("a", { class: "txt", href: "#how" }, c.nav.how), langBtn(), h("button", { class: "btn dark", onclick: start }, c.cta))),
+        h("div", { class: "l-links" }, h("a", { class: "txt", href: "#how" }, c.nav.how), langBtn(), h("a", { class: "btn light", href: "#/bootcamp" }, c.ctaBootcamp), h("button", { class: "btn dark", onclick: start }, c.cta))),
       h("div", { class: "cv-bottom" }, label, overlay)),
     h("section", { class: "l-body" },
       h("div", { class: "l-facts", id: "how" },
@@ -210,6 +211,7 @@ function viewLanding() {
       h("div", { class: "l-copy" },
         h("h1", { class: "display" }, c.heroTitle), h("p", { class: "lead" }, c.heroLead),
         h("div", { class: "l-acts" }, h("button", { class: "btn dark big", onclick: start }, c.cta, icon("i-arrow-r")),
+          h("a", { class: "btn light big", href: "#/bootcamp" }, icon("i-leaf"), c.ctaBootcamp),
           h("div", { class: "l-examples" }, h("span", { class: "small" }, c.examplesLbl), ...Object.keys(DEMOS).map((k) => h("button", { class: "chip", onclick: () => openDemo(k) }, c.demo[k])))),
         h("p", { class: "l-note" }, c.heroNote, " · ", h("span", { class: "credit" }, "Imagery: Esri World Imagery"))))));
 }
@@ -847,7 +849,7 @@ async function render() {
   const { r, arg } = route();
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
   try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
