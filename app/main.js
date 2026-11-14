@@ -57,8 +57,13 @@ function icon(id, cls = "icon") {
 /* ---------------- data ---------------- */
 function ok(r) { if (!r.ok) throw new Error(r.status); return r.json(); }
 async function loadBase() {
-  const [zones, crops, outlook, water] = await Promise.all([fetch("data/zones.json").then(ok), fetch("data/crops.json").then(ok), fetch("data/outlook.json").then(ok).catch(() => null), fetch("data/surface_water.json").then(ok).catch(() => null)]);
-  DATA.zones = zones; DATA.crops = crops.crops; DATA.outlook = outlook; DATA.water = water;
+  const [zones, crops, outlook, water, econ] = await Promise.all([fetch("data/zones.json").then(ok), fetch("data/crops.json").then(ok), fetch("data/outlook.json").then(ok).catch(() => null), fetch("data/surface_water.json").then(ok).catch(() => null), fetch("data/economics.json").then(ok).catch(() => null)]);
+  DATA.zones = zones; DATA.crops = crops.crops; DATA.outlook = outlook; DATA.water = water; DATA.econ = econ;
+  // The engine's income score comes from the typical margin per hectare (USD), when we have yield, price and cost.
+  for (const [id, c] of Object.entries(DATA.crops)) {
+    const e = econ?.crops?.[id], y = e?.yield_t_ha?.typical, pr = e?.price_usd_per_t?.typical, co = e?.cost_usd_ha?.typical;
+    if (y && pr && co) c.market_index = Math.max(0, Math.min(1, (y * pr - co + 1000) / 2000));
+  }
   const noaa = outlook?.official?.noaa;
   if (noaa?.status?.includes("El Niño") && (noaa.chance_pct ?? 0) >= 70 && !state.scenarioTouched) state.scenario = "strong_nino";
 }
@@ -80,6 +85,8 @@ const past = (zone, rotation) => cached(JSON.stringify(["r", state.lot.zone, rot
   realPast(zone, DATA.crops, rotation, { irrigation: opts().irrigation, weights: opts().weights })
     .map((y) => ({ ...y, level: y.failed || y.soilLoss === "high" ? "danger" : y.soilLoss === "medium" || y.verdict === "fair" ? "care" : "good" })));
 const cropName = (id) => T().crops[id] || id;
+const FEM = new Set(["soybean", "velvet_bean", "jack_bean"]);
+const theCrop = (id) => (es() ? `${FEM.has(id) ? "la" : "el"} ${cropName(id).toLowerCase()}` : `the ${cropName(id).toLowerCase()}`);
 const planName = (p) => `${cropName(p.rotation.wet)} → ${cropName(p.rotation.dry)}`;
 const isLegume = (id) => !!DATA.crops[id]?.n_fixing;
 const roleOf = (ps, role) => ps.find((p) => p.role === role) || ps[0];
@@ -91,6 +98,50 @@ function planSummary(p) {
   if (dry === "mulch") return es() ? "Suelo cubierto en verano" : "Soil covered in the dry season";
   if (isLegume(dry)) return es() ? "Cubre el suelo y lo abona" : "Covers the soil and feeds it";
   return es() ? "Deja algo para vender" : "Leaves something to sell";
+}
+
+/* ---------------- money ---------------- */
+const ha = () => state.lot.size * (state.lot.unit === "ha" ? 1 : 0.7056);
+const usd = (x) => `${x < 0 ? "−" : "+"}$${Math.abs(Math.round(x / 10) * 10).toLocaleString(state.lang)}`;
+// Dry-season money for a plan, for the whole plot: range from worst (low yield × low price − high cost) to best.
+function seasonMoney(p) {
+  const id = p.rotation.dry, e = DATA.econ?.crops?.[id], A = ha();
+  if (id === "fallow" || id === "mulch") return { kind: "none" };
+  if (!e?.yield_t_ha && (id === "velvet_bean" || id === "jack_bean")) return { kind: "nosale" };
+  const y = e?.yield_t_ha || {}, pr = e?.price_usd_per_t || {}, co = e?.cost_usd_ha || {};
+  const yl = y.low ?? y.typical, yh = y.high ?? y.typical, pl = pr.low ?? pr.typical, ph = pr.high ?? pr.typical;
+  if (!y.typical || !pr.typical) return { kind: "unknown" };
+  const cl = co.low ?? co.typical, chi = co.high ?? co.typical;
+  const qtyKg = y.typical * 1000 * A, unit = id === "rice" ? DATA.econ.units.saca_kg : DATA.econ.units.quintal_kg;
+  const out = { kind: "money", incomeLow: yl * pl * A, incomeHigh: yh * ph * A, qty: Math.round(qtyKg / unit), unit: id === "rice" ? "sacas" : "qq",
+    weak: (co.year && co.year < 2020) || !co.typical };
+  if (co.typical) Object.assign(out, { netLow: out.incomeLow - chi * A, netHigh: out.incomeHigh - cl * A, invest: co.typical * A });
+  if ((p.failShare ?? 0) > 0 && co.typical) Object.assign(out, { fails: Math.round(p.failShare * p.nYears), n: p.nYears });
+  return out;
+}
+function moneyLine(p) {
+  const m = seasonMoney(p);
+  if (m.kind === "none") return T().noExtra;
+  if (m.kind === "nosale") return T().noSale;
+  if (m.kind === "unknown") return null;
+  if (m.fails && m.fails / m.n >= 0.5) return h("span", { class: "lose" }, T().canLose(usd(-m.invest)));
+  return m.netLow != null ? T().moneyRange(usd(m.netLow), usd(m.netHigh)) : `${T().moneyRange(usd(m.incomeLow), usd(m.incomeHigh))} · ${T().noCost.toLowerCase()}`;
+}
+function moneyBlock(p) {
+  const m = seasonMoney(p), area = `${state.lot.size.toLocaleString(state.lang)} ${state.lot.unit === "ha" ? "ha" : T().unitCuadra}`;
+  const kids = [h("b", {}, T().money), h("p", { class: "small" }, T().moneySame(cropName(p.rotation.wet).toLowerCase()))];
+  if (m.kind === "none") kids.push(h("p", { class: "money-big" }, T().noExtra));
+  else if (m.kind === "nosale") kids.push(h("p", { class: "money-big" }, T().noSale));
+  else if (m.kind === "unknown") kids.push(h("p", {}, T().noCost));
+  else {
+    kids.push(h("p", { class: "money-big" }, m.netLow != null ? T().moneyRange(usd(m.netLow), usd(m.netHigh)) : T().moneyRange(usd(m.incomeLow), usd(m.incomeHigh))),
+      h("p", { class: "small" }, `${T().perLot(area)} · ${T().harvestQty(m.qty.toLocaleString(state.lang), m.unit)}`));
+    if (m.netLow == null) kids.push(h("p", { class: "small" }, T().noCost));
+    if (m.fails) kids.push(h("p", { class: "worst" }, icon("i-x"), T().worstCase(usd(-m.invest), m.fails, m.n)));
+    if (m.weak) kids.push(h("span", { class: "tag-example" }, T().weakData));
+  }
+  kids.push(h("p", { class: "small" }, T().moneyCheck));
+  return h("div", { class: "money" }, ...kids);
 }
 
 /* ---------------- voice ---------------- */
@@ -286,6 +337,7 @@ function planCard(p) {
     h("div", { class: "row between" }, h("span", { class: "name" }, planName(p)),
       rec ? h("span", { class: "badge" }, icon("i-star"), T().recommended) : p.role === "today" ? h("span", { class: "badge muted" }, T().today) : null),
     h("div", { class: "months" }, ...p.calendar.map((c) => cell(p, c))),
+    moneyLine(p) ? h("p", { class: "money-line" }, icon("i-coin"), moneyLine(p)) : null,
     h("div", { class: "row between" }, h("span", { class: "sum" }, saved ? T().saved + " · " : null, planSummary(p)), h("span", { class: "why-link" }, T().whyLink, icon("i-chev-r"))));
 }
 function legend() {
@@ -336,10 +388,10 @@ function reasons(zone, ps, role) {
   const worst = yrs.filter((y) => y.level === "danger").map((y) => y.year).slice(-3);
   if (worst.length) out.push({ lvl: "care", big: worst.join(" · "), txt: es() ? "los años más duros para este plan." : "the hardest years for this plan." });
   const failedAll = yrs.filter((y) => y.failed), failedLike = s.filter((y) => y.failed).length;
-  const failedCrop = cropName((failedAll.flatMap((y) => y.failedCrops || [])[0]) || p.rotation.dry).toLowerCase();
+  const failedCrop = theCrop((failedAll.flatMap((y) => y.failedCrops || [])[0]) || p.rotation.dry);
   if (failedAll.length) out.push({ lvl: failedLike > ns / 2 ? "danger" : failedLike ? "care" : "good", big: es() ? `${failedLike} de ${ns}` : `${failedLike} of ${ns}`,
-    txt: es() ? `${lbl} el ${failedCrop} se secó${opts().irrigation ? "" : " sin riego"}.${like ? ` En todos los años: ${failedAll.length} de ${n}; si el verano sale seco, se pierde.` : ""}`
-      : `${lbl} the ${failedCrop} dried out${opts().irrigation ? "" : " without irrigation"}.${like ? ` In all years: ${failedAll.length} of ${n}; if the dry season turns out dry, it fails.` : ""}` });
+    txt: es() ? `${lbl} ${failedCrop} se secó${opts().irrigation ? "" : " sin riego"}.${like ? ` En todos los años: ${failedAll.length} de ${n}; si el verano sale seco, se pierde.` : ""}`
+      : `${lbl} ${failedCrop} dried out${opts().irrigation ? "" : " without irrigation"}.${like ? ` In all years: ${failedAll.length} of ${n}; if the dry season turns out dry, it fails.` : ""}` });
   else if (p.rotation.dry !== "fallow" && p.rotation.dry !== "mulch") out.push({ lvl: "good", big: es() ? `${n} de ${n}` : `${n} of ${n}`, txt: es() ? `años ${cropName(p.rotation.dry).toLowerCase()} dio cosecha.` : `years ${cropName(p.rotation.dry).toLowerCase()} gave a harvest.` });
   return out;
 }
@@ -358,6 +410,7 @@ function whySection(zone, ps, role, compact = false) {
     compact ? h("h2", { class: "h2" }, `${T().whyLink}: ${planName(p)}`) : null,
     ...rs.map((r) => h("div", { class: "reason" }, h("span", { class: `cell ${r.lvl}`, style: "width:44px;height:44px;flex:none" }, icon(LEVEL_ICON[r.lvl], "icon lvl")), h("div", {}, h("b", {}, r.big), h("span", {}, r.txt)))),
     h("div", { class: "todo" }, h("b", {}, T().whatToDo), h("p", {}, todoText(p, ps)), p.role !== "today" ? h("p", { class: "try" }, T().tryFirst) : null),
+    moneyBlock(p),
     ["wet", "strong_nino"].includes(state.scenario) ? h("div", { class: "planb" }, h("b", {}, T().planBTitle), h("p", {}, T().planB)) : null,
     h("div", { class: "unknown" }, h("b", {}, T().unknownTitle), h("ul", {}, ...T().unknown.map((t) => h("li", {}, t))), h("p", { class: "check" }, icon("i-user"), T().checkLocal)),
     compact ? null : h("p", { class: "small" }, T().source),

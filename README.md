@@ -35,6 +35,12 @@ Pilot zones: Daule, Babahoyo and Quevedo (rice and maize on the Ecuadorian coast
   - A multinomial logistic regression was tested leave-one-year-out and **does not beat climatology** (hit rate 20–32 % vs 33 % by chance). It is reported in `outlook.json` but not shown to farmers. Coastal rain depends on warming that often appears only in January–March, as in the 2017 coastal El Niño.
 - `pipeline/surface_water.py` measures how waterlogged each area gets. Source: JRC Global Surface Water, built from NASA/USGS Landsat at 30 m, 1984–2021. Babahoyo has water at least a quarter of the time on 26 % of its land, Daule on 3 % and Quevedo on 1 %. The farmer confirms or corrects it ("Does your plot get waterlogged?"), and crops that cannot stand waterlogging get a "waterlogged soil" risk in the rainy season. Flooded rice paddies also count as water, so this is not a river-flood map. NASA OPERA DSWx-S1 (radar, 30 m, since 2023, sees through clouds) is the next step and needs an Earthdata login.
 - `pipeline/fires.py` counts **fires seen from space** around each zone. Source: NASA MODIS MOD14A2/MYD14A2 thermal anomalies (8-day, 1 km). The count feeds the passport stamp "no burning seen by satellite".
+- `app/data/economics.json` holds the money data, with a source for every number: yields (INEC ESPAC 2024, MAG), farm-gate prices (MAG-SIPA 2025), official minimum prices (2026) and costs per hectare.
+  - Each plan shows **dry-season money for the whole plot as a range**, from low yield × low price − high cost to the best case.
+  - When the crop fails in half or more of similar years, the plan shows **what you could lose**: the money invested.
+  - The rainy-season rice is the same in all plans, so it is left out of the comparison.
+  - Weak numbers are flagged in the app (soybean cost is from ~2015).
+  - With 2024–2026 costs, typical rice and maize margins come out **negative** (about −800 and −480 USD/ha), in line with what growers' unions reported. Costs come from press statements and may include land rent.
 - `app/` is a static site: HTML, vanilla JS and **CesiumJS** (Esri World Imagery, OpenStreetMap fallback).
 - `data-pipeline/` holds the download scripts (NASA POWER, MODIS, SoilGrids, DEM, ONI) and their README with known caveats. `env/Dockerfile` is the reproducible Python environment they run in.
 

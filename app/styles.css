@@ -92,6 +92,15 @@ ul { margin: 0; padding-left: 20px; }
 .planb b { color: var(--sea); }
 .todo .try { font-weight: 700; color: var(--brand); }
 
+.money-line { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; color: var(--ink); }
+.money-line .lose { color: var(--danger); font-weight: 700; }
+.money-line .icon { width: 18px; height: 18px; color: var(--ink2); }
+.money { border: 1.5px solid var(--line); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 17px; }
+.money .money-big { font-size: 24px; font-weight: 700; }
+.money .worst { display: flex; gap: 8px; align-items: flex-start; color: var(--danger); font-weight: 600; }
+.money .worst .icon { width: 18px; height: 18px; margin-top: 3px; stroke-width: 3; }
+.money .tag-example { align-self: flex-start; }
+
 /* ---------- risk calendar ---------- */
 .months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
 .cell { position: relative; height: 40px; border-radius: 6px; border: 0; padding: 0; display: flex; align-items: center; justify-content: center; color: #fff; }

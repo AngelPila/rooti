@@ -1,0 +1,503 @@
+{
+  "_meta": {
+    "compiled": "2026-11-14",
+    "currency": "USD",
+    "notes": "All money values per hectare per season (one crop cycle). Prices are farm-gate (precio al productor) unless labelled otherwise. Yields: 'typical' = INEC ESPAC 2024 production/harvested area for Guayas and Los Ríos (farmer-declared, monocrop 'Solo'); 'high' usually = MAG objective-yield (crop-cut) surveys, which run systematically higher than ESPAC — different methodology, not a time trend. Rice prices are for paddy at 20% moisture / 5% impurities (SIPA standard); maize at 13% / 1%. 'typical' price = simple mean of the 2025 SIPA monthly national weighted averages (2026 SIPA producer bulletins were not published at the expected URL as of 2026-11-14). Costs mix years and methodologies (academic farm surveys, CFN client references, grower-union statements in the press); whether land rent is included is stated per crop. Typical margin = yield.typical × price.typical − cost.typical is NOT stored; compute in the app. Derived values (unit conversions, cost/qq × qq/ha) are marked in 'derivations'. People quoted in press sources are not named here. Null means no usable source was found; see 'null_reasons'."
+  },
+  "units": {
+    "saca_lb": 200,
+    "saca_kg": 90.72,
+    "saca_msp_lb": 205,
+    "saca_msp_kg": 92.99,
+    "quintal_lb": 100,
+    "quintal_kg": 45.36,
+    "cuadra_ha": 0.7056,
+    "notes": "SIPA producer bulletins quote rice per 'saca aprox. 200 lb'; the official minimum support price (PMS) and MAGP public purchase use a 205 lb saca. Market sacas of 210–220 lb are also reported. Convert with 1 lb = 0.45359237 kg.",
+    "sources": {
+      "sipa_prod": "MAGP-SIPA, Boletín de Precios Promedios Ponderados al Productor (monthly, Jan–Dec 2025) — https://sipa.agricultura.gob.ec/boletines/nacionales/productor/2025/boletin_precios_productor_diciembre_2025.pdf (same path pattern for enero…noviembre_2025)",
+      "instructivo26": "MAGP, Instructivo compra pública arroz cáscara v2.0 (2026): precio mínimo USD 34 grano corto / USD 36 grano largo por saca 205 lb, 20% humedad 5% impurezas; Decreto Ejecutivo 307 (13-feb-2026) — https://www.agricultura.gob.ec/wp-content/uploads/2026/04/Instructivo-Productores-V2.0-signed-signed-signed-2.pdf",
+      "eluniverso_pms25": "El Universo (15-dic-2024), PMS arroz 2025: USD 36 largo / 34 corto, saca 205 lb (92,99 kg) — https://www.eluniverso.com/noticias/economia/precio-saca-arroz-2025-productores-industriales-mag-ecuador-2024-nota/",
+      "urtf_ago26": "MAGP, Informe quincenal URTF 1–15 ago 2026 (franja 17,45–19,61; 1 qq = 45,36 kg = 100 lb) — https://www.agricultura.gob.ec/wp-content/uploads/2026/08/Informe-Quincenal-de-URTF-15-agosto-2026_signed-signed-signed.pdf",
+      "convertunits_cuadra": "ConvertUnits, cuadra = 84 m (variante argentina); 84×84 m = 7.056 m² = 0,7056 ha (cálculo propio; sin fuente oficial ecuatoriana) — https://www.convertunits.com/from/hectometer/to/cuadras",
+      "eldiario_saca220": "El Diario (18-ene-2026): productor recibe USD 28 por saca de 220 lb de arroz en cáscara (muestra que el peso de la saca varía en el mercado) — https://www.eldiario.ec/ecuador/el-pais-ha-perdido-160000-hectareas-de-arroz-en-20-anos-18012026/"
+    }
+  },
+  "crops": {
+    "rice": {
+      "yield_t_ha": {
+        "low": 3.65,
+        "typical": 4.9,
+        "high": 5.93,
+        "guayas_espac2024": 4.89,
+        "los_rios_espac2024": 4.9,
+        "national_mag2024": 5.61,
+        "national_mag2025": 5.73,
+        "rainfed_typical": 5.08,
+        "irrigated_typical": 5.4
+      },
+      "price_usd_per_t": {
+        "low": 241.2,
+        "typical": 304.8,
+        "high": 371.5,
+        "msp_2026_long": 387.1,
+        "msp_2026_short": 365.6
+      },
+      "price_local": {
+        "unit": "saca 200 lb (paddy, en cáscara)",
+        "usd": 27.65,
+        "low_usd": 21.88,
+        "high_usd": 33.7,
+        "msp_2026_unit": "saca 205 lb",
+        "msp_2026_long_usd": 36.0,
+        "msp_2026_short_usd": 34.0,
+        "press_low_2026_usd": 20.0
+      },
+      "cost_usd_ha": {
+        "low": 1212,
+        "typical": 2300,
+        "high": 2400,
+        "year": 2026,
+        "includes_land_rent": null,
+        "notes": "low = CFN 2023 client reference for Los Ríos (USD 18.65/qq × 65 qq/ha); typical/high = grower statements in 2026 press (Mar 2026: ~2,300; Oct 2026: 2,400 after urea rose to USD 50–54/qq). Rent inclusion not stated in any source."
+      },
+      "irrigated_share_of_sown_area_2024": 0.799,
+      "market": "Piladoras (rice mills) and intermediaries buy paddy; in 2025–2026 mills often paid below the PMS. MAGP buys directly from small producers at the PMS (Decreto Ejecutivo 307, Feb 2026) with limited budget/volume.",
+      "derivations": {
+        "yield.typical": "mean of ESPAC 2024 Guayas (1,315,515 t / 268,808 ha) and Los Ríos (540,103 t / 110,312 ha)",
+        "yield.low": "MAG 2021 objective yield, Los Ríos third cycle (lowest provincial-cycle value in Guayas/Los Ríos)",
+        "yield.high": "MAG 2021 objective yield, Guayas second cycle",
+        "yield.rainfed_typical": "PROXY: MAG 2021 national first cycle (Dec–Mar rainy season). No official secano/riego split found.",
+        "yield.irrigated_typical": "PROXY: MAG 2021 national third cycle (Aug–Nov, 'ocupado por áreas con riego').",
+        "price.typical": "mean of 12 SIPA monthly values 2025 (Jan–May 'arroz en cáscara'; Jun–Dec long grain): 29.56, 28.58, 33.70, 25.54, 25.17, 28.62, 28.02, 28.20, 28.36, 25.65, 25.38, 25.02 → 27.65 USD/saca 200 lb",
+        "price.low": "SIPA short grain July 2025 = 21.88 USD/saca",
+        "cost.low": "CFN: 18.65 USD/qq × 65 qq/ha = 1,212 USD/ha (CFN labels the unit 'quintal'; at USD 33.75 price it matches a paddy saca)",
+        "irrigated_share": "ESPAC 2024 T8: 323,466 ha sown with irrigation / 404,818 ha sown (sum of seed types)"
+      },
+      "sources": {
+        "espac24": "INEC, ESPAC 2024, Tabulados (T6/T28/T34/T39/T42/T45 superficie y producción por provincia; T7 superficie perdida por causa; T8 riego) — https://www.ecuadorencifras.gob.ec/documentos/web-inec/Estadisticas_agropecuarias/espac/2024/Tabulados_ESPAC_2024.xlsx",
+        "rend_arroz21": "MAG-CGINA, Rendimientos objetivos de arroz 2021, Tabla 2 por ciclo (20% humedad, 5% impurezas) — https://sipa.agricultura.gob.ec/descargas/estudios/rendimientos/arroz/rendimiento_arroz_2021.pdf",
+        "sit_arroz24": "MAGP-SIFCA, Boletín situacional arroz 2024 (rend. nacional 5,61 t/ha; pérdidas 2.697 ha: 59% inundación) — https://sipa.agricultura.gob.ec/boletines/situacionales/2024/boletin_situacional_arroz_2024.pdf",
+        "panorama_jun26": "MAGP-SIPA, Panorama agroestadístico junio 2026, 'Principales cultivos, 2025' (arroz 5,73 t/ha; maíz duro 7,07 t/ha, nacional) — https://sipa.agricultura.gob.ec/boletines/panorama_agroestadistico/2026/panorama_agroestadistico_junio.pdf",
+        "sipa_prod": "MAGP-SIPA, Boletín de Precios Promedios Ponderados al Productor (monthly, Jan–Dec 2025) — https://sipa.agricultura.gob.ec/boletines/nacionales/productor/2025/boletin_precios_productor_diciembre_2025.pdf (same path pattern for enero…noviembre_2025)",
+        "sipa_mar25": "MAGP-SIPA, Boletín precios productor marzo 2025 (arroz en cáscara USD 33,70/saca 200 lb; maíz duro USD 17,28/qq) — https://sipa.agricultura.gob.ec/boletines/nacionales/productor/2025/boletin_precios_productor_marzo_2025.pdf",
+        "sipa_jul25": "MAGP-SIPA, Boletín precios productor julio 2025 (arroz cáscara grano corto USD 21,88/saca) — https://sipa.agricultura.gob.ec/boletines/nacionales/productor/2025/boletin_precios_productor_julio_2025.pdf",
+        "instructivo26": "MAGP, Instructivo compra pública arroz cáscara v2.0 (2026): precio mínimo USD 34 grano corto / USD 36 grano largo por saca 205 lb, 20% humedad 5% impurezas; Decreto Ejecutivo 307 (13-feb-2026) — https://www.agricultura.gob.ec/wp-content/uploads/2026/04/Instructivo-Productores-V2.0-signed-signed-signed-2.pdf",
+        "eluniverso_pms25": "El Universo (15-dic-2024), PMS arroz 2025: USD 36 largo / 34 corto, saca 205 lb (92,99 kg) — https://www.eluniverso.com/noticias/economia/precio-saca-arroz-2025-productores-industriales-mag-ecuador-2024-nota/",
+        "expreso_feb26": "Expreso (9-feb-2026): pequeños productores venden la saca a ~USD 20; PMS no respetado en piladoras — https://www.expreso.ec/actualidad/economia/arroceros-alertan-quiebra-del-sector-y-exigen-respeto-al-precio-minimo-273865.html",
+        "cfn_arroz24": "CFN B.P., Ficha Sectorial Arroz (oct-2024), costos referenciales clientes 2023: Los Ríos USD 18,65/qq, 65 qq/ha, precio 33,75; Guayas USD 24,27/qq, 60 qq/ha, precio 35 — https://www.cfn.fin.ec/wp-content/uploads/2024/10/Ficha-Sectorial-Arroz.pdf",
+        "expreso_insumos26": "Expreso (21-mar-2026): arroz ~USD 2.300/ha (podría llegar a 2.600–2.700); maíz ~USD 1.600/ha, hasta 2.000; diésel 2,70→2,82 USD/gal — https://www.expreso.ec/actualidad/economia/el-encarecimiento-de-insumos-golpea-la-produccion-agricola-en-ecuador-278865.html",
+        "extra_urea26": "Extra (20-oct-2026): arroz USD 1.800/ha antes, ahora 2.400/ha; urea USD 35→50–54/qq en 2026 — https://www.extra.ec/noticia/economia/fertilizantes-encarecen-54-elevan-costo-cultivos-ecuador-165242.html",
+        "elcomercio_may26": "El Comercio (may-2026): costo pequeño/mediano productor USD 26–27 (por saca, según contexto); MAGP compra a 34/36 por saca 205 lb — https://www.elcomercio.com/actualidad/negocios/ecuador-tiene-arroz-acumulado-cuatro-meses-consumo-otra-cosecha-empezo/",
+        "riotimes26": "Rio Times (3-oct-2026), cita SIPA Guayaquil 27 (jul) → 37,50 (sep-2026), +39%; fuente secundaria — https://www.riotimesonline.com/ecuador-rice-price-nears-50-dollars-quintal-2026/"
+      }
+    },
+    "maize": {
+      "yield_t_ha": {
+        "low": 3.74,
+        "typical": 4.98,
+        "high": 7.77,
+        "guayas_espac2024": 3.74,
+        "los_rios_espac2024": 4.98,
+        "guayas_mag_2025_cycle1": 6.25,
+        "national_mag2025": 7.07,
+        "rainfed_typical": null,
+        "irrigated_typical": null
+      },
+      "price_usd_per_t": {
+        "low": 262.6,
+        "typical": 324.5,
+        "high": 460.5,
+        "msp_2026_floor": 384.7,
+        "msp_2026_ceiling": 432.3
+      },
+      "price_local": {
+        "unit": "quintal 100 lb (maíz duro seco, 13% humedad, 1% impurezas)",
+        "usd": 14.72,
+        "low_usd": 11.91,
+        "high_usd": 20.89,
+        "msp_2024_usd": 16.5,
+        "msp_2025_usd": 17.35,
+        "msp_2026_floor_usd": 17.45,
+        "msp_2026_ceiling_usd": 19.61
+      },
+      "cost_usd_ha": {
+        "low": 1222,
+        "typical": 2092,
+        "high": 2296,
+        "year": 2024,
+        "includes_land_rent": true,
+        "notes": "low = Los Ríos (Palenque) 2020 survey incl. rent USD 180; typical = industry (APROBAL) figure presented Nov 2024 incl. rent USD 210/ha, assumes 143 qq dry/ha (~6.5 t/ha, technified); high = producer union 2025 (USD 2,295.98, rent not stated). Press (Mar 2026) says ~1,600 rising to up to 2,000 with fertiliser hikes."
+      },
+      "irrigated_share_of_sown_area_2024": 0.152,
+      "market": "Feed mills / balanced-feed industry (APROBAL members) and intermediaries; purchases registered with MAGP-URTF under the 2026 price band (floor 17.45, ceiling 19.61 USD/qq). 2025 farm-gate averages were below the floor most months.",
+      "derivations": {
+        "yield.typical": "ESPAC 2024 Los Ríos 515,957 t / 103,605 ha",
+        "yield.low": "ESPAC 2024 Guayas 125,342 t / 33,542 ha",
+        "yield.high": "MAGP records first cycle 2025, Los Ríos (Apr–Jun), via Expreso",
+        "price.typical": "mean of 11 SIPA monthly values Feb–Dec 2025: 20.89, 17.28, 14.47, 13.10, 13.18, 14.92, 15.76, 14.54, 13.12, 11.91, 12.75 → 14.72 USD/qq",
+        "irrigated_share": "ESPAC 2024 T8: 41,779 ha with irrigation / 274,345 ha sown",
+        "rainfed/irrigated": "null: no source separates maize yield by water regime"
+      },
+      "sources": {
+        "espac24": "INEC, ESPAC 2024, Tabulados (T6/T28/T34/T39/T42/T45 superficie y producción por provincia; T7 superficie perdida por causa; T8 riego) — https://www.ecuadorencifras.gob.ec/documentos/web-inec/Estadisticas_agropecuarias/espac/2024/Tabulados_ESPAC_2024.xlsx",
+        "expreso_maiz_rend25": "Expreso (28-dic-2025), registros MAGP primer ciclo 2025 maíz: Los Ríos 7,77 t/ha, Guayas 6,25 t/ha — https://www.expreso.ec/actualidad/economia/productividad-frontera-invisible-del-agro-ecuatoriano-cacao-incrementa-productividad-lecciones-urgentes-otros-cultivos-presentan-estancamientos-269200.html",
+        "panorama_jun26": "MAGP-SIPA, Panorama agroestadístico junio 2026, 'Principales cultivos, 2025' (arroz 5,73 t/ha; maíz duro 7,07 t/ha, nacional) — https://sipa.agricultura.gob.ec/boletines/panorama_agroestadistico/2026/panorama_agroestadistico_junio.pdf",
+        "sipa_prod": "MAGP-SIPA, Boletín de Precios Promedios Ponderados al Productor (monthly, Jan–Dec 2025) — https://sipa.agricultura.gob.ec/boletines/nacionales/productor/2025/boletin_precios_productor_diciembre_2025.pdf (same path pattern for enero…noviembre_2025)",
+        "sipa_feb25": "MAGP-SIPA, Boletín precios productor febrero 2025 (maíz duro seco USD 20,89/qq) — https://sipa.agricultura.gob.ec/boletines/nacionales/productor/2025/boletin_precios_productor_febrero_2025.pdf",
+        "sipa_nov25": "MAGP-SIPA, Boletín precios productor noviembre 2025 (maíz duro seco USD 11,91/qq) — https://sipa.agricultura.gob.ec/boletines/nacionales/productor/2025/boletin_precios_productor_noviembre_2025.pdf",
+        "maiz_pms26": "Expreso (26-mar-2026), franja maíz 2026: piso USD 17,45, techo 19,61 por qq — https://www.expreso.ec/actualidad/economia/el-mag-fija-al-alza-el-nuevo-precio-del-maiz-en-ecuador-279583.html",
+        "maiz_pms26_b": "KCH Comunicación (27-mar-2026), PMS maíz 2026 USD 17,45/qq, 13% humedad 1% impurezas — https://kchcomunicacion.com/?p=363630",
+        "urtf_ago26": "MAGP, Informe quincenal URTF 1–15 ago 2026 (franja 17,45–19,61; 1 qq = 45,36 kg = 100 lb) — https://www.agricultura.gob.ec/wp-content/uploads/2026/08/Informe-Quincenal-de-URTF-15-agosto-2026_signed-signed-signed.pdf",
+        "eluniverso_maiz25": "El Universo (7-abr-2025): PMS 2024 USD 16,50/qq; costo industria USD 2.092/ha incl. arriendo USD 210 (nov-2024), 143 qq secos/ha; costo productores USD 2.295,98/ha — https://www.eluniverso.com/noticias/economia/precio-minimo-de-sustentacion-maiz-mag-ecuador-2025-nota/",
+        "ecociencia26": "Morán Santana (2026), ECOCIENCIA 13(1), Tabla costos maíz Los Ríos 2020 (Zambrano et al. 2022): USD 1.222–1.736/ha con arriendo — https://doi.org/10.21855/ecociencia.131.1143",
+        "expreso_insumos26": "Expreso (21-mar-2026): arroz ~USD 2.300/ha (podría llegar a 2.600–2.700); maíz ~USD 1.600/ha, hasta 2.000; diésel 2,70→2,82 USD/gal — https://www.expreso.ec/actualidad/economia/el-encarecimiento-de-insumos-golpea-la-produccion-agricola-en-ecuador-278865.html"
+      }
+    },
+    "soybean": {
+      "yield_t_ha": {
+        "low": 1.29,
+        "typical": 1.81,
+        "high": 2.38,
+        "guayas_espac2024": 1.35,
+        "los_rios_espac2024": 1.29,
+        "los_rios_mag2023": 2.16,
+        "guayas_mag2023": 2.38,
+        "rainfed_typical": 2.15,
+        "irrigated_typical": null
+      },
+      "price_usd_per_t": {
+        "low": 551.1,
+        "typical": 595.2,
+        "high": 639.3
+      },
+      "price_local": {
+        "unit": "quintal 100 lb (grano seco, 12% humedad, 1% impurezas)",
+        "usd": 27.0,
+        "low_usd": 25.0,
+        "high_usd": 29.0
+      },
+      "cost_usd_ha": {
+        "low": null,
+        "typical": 790,
+        "high": null,
+        "year": 2015,
+        "includes_land_rent": null,
+        "notes": "Only figure found is a ~2015 producer survey; certainly understated for 2026 (fertiliser and diesel up). Use with heavy caution."
+      },
+      "market": "Feed industry (balanceados, APROBAL members) and grain traders; MAGP-URTF registered only one buyer of national soy in Aug 2026. Payment reported at ~60 days (2024).",
+      "derivations": {
+        "yield.typical": "farmer report 40 qq/ha (Expreso Oct 2024) × 45.36 kg = 1.81 t/ha",
+        "yield.low": "ESPAC 2024 Los Ríos 14,470 t / 11,183 ha",
+        "yield.high": "MAG objective yield 2023, Guayas",
+        "yield.rainfed_typical": "MAG 2021 dry-season 'secano' objective yield, national",
+        "price.low": "USD 25/qq actual sale price Oct 2024 (= MAG 2023 USD 551/t)",
+        "price.typical": "USD 27/qq at Los Ríos collection centres Oct–Nov 2021 (MAG) — old",
+        "price.high": "USD 29/qq minimum support price cited Oct 2024; no 2025/2026 PMS found"
+      },
+      "sources": {
+        "espac24": "INEC, ESPAC 2024, Tabulados (T6/T28/T34/T39/T42/T45 superficie y producción por provincia; T7 superficie perdida por causa; T8 riego) — https://www.ecuadorencifras.gob.ec/documentos/web-inec/Estadisticas_agropecuarias/espac/2024/Tabulados_ESPAC_2024.xlsx",
+        "sit_soya23": "MAG-CGINA, Boletín situacional soya 2023 (rend. objetivos: Los Ríos 2,16, Guayas 2,38, nacional 2,25 t/ha; precio productor USD 551/t nov–dic 2023) — https://sipa.agricultura.gob.ec/boletines/situacionales/2023/boletin_situacional_soya_2023.pdf",
+        "mag_soya21": "MAG/SIPA, Informe de Rendimientos Objetivos de Soya (Época Seca 2021), Tabla 2 'soya (secano)': nacional 2,15, Guayas 2,25, Los Ríos 2,07 t/ha (12% hum., 1% imp.); Tabla 3 precio USD 27/qq centros de acopio Los Ríos oct–nov 2021 — https://sipa.agricultura.gob.ec/descargas/estudios/rendimientos/soya/informe_rendimiento_soya_2021.pdf",
+        "expreso_soya24": "Expreso (12-oct-2024): soya PMS USD 29/qq, se vende a USD 25/qq, pago a 60 días; 40 qq/ha (hasta 80 con buena semilla) — https://www.expreso.ec/actualidad/economia/soya-ecuatoriana-compradores-industria-ministerio-agricultura-216753.html",
+        "innova_soya16": "INNOVA Research Journal 1(12) 2016, 'El cultivo de soya y su importancia para el Ecuador': costo promedio USD 790/ha (encuesta ciclo verano, ~2015) — https://revistas.uide.edu.ec/index.php/innova/article/download/110/143/446",
+        "eluniverso_soya24": "El Universo (12-oct-2024): industria de balanceados (APROBAL) compra soya nacional; importa 97–98% — https://www.eluniverso.com/noticias/economia/soya-comercializacion-cosecha-agricultores-industria-importacion-ecuador-2024-nota/",
+        "urtf_ago26_soy": "MAGP, Informe quincenal URTF 1–15 ago 2026, Tabla 2: único comprador registrado de soya nacional Corporación Grain Food S.A.S., 9,07 t — https://www.agricultura.gob.ec/wp-content/uploads/2026/08/Informe-Quincenal-de-URTF-15-agosto-2026_signed-signed-signed.pdf"
+      }
+    },
+    "peanut": {
+      "yield_t_ha": {
+        "low": null,
+        "typical": 1.0,
+        "high": null,
+        "basis": "shelled (grano descascarado)",
+        "rainfed_typical": null,
+        "irrigated_typical": null
+      },
+      "price_usd_per_t": {
+        "low": 1543.2,
+        "typical": 1543.2,
+        "high": 2645.5,
+        "basis": "unknown (shelled vs in-shell not stated)"
+      },
+      "price_local": {
+        "unit": "quintal 100 lb (basis not stated)",
+        "usd": 70.0,
+        "high_usd": 120.0
+      },
+      "cost_usd_ha": {
+        "low": null,
+        "typical": null,
+        "high": null,
+        "year": null,
+        "includes_land_rent": null
+      },
+      "market": "Local traders/intermediaries (not named in sources); Manabí is the main producing province, Los Ríos has no ESPAC 2024 peanut area.",
+      "derivations": {
+        "yield.typical": "ESPAC 2024 Guayas 248.4 t / 249.3 ha (shelled); Manabí 1,951.6 t / 1,875.3 ha = 1.04",
+        "price": "Portoviejo (Manabí), May 2025: USD 70/qq, down from USD 120/qq weeks earlier"
+      },
+      "sources": {
+        "espac24": "INEC, ESPAC 2024, Tabulados (T6/T28/T34/T39/T42/T45 superficie y producción por provincia; T7 superficie perdida por causa; T8 riego) — https://www.ecuadorencifras.gob.ec/documentos/web-inec/Estadisticas_agropecuarias/espac/2024/Tabulados_ESPAC_2024.xlsx",
+        "eldiario_mani25": "El Diario (28-may-2025), Portoviejo (Manabí): maní a USD 70/qq, antes USD 120/qq; no indica si es en cáscara o descascarado — https://www.eldiario.ec/portoviejo/agricultores-sacan-la-cosecha-que-dejo-el-invierno-y-lamentan-el-bajo-precio-de-los-productos-28052025/"
+      }
+    },
+    "common_bean": {
+      "yield_t_ha": {
+        "low": 1.32,
+        "typical": 1.38,
+        "high": 1.96,
+        "basis": "dry grain",
+        "rainfed_typical": null,
+        "irrigated_typical": null
+      },
+      "price_usd_per_t": {
+        "low": null,
+        "typical": null,
+        "high": null
+      },
+      "price_local": {
+        "unit": "quintal 100 lb",
+        "usd": null
+      },
+      "cost_usd_ha": {
+        "low": null,
+        "typical": null,
+        "high": null,
+        "year": null,
+        "includes_land_rent": null
+      },
+      "market": null,
+      "derivations": {
+        "yield.typical": "ESPAC 2024 Los Ríos fréjol seco 189.75 t / 137.34 ha (Guayas 50.45 t / 37 ha = 1.36); very small coastal area",
+        "yield.low/high": "INIAP-473 check variety, Guayas upper basin trials, dry season 2010 (1,317 kg/ha) and 2011 (1,955 kg/ha)"
+      },
+      "sources": {
+        "espac24": "INEC, ESPAC 2024, Tabulados (T6/T28/T34/T39/T42/T45 superficie y producción por provincia; T7 superficie perdida por causa; T8 riego) — https://www.ecuadorencifras.gob.ec/documentos/web-inec/Estadisticas_agropecuarias/espac/2024/Tabulados_ESPAC_2024.xlsx",
+        "idesia_frejol15": "IDESIA 33(2):107-118 (2015), 'Potencial agronómico de 18 líneas de fréjol F6 en Ecuador', Tabla 6: INIAP-473 1.317,1 kg/ha (época seca 2010) y 1.955,3 kg/ha (2011), cuenca alta del Guayas — https://dialnet.unirioja.es/descarga/articulo/5488114.pdf"
+      }
+    },
+    "cowpea": {
+      "yield_t_ha": {
+        "low": null,
+        "typical": null,
+        "high": null,
+        "rainfed_typical": null,
+        "irrigated_typical": null
+      },
+      "price_usd_per_t": {
+        "low": null,
+        "typical": null,
+        "high": null
+      },
+      "price_local": {
+        "unit": null,
+        "usd": null
+      },
+      "cost_usd_ha": {
+        "low": null,
+        "typical": null,
+        "high": null,
+        "year": null,
+        "includes_land_rent": null
+      },
+      "market": null,
+      "sources": {}
+    },
+    "sorghum": {
+      "yield_t_ha": {
+        "low": null,
+        "typical": null,
+        "high": null,
+        "rainfed_typical": null,
+        "irrigated_typical": null
+      },
+      "price_usd_per_t": {
+        "low": null,
+        "typical": null,
+        "high": null,
+        "old_reference_santa_elena": 264.6
+      },
+      "price_local": {
+        "unit": "quintal 100 lb",
+        "usd": null,
+        "old_reference_usd": 12.0
+      },
+      "cost_usd_ha": {
+        "low": null,
+        "typical": null,
+        "high": null,
+        "year": null,
+        "includes_land_rent": null
+      },
+      "market": "Balanced-feed industries (poultry, pigs, shrimp), per APROBAL.",
+      "derivations": {
+        "price.old_reference": "USD 12/qq, Santa Elena, undated (~2018); not used as typical"
+      },
+      "sources": {
+        "aprobal_sorgo": "APROBAL, 'El sorgo genera expectativas en Santa Elena' (sin fecha, ~2018): USD 12/qq; venta a industrias de balanceados — https://aprobal.com/el-sorgo-genera-expectativas-en-santa-elena/"
+      }
+    },
+    "velvet_bean": {
+      "role": "cover crop / green manure — no sale",
+      "yield_t_ha": null,
+      "price_usd_per_t": null,
+      "seed_rate_kg_ha": null,
+      "seed_price_usd_per_kg": null,
+      "cost_usd_ha": {
+        "low": null,
+        "typical": null,
+        "high": null,
+        "year": null,
+        "includes_land_rent": false
+      },
+      "market": null,
+      "sources": {}
+    },
+    "jack_bean": {
+      "role": "cover crop / green manure — no sale",
+      "yield_t_ha": null,
+      "price_usd_per_t": null,
+      "seed_rate_kg_ha": null,
+      "seed_price_usd_per_kg": null,
+      "cost_usd_ha": {
+        "low": null,
+        "typical": null,
+        "high": null,
+        "year": null,
+        "includes_land_rent": false
+      },
+      "market": null,
+      "sources": {}
+    }
+  },
+  "null_reasons": {
+    "rice.yield.rainfed/irrigated": "Filled only with MAG 2021 cycle proxies; no official secano vs riego yield split was found.",
+    "maize.yield.rainfed/irrigated": "No source splits maize yield by water regime (85% of 2024 sown area had no irrigation, so ESPAC values are mostly rainfed).",
+    "soybean.cost.low/high": "Only one (old, ~2015) cost figure found.",
+    "peanut.yield.low/high": "Only ESPAC (shelled). INIAP 382 trial values (~2.66 t/ha, Mocache, UTEQ thesis) could not be opened to confirm basis/year.",
+    "peanut.cost": "No coastal cost per ha found after 1973.",
+    "common_bean.price": "SIPA producer bulletins 2025 carry only 'fréjol rojo tierno en vaina' (green pods), blank most months; 2026 wholesale bulletins are image-only.",
+    "common_bean.cost": "A UTEQ Mocache figure (USD 1,172/ha) appeared only in a search snippet; PDF not readable, so not used.",
+    "cowpea.*": "INIAP-463 is a confirmed coastal variety, but no yield, price, cost or buyer data could be sourced.",
+    "sorghum.*": "Not covered by ESPAC tables or SIPA price bulletins; no 2022–2026 yield/cost/price found. A 2021 hybrid trial (Montalvo/Ventanas/Quevedo) exists but the PDF failed to load.",
+    "cover_crops.*": "No Ecuadorian seed price, seeding rate or sowing cost found (generic non-Ecuador guides give mucuna 14–40 kg/ha; not used)."
+  },
+  "losses": {
+    "espac_2024_lost_area_ha": {
+      "rice": {
+        "total": 2697.3,
+        "planted": 404818.4,
+        "share_of_planted": 0.0067,
+        "by_cause_ha": {
+          "drought": 328.9,
+          "pests": 351.5,
+          "disease": 17.6,
+          "flood": 1591.9,
+          "other": 407.4
+        }
+      },
+      "maize": {
+        "total": 6756.7,
+        "planted": 274345.3,
+        "share_of_planted": 0.0246,
+        "by_cause_ha": {
+          "drought": 2209.1,
+          "frost": 1152.8,
+          "pests": 2556.8,
+          "disease": 114.3,
+          "flood": 455.7,
+          "other": 268.0
+        }
+      },
+      "soybean": {
+        "total": 35.4,
+        "planted": 18781.2,
+        "by_cause_ha": {
+          "pests": 16.3,
+          "flood": 19.1
+        }
+      },
+      "peanut": {
+        "total": 157.7,
+        "planted": 2769.7,
+        "by_cause_ha": {
+          "drought": 69.7,
+          "frost": 43.9,
+          "pests": 28.6,
+          "disease": 0.7,
+          "flood": 14.8
+        }
+      },
+      "common_bean": {
+        "total": 769.9,
+        "planted": 12995.1,
+        "by_cause_ha": {
+          "drought": 289.2,
+          "frost": 61.2,
+          "pests": 78.5,
+          "disease": 4.4,
+          "flood": 224.3,
+          "other": 112.2
+        }
+      },
+      "notes": "National totals, monocrop. Frost losses are Sierra plots. ESPAC counts only fully lost area, not partial yield loss, so these shares understate risk."
+    },
+    "rice_loss_share_by_cause": {
+      "2023": {
+        "lost_ha": 15181,
+        "flood": 0.91,
+        "other_incl_drought": null,
+        "drought": 0.03
+      },
+      "2024": {
+        "lost_ha": 2697,
+        "flood": 0.59,
+        "pests_and_diseases": 0.14,
+        "other": 0.27,
+        "drought": 0.12
+      }
+    },
+    "rice_guayas_production_loss_share": {
+      "strong_winter_low": 0.15,
+      "strong_winter_high": 0.2,
+      "super_el_nino_low": 0.6,
+      "super_el_nino_high": 0.7,
+      "notes": "Grower-association estimate (press), not official statistics."
+    },
+    "insurance": {
+      "agroprotege_premium_subsidy_share": 0.6,
+      "agroprotege_premium_subsidy_share_max": 0.8,
+      "maize_2023_insurable_cost_usd_ha": 1250,
+      "maize_2023_premium_usd_ha": 80,
+      "claims_2023_paid_usd_per_ha": 417.0,
+      "guayas_bono_2026_usd_per_ha_rice_destroyed": 450,
+      "parametric_2026_payout_usd_ha": null,
+      "notes": "Agroprotege insured sum per ha for 2024–2026 not found; 2023 maize example used (insured sum = cost of production, not lost revenue). Claims average = USD 52,813 / 126.5 ha (derived). UNDP/Hispana parametric pilot (rice 21 cantons, maize 12) paid nothing in the Jan–May 2026 cycle because rainfall did not reach the trigger; payout per ha not published."
+    },
+    "diesel_subsidy_removal": {
+      "date": "2025-09-13",
+      "diesel_usd_gal_before": 1.8,
+      "diesel_usd_gal_after": 2.8,
+      "diesel_usd_gal_mar_2026": 2.82,
+      "diesel_share_of_rice_cost": 0.3,
+      "projected_cost_increase_share": 0.2,
+      "maize_fuel_usd_ha": 100,
+      "irrigation_pumping_cost_change_usd_ha": null,
+      "notes": "No source quantifies pumping cost per ha (gallons/ha). Diesel ~30% of rice cost is a grower-union claim; +20% total cost is a producer projection; maize 'a bit over USD 100/ha in fuel' is one grower's statement."
+    },
+    "sources": {
+      "espac24": "INEC, ESPAC 2024, Tabulados (T6/T28/T34/T39/T42/T45 superficie y producción por provincia; T7 superficie perdida por causa; T8 riego) — https://www.ecuadorencifras.gob.ec/documentos/web-inec/Estadisticas_agropecuarias/espac/2024/Tabulados_ESPAC_2024.xlsx",
+      "sit_arroz23": "MAG, Boletín situacional arroz 2023 (15.181 ha perdidas, 91% inundación) — https://sipa.agricultura.gob.ec/boletines/situacionales/2023/boletin_situacional_arroz_2023.pdf",
+      "sit_arroz24": "MAGP-SIFCA, Boletín situacional arroz 2024 (rend. nacional 5,61 t/ha; pérdidas 2.697 ha: 59% inundación) — https://sipa.agricultura.gob.ec/boletines/situacionales/2024/boletin_situacional_arroz_2024.pdf",
+      "primicias_nino26": "Primicias (jul-2026): pérdidas típicas en Guayas en invierno fuerte 15–20%; con súper Niño 60–70% de la producción — https://www.primicias.ec/economia/fenomeno-elnino-amenaza-produccion-arroz-ecuador-guayas-zona-cero-impactos-127917/",
+      "primicias_seguro23": "Primicias (27-jun-2023): seguro agrícola maíz costo asegurable USD 1.250/ha, prima USD 80/ha, subsidio 60%; 45 siniestros, 126,5 ha, USD 52.813 pagados — https://primicias.ec/noticias/economia/seguro-agricola-fenomeno-nino",
+      "primicias_agroprotege26": "Primicias (oct-2026): Agroprotege subsidia 60% de la prima neta (hasta 80%), USD 25 millones en 4 años, ~215.000 ha, 47 cultivos — https://www.primicias.ec/economia/seguro-agricola-agroprotege-productores-ecuador-poliza-agricultores-elnino-135410/",
+      "expreso_bono26": "Expreso (5-mar-2026): Bono Agrícola Solidario 2026 Prefectura del Guayas USD 450 por ha de arroz destruida; 163 productores, 290,8 ha — https://www.expreso.ec/guayaquil/activan-bonos-estatales-en-salitre-para-mitigar-perdidas-de-productores-arroceros-276908.html",
+      "eldiario_parametrico26": "El Diario (23-jul-2026): seguro paramétrico PNUD/Hispana, arroz 21 cantones y maíz 12 (Guayas, Los Ríos, Manabí); ciclo ene–may 2026 sin pago (lluvia no alcanzó umbral); ciclo sequía desde 1-ago-2026 solo con riego — https://www.eldiario.ec/centro/seguro-agricola-parametrico-ecuador-sequia-23072026/",
+      "primicias_diesel25": "Primicias (sep-2025): Decreto Ejecutivo 126, diésel de USD 1,80 a 2,80/gal desde 13-sep-2025 — https://www.primicias.ec/economia/nuevo-precio-diesel-13septiembre-eliminacion-subsidio-105110/",
+      "expreso_insumos26": "Expreso (21-mar-2026): arroz ~USD 2.300/ha (podría llegar a 2.600–2.700); maíz ~USD 1.600/ha, hasta 2.000; diésel 2,70→2,82 USD/gal — https://www.expreso.ec/actualidad/economia/el-encarecimiento-de-insumos-golpea-la-produccion-agricola-en-ecuador-278865.html",
+      "eluniverso_diesel25": "El Universo (22-sep-2025): productores de arroz y maíz proyectan +20% en costos; maíz 'un poco más de USD 100/ha solo en combustible' — https://www.eluniverso.com/noticias/economia/precio-arroz-maiz-ecuador-eliminacion-subsidio-diesel-nota/",
+      "expreso_diesel25": "Expreso (16-sep-2025): diésel ~30% del costo de producción de arroz — https://www.expreso.ec/actualidad/economia/agro-exige-focalizar-compensaciones-y-un-pago-justo-tras-retiro-de-subsidio-al-diesel-257215"
+    }
+  }
+}
