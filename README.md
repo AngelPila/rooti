@@ -13,6 +13,7 @@ Each route has its own layout on a computer and on a phone, and fits one screen 
 | Route | Computer | Phone |
 |---|---|---|
 | `#/` | Landing: headline, photo with a sample farm calendar, how it works, NASA data | Same pitch, button within thumb reach |
+| `#/bootcamp` | Free 12-minute course on planting and crop rotation, with a final quiz and course links | Same lessons and quiz, stacked |
 | `#/planear` | Map on the left (click to mark the plot), all questions on the right | Four steps: where, when, which crops, land and water |
 | `#/plan` | Answer, figures and land per crop on the left; farm calendar with monthly rain on the right; top ideas | Answer, figures, farm calendar, link to ideas |
 | `#/probar` | Ideas that would do better (each checked by re-running the planner), when to sow each crop | Same, stacked |
@@ -20,6 +21,8 @@ Each route has its own layout on a computer and on a phone, and fits one screen 
 | `#/pasado` | The plan on every real run of years since 1981 | Same |
 
 Interface text is in plain language (Spanish first, English toggle): no jargon, fractions like "1 de cada 6 años" instead of percentages.
+
+The bootcamp saves lesson progress and the quiz badge in the current browser. Its [references](docs/REFERENCES.md) include Ecuador's SEAL platform, a local garden guide, and crop rotation guidance from SARE.
 
 ## How to use it
 
