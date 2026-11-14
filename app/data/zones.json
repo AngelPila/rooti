@@ -1,0 +1,20 @@
+[
+ {
+  "zone": "babahoyo",
+  "lat": -1.8,
+  "lon": -79.53,
+  "description": "Los Ríos - rice, maize"
+ },
+ {
+  "zone": "daule",
+  "lat": -1.86,
+  "lon": -79.98,
+  "description": "Guayas - rice"
+ },
+ {
+  "zone": "quevedo",
+  "lat": -1.03,
+  "lon": -79.46,
+  "description": "Los Ríos - maize, soybean"
+ }
+]

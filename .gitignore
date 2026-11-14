@@ -1,0 +1,5 @@
+.taste-skill/
+node_modules/
+data-cache/
+*.log
+.DS_Store

@@ -1,0 +1,1 @@
+{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"python3 $HOME/spaceapps-env/si-log-hook.py"}]}]}}

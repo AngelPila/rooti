@@ -1,0 +1,5 @@
+{
+  "babahoyo": {"lat": -1.80, "lon": -79.53, "desc": "Los Ríos - rice, maize"},
+  "daule":    {"lat": -1.86, "lon": -79.98, "desc": "Guayas - rice"},
+  "quevedo":  {"lat": -1.03, "lon": -79.46, "desc": "Los Ríos - maize, soybean"}
+}
