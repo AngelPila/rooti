@@ -419,3 +419,36 @@ ul.sub-alts { list-style: none; padding: 0; display: flex; flex-direction: colum
 ul.sub-alts li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; }
 ul.sub-alts li + li { border-top: 1px solid var(--border); }
 ul.sub-alts div { display: flex; flex-direction: column; } ul.sub-alts small { color: var(--ink2); font-size: 15px; }
+
+/* land, farm calendar, builder, comparison */
+.area-in { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
+.area-in input { width: 120px; font: inherit; font-size: 18px; font-weight: 600; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.area-in .seg { flex: 1; min-width: 240px; }
+.sub-h { font-size: 16px; font-weight: 700; margin-top: 4px; }
+ul.land-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+ul.land-list li { display: grid; grid-template-columns: 110px 1fr; gap: 8px; font-size: 16px; } ul.land-list span { color: var(--ink); }
+.farm-cal { display: flex; flex-direction: column; gap: 10px; }
+.fc-year { display: flex; flex-direction: column; gap: 3px; }
+.fc-row { display: grid; grid-template-columns: 96px 1fr; gap: 6px; align-items: center; }
+.fc-name { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-span { height: 28px; border-radius: 5px; display: flex; align-items: center; padding: 0 6px; color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; }
+.fc-span.good { background: var(--good); } .fc-span.care { background: var(--care); } .fc-span.danger { background: var(--danger); }
+.fc-span.bare.good { background: #D1D5DB; color: var(--ink); }
+@media (max-width: 600px) { .fc-row { grid-template-columns: 64px 1fr; gap: 4px; } .fc-name { font-size: 12px; } .fc-span { font-size: 11px; padding: 0 3px; height: 24px; } ul.land-list li { grid-template-columns: 1fr; gap: 0; } }
+details.parcels summary, details.more-rot summary { font-weight: 700; cursor: pointer; padding: 6px 0; }
+details.more-rot { display: flex; flex-direction: column; gap: 12px; }
+details.more-rot[open] > .panel { margin-top: 12px; }
+ul.try-list { list-style: none; padding: 0; display: flex; flex-direction: column; }
+ul.try-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; font-size: 16px; }
+ul.try-list li + li { border-top: 1px solid var(--border); }
+.b-plot { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.b-area { display: inline-flex; align-items: center; gap: 6px; font-size: 15px; color: var(--ink2); }
+.b-area input { width: 80px; font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.b-step { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.b-step select { font: inherit; font-size: 15px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff; min-height: 40px; }
+.b-step .st { font-size: 14px; font-weight: 600; } .st.good { color: var(--good); } .st.care { color: var(--care); } .st.danger, .st.err { color: var(--danger); }
+.text-btn.add { align-self: flex-start; }
+table.cmp { width: 100%; border-collapse: collapse; font-size: 16px; }
+table.cmp th, table.cmp td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); font-weight: 400; }
+table.cmp thead th { font-size: 14px; color: var(--ink2); }
+table.cmp td { font-variant-numeric: tabular-nums; } table.cmp td.win { font-weight: 700; color: var(--good); }

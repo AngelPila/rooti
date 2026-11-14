@@ -1,6 +1,6 @@
-import { fetchClimate } from "./climate.js?v=10";
-import { plan as runPlanner, cropMonths } from "./planner.js?v=10";
-import { STR } from "./i18n.js?v=10";
+import { fetchClimate } from "./climate.js?v=12";
+import { plan as runPlanner, cropMonths } from "./planner.js?v=12";
+import { STR } from "./i18n.js?v=12";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -14,6 +14,7 @@ const EXAMPLES = [
   { name: "Madrid", admin: "España", lat: 40.42, lon: -3.70 },
 ];
 const CROP_ORDER = ["rice", "maize", "soybean", "peanut", "common_bean", "cowpea", "sorghum", "wheat", "barley", "potato", "sunflower", "chickpea", "jack_bean", "velvet_bean", "mulch"];
+const UNITS = { ha: 1, m2: 0.0001, acre: 0.4047, cuadra: 0.7056 };
 const LEVEL_ICON = { good: "i-check", care: "i-minus", danger: "i-x" };
 
 const store = {
@@ -37,7 +38,7 @@ const state = {
   if (q.get("lat") && q.get("crops")) {
     state.plan = { place: { name: q.get("place") || `${(+q.get("lat")).toFixed(2)}, ${(+q.get("lon")).toFixed(2)}`, lat: +q.get("lat"), lon: +q.get("lon") },
       start: q.get("from") || iso(today), end: q.get("to") || iso(new Date(today.getFullYear() + 1, today.getMonth(), 28)),
-      crops: q.get("crops").split(/[+ ,]/).filter(Boolean), irrigation: q.get("irr") === "1" };
+      crops: q.get("crops").split(/[+ ,]/).filter(Boolean), irrigation: q.get("irr") === "1", area: +(q.get("area") || 1), unit: q.get("unit") || "ha" };
   }
 }
 const DATA = { crops: null, econ: null, fires: {}, clim: {} };
@@ -83,7 +84,7 @@ const nearPilot = (pl) => Object.entries(PILOTS).find(([, [la, lo]]) => Math.hyp
 
 /* ---------------- data ---------------- */
 async function loadBase() {
-  const [crops, econ] = await Promise.all([fetch("data/crops.json?v=10").then(ok), fetch("data/economics.json").then(ok).catch(() => null)]);
+  const [crops, econ] = await Promise.all([fetch("data/crops.json?v=12").then(ok), fetch("data/economics.json").then(ok).catch(() => null)]);
   DATA.crops = crops.crops; DATA.econ = econ;
 }
 async function climate(pl) {
@@ -145,7 +146,7 @@ const errorCard = (retry, msg) => h("div", { class: "errorcard", role: "alert" }
 function viewPlan() {
   const v = $("#view"); v.className = "view plan-view";
   const P = state.plan;
-  const d = (state.draft ||= { place: P?.place || null, start: P?.start || iso(today), end: P?.end || iso(new Date(today.getFullYear() + 1, today.getMonth(), today.getDate())), crops: [...(P?.crops || [])], irrigation: !!P?.irrigation });
+  const d = (state.draft ||= { area: P?.area || 1, unit: P?.unit || "ha", place: P?.place || null, start: P?.start || iso(today), end: P?.end || iso(new Date(today.getFullYear() + 1, today.getMonth(), today.getDate())), crops: [...(P?.crops || [])], irrigation: !!P?.irrigation });
   const redo = () => viewPlan();
   const months = Math.round((new Date(d.end) - new Date(d.start)) / (30.44 * 864e5));
   const dateErr = !(months >= 2) ? T().tooShort : months > 72 ? T().tooLong : null;
@@ -202,6 +203,9 @@ function viewPlan() {
       h("div", { class: "crop-grid" }, ...CROP_ORDER.filter((id) => id === "mulch" || DATA.crops[id]).map((id) => h("button", { class: "crop", "aria-pressed": String(d.crops.includes(id)),
         onclick: () => { d.crops = d.crops.includes(id) ? d.crops.filter((x) => x !== id) : [...d.crops, id]; redo(); } },
         h("b", {}, cap(cropName(id))), h("small", {}, kind(id) + (id !== "mulch" ? ` · ${cropMonths(DATA.crops[id])} ${T().mo}` : "")), d.crops.includes(id) ? icon("i-check", "icon tick") : null)))),
+    h("section", { class: "step" }, h("h2", { class: "step-h" }, T().howMuch),
+      h("div", { class: "area-in" }, h("input", { type: "number", min: "0.01", step: "any", inputmode: "decimal", value: String(d.area), "aria-label": T().howMuch, onchange: (e) => { const n = parseFloat(e.target.value); if (n > 0) { d.area = n; redo(); } } }),
+        h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, T().unit[u]))))),
     h("section", { class: "step" }, h("h2", { class: "step-h" }, T().qIrrigation),
       h("div", { class: "pick-row two" }, ...[[false, T().no], [true, T().yes]].map(([val, l]) => h("button", { class: "pick", "aria-pressed": String(d.irrigation === val), onclick: () => { d.irrigation = val; redo(); } }, h("b", {}, l))))),
     h("button", { class: "btn primary block go", disabled: !okAll, onclick: submit },
@@ -289,22 +293,162 @@ async function viewResult() {
   try { r = await results(); } catch (e) { console.error(e); put(v, errorCard(viewResult, T().climateError)); return; }
   if (!r.plans.length) { put(v, errorCard(() => go("inicio"), T().noPlans)); return; }
   const [best, ...rest] = r.plans;
-  const say = () => `${T().recommended}: ${planName(best)}. ${T().verdictPlan[best.verdict]}.`;
+  const say = () => r.farm ? `${T().farmRec(fmtArea(1))}: ${Object.values(r.farm.byCrop).map((c) => `${cropName(c.crop)} ${c.plantings.map((pl) => `${fmtArea(pl.share)}, ${span(pl.from, pl.to)}`).join("; ")}`).join(". ")}. ${T().verdictPlan[r.farm.verdict]}.` : `${T().recommended}: ${planName(best)}.`;
   put(v,
     h("div", { class: "row between" },
-      h("div", { style: "min-width:0" }, h("h1", { class: "h1" }, P.place.name), h("p", { class: "sub" }, `${fmtDate(P.start)} – ${fmtDate(P.end)} · ${P.crops.map(cropName).join(", ")}`)),
+      h("div", { style: "min-width:0" }, h("h1", { class: "h1" }, P.place.name), h("p", { class: "sub" }, `${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)} · ${P.crops.map(cropName).join(", ")}`)),
       h("div", { class: "row", style: "gap:8px" }, h("a", { class: "btn small-btn", href: "#/inicio", onclick: () => { state.draft = null; } }, T().change), listenBtn(say), desktop() ? langToggle() : null)),
     controls(), dataNote(r),
-    planPanel(best, 0, true),
-    subsPanel(r),
+    farmPanel(r),
+    legend(),
+    tryList(r),
     sowPanel(r),
-    rest.length ? h("h2", { class: "section-h" }, T().otherOptions) : null,
-    ...rest.map((p, i) => planPanel(p, i + 1, false)),
-    legend());
+    buildPanel(r),
+    h("details", { class: "more-rot" }, h("summary", {}, T().oneRotation),
+      ...r.plans.map((p, i) => planPanel(p, i, false))));
   updateMap(P.place, best);
 }
 function legend() {
   return h("div", { class: "legend" }, ...["good", "care", "danger"].map((l) => h("span", {}, h("i", { class: `sw-flat ${l}` }), T().level[l])), h("span", { class: "legend-hint" }, T().tapMonth));
+}
+
+/* ---------------- the farm ---------------- */
+const areaHa = () => (state.plan.area || 1) * UNITS[state.plan.unit || "ha"];
+const fmtArea = (shareOrHa, isShare = true) => {
+  const u = state.plan.unit || "ha", v = (isShare ? shareOrHa * (state.plan.area || 1) : shareOrHa / UNITS[u]);
+  const n = u === "m2" ? Math.round(v) : Math.round(v * 10) / 10;
+  return `${n.toLocaleString(state.lang)} ${T().unit[u]}`;
+};
+const majority = (ls) => { const d = ls.filter((l) => l === "danger").length, c = ls.filter((l) => l === "care").length; return d * 2 >= ls.length ? "danger" : (d + c) * 2 >= ls.length ? "care" : "good"; };
+// One calendar for the whole farm: a row per crop, on how much land and when; a block per year.
+function farmCalendar(f, period) {
+  const keys = [...new Set(f.grid.flatMap((g) => Object.keys(g)))].sort((a, b) => (a === "bare") - (b === "bare") || f.grid.findIndex((g) => g[a]) - f.grid.findIndex((g) => g[b]));
+  const years = [...new Set(period.map((p) => p.y))];
+  return h("div", { class: "farm-cal" }, ...years.map((y) => {
+    const idx = period.map((p, t) => (p.y === y ? t : -1)).filter((t) => t >= 0);
+    const rows = keys.filter((k) => idx.some((t) => f.grid[t][k]?.share > 0.001)).map((k) => {
+      const spans = [];
+      for (const t of idx) {
+        const c = f.grid[t][k]; if (!c || c.share < 0.001) continue;
+        const last = spans[spans.length - 1], lv = majority(c.levels), sh = Math.round(c.share * 100);
+        if (last && last.t1 === t - 1 && last.sh === sh) { last.t1 = t; last.ls.push(lv); } else spans.push({ t0: t, t1: t, sh, ls: [lv], share: c.share });
+      }
+      return h("div", { class: "fc-row" }, h("span", { class: "fc-name" }, k === "bare" ? T().bareShort : cap(fieldName(k))),
+        h("div", { class: "yr-m" }, ...spans.map((s) => h("div", { class: `fc-span ${majority(s.ls)}${k === "bare" ? " bare" : ""}`, style: `grid-column: ${period[s.t0].m} / span ${s.t1 - s.t0 + 1}`, title: fmtArea(s.share) },
+          h("span", {}, s.t1 > s.t0 || desktop() ? fmtArea(s.share) : "")))));
+    });
+    return h("div", { class: "fc-year" }, h("div", { class: "fc-row head" }, h("span", { class: "fc-name" }, h("b", {}, y)), h("div", { class: "yr-m letters" }, ...T().months.map((l) => h("span", {}, l)))), ...rows);
+  }));
+}
+function farmFacts(f) {
+  return h("p", { class: "facts" }, T().farmFacts(fmtArea(f.harvest), Math.round(f.covered * 100), Math.round(f.anyLoss * 100)));
+}
+function farmPanel(r) {
+  const f = r.farm, P = state.plan;
+  if (!f) return null;
+  const crops = Object.values(f.byCrop).sort((a, b) => a.plantings[0].t0 - b.plantings[0].t0);
+  return h("section", { class: "panel answer" },
+    h("p", { class: "label" }, T().farmRec(fmtArea(1))),
+    h("h2", { class: "answer-h" }, crops.map((c) => cap(cropName(c.crop))).join(" + ")),
+    h("p", { class: `verdict ${f.verdict}` }, h("i", { class: `sw-flat ${f.verdict}` }), T().verdictPlan[f.verdict]),
+    farmFacts(f),
+    h("h3", { class: "sub-h" }, T().landEach),
+    h("ul", { class: "land-list" }, ...crops.map((c) => h("li", {}, h("b", {}, cap(cropName(c.crop))),
+      h("span", {}, [...c.plantings].sort((x, y) => x.t0 - y.t0).map((pl) => `${fmtArea(pl.share)} · ${span(pl.from, pl.to)}`).join("; "))))),
+    h("p", { class: "small" }, T().landWhy),
+    h("h3", { class: "sub-h" }, T().farmCalTitle),
+    farmCalendar(f, r.period),
+    h("details", { class: "parcels" }, h("summary", {}, T().byPlot(f.parcels.length)),
+      h("ul", { class: "plain" }, ...f.parcels.map((pc, k) => h("li", {}, h("b", {}, `${T().plot} ${String.fromCharCode(65 + k)} · ${fmtArea(pc.share)}: `),
+        pc.d.steps.map((s) => `${cropName(s.crop)} ${span(r.period[s.t0], r.period[s.t1 - 1])}`).join(" → ") || T().nothing)))),
+    h("div", { class: "row answer-actions" },
+      h("a", { class: "btn", href: "#build" , onclick: (e) => { e.preventDefault(); document.getElementById("build")?.scrollIntoView({ behavior: "smooth" }); } }, T().buildMine, icon("i-chev-r")),
+      h("button", { class: "text-btn", onclick: () => { state.saved = { name: crops.map((c) => cropName(c.crop)).join(" + "), place: P.place.name, at: Date.now() }; store.set("saved2", state.saved); render(); } }, state.saved?.place === P.place.name ? T().saved : T().save)));
+}
+
+/* ---------------- try these simulations ---------------- */
+function tryList(r) {
+  const P = state.plan, items = [];
+  const addCrop = (id) => () => { state.plan = { ...P, crops: [...P.crops, id] }; store.set("plan2", state.plan); state.custom = null; memo.clear(); render(); };
+  for (const s of r.substitutes || []) for (const a of s.alts.slice(0, 2)) items.push({ text: T().tryInstead(cap(cropName(a.id)), cap(cropName(s.id)), Math.round(a.best.value * 100)), act: addCrop(a.id), btn: T().add });
+  const lostDry = r.farm && r.farm.parcels.some((pc) => pc.d.steps.some((s) => s.dry > 0));
+  if (!P.irrigation && (lostDry || (r.farm && r.farm.covered < 0.6))) items.push({ text: T().tryIrrigation, act: () => { state.plan = { ...P, irrigation: true }; store.set("plan2", state.plan); state.custom = null; render(); }, btn: T().tryBtn });
+  const hasLegume = P.crops.some((id) => DATA.crops[id]?.n_fixing);
+  if (!hasLegume) { const leg = Object.values(r.windows).filter((w) => DATA.crops[w.id]?.n_fixing && !GREEN.has(w.id)).sort((a, b) => (b.best?.value ?? 0) - (a.best?.value ?? 0))[0];
+    if (leg && (leg.best?.value ?? 0) >= 0.5) items.push({ text: T().tryLegume(cap(cropName(leg.id)), Math.round(leg.best.value * 100)), act: addCrop(leg.id), btn: T().add }); }
+  if (!P.crops.includes("mulch") && P.crops.some((id) => ["rice", "maize", "sorghum", "wheat", "barley"].includes(id)) && r.farm && r.farm.covered < 0.8) items.push({ text: T().tryMulch(Math.round((1 - r.farm.covered) * 100)), act: addCrop("mulch"), btn: T().add });
+  if (r.farm && r.farm.covered < 0.6) { const cover = Object.values(r.windows).filter((w) => GREEN.has(w.id) && !P.crops.includes(w.id)).sort((a, b) => (b.best?.value ?? 0) - (a.best?.value ?? 0))[0];
+    if (cover && (cover.best?.value ?? 0) >= 0.5) items.push({ text: T().tryCover(cap(cropName(cover.id))), act: addCrop(cover.id), btn: T().add }); }
+  if (state.mode === "all") items.push({ text: T().tryDry, act: () => { state.mode = "dry"; render(); }, btn: T().tryBtn });
+  if (!items.length) return null;
+  return h("section", { class: "panel" }, h("h2", { class: "panel-h" }, T().tryTitle), h("p", { class: "small" }, T().trySub),
+    h("ul", { class: "try-list" }, ...items.slice(0, 6).map((it) => h("li", {}, h("span", {}, it.text), h("button", { class: "btn sim", onclick: it.act }, it.btn)))));
+}
+const GREEN = new Set(["velvet_bean", "jack_bean"]);
+
+/* ---------------- build your own and compare ---------------- */
+function customFrom(f) {
+  return f.parcels.map((pc) => ({ area: Math.round(pc.share * (state.plan.area || 1) * 100) / 100, steps: pc.d.steps.map((s) => ({ crop: s.crop, t0: s.t0 })) }));
+}
+function moneyFarm(f) {
+  if (!nearPilot(state.plan.place) || !DATA.econ) return null;
+  let total = 0, known = false;
+  for (const pc of f.parcels) for (const st of pc.d.steps) {
+    const e = DATA.econ.crops?.[st.crop], y = e?.yield_t_ha?.typical, pr = e?.price_usd_per_t?.typical, co = e?.cost_usd_ha?.typical;
+    if (!y || !pr || !co) continue; known = true;
+    const row = pc.d.steps.find((x) => x === st), s = f.byCrop[st.crop].plantings.find((x) => x.t0 === st.t0 && Math.abs(x.share - pc.share) < 1e-9);
+    total += pc.share * areaHa() * (y * pr * (s?.yld ?? 0) - co);
+  }
+  return known ? Math.round(total / 10) * 10 : null;
+}
+function buildPanel(r) {
+  if (!r.farm) return null;
+  const P = state.plan, key = JSON.stringify([P, state.mode, state.priority]);
+  if (!state.custom || state.customKey !== JSON.stringify(P)) { state.custom = customFrom(r.farm); state.customKey = JSON.stringify(P); }
+  const C = state.custom, redo = () => render();
+  const used = C.reduce((x, pc) => x + (+pc.area || 0), 0);
+  const mine = r.evalFarm(C.map((pc) => ({ share: (+pc.area || 0) / (P.area || 1), steps: pc.steps })));
+  const choices = [...new Set([...P.crops.filter((id) => id !== "mulch"), ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id])])];
+  const monthOpts = (crop, t0) => r.period.map((p, t) => h("option", { value: t, selected: t === t0 ? true : null, disabled: r.monthsOf(crop) + t > r.period.length ? true : null }, ym(p)));
+  const status = (pc, st) => { const pcI = C.indexOf(pc), d = mine.parcels[pcI]; const s = d?.d.steps.find((x) => x.t0 === st.t0 && x.crop === st.crop); const err = d?.errors.find((x) => x.t0 === st.t0 && x.crop === st.crop);
+    if (err) return h("span", { class: "st err" }, err.why === "overlap" ? T().overlap : T().noTimeShort);
+    if (!s) return null; const lv = s.fail >= 0.5 ? "danger" : s.fail > 0.15 || s.yld < 0.6 ? "care" : "good";
+    return h("span", { class: `st ${lv}` }, `→ ${ym(r.period[s.t1 - 1])} · ${Math.round((1 - s.fail) * s.yld * 100)} %`); };
+  const freeT = (pc) => pc.steps.reduce((e, s) => Math.max(e, s.t0 + r.monthsOf(s.crop)), 0);
+  const parcelsUI = C.map((pc, k) => h("div", { class: "b-plot" },
+    h("div", { class: "row between" }, h("b", {}, `${T().plot} ${String.fromCharCode(65 + k)}`),
+      h("label", { class: "b-area" }, h("input", { type: "number", min: "0", step: "any", value: String(pc.area), onchange: (e) => { pc.area = Math.max(0, parseFloat(e.target.value) || 0); redo(); } }), T().unit[P.unit || "ha"]),
+      C.length > 1 ? h("button", { class: "text-btn", onclick: () => { C.splice(k, 1); redo(); } }, T().remove) : null),
+    ...pc.steps.map((st, j) => h("div", { class: "b-step" },
+      h("select", { "aria-label": T().what, onchange: (e) => { st.crop = e.target.value; redo(); } }, ...choices.map((id) => h("option", { value: id, selected: id === st.crop ? true : null }, cap(cropName(id))))),
+      h("select", { "aria-label": T().when, onchange: (e) => { st.t0 = +e.target.value; redo(); } }, ...monthOpts(st.crop, st.t0)),
+      status(pc, st),
+      h("button", { class: "text-btn", "aria-label": T().remove, onclick: () => { pc.steps.splice(j, 1); redo(); } }, "✕"))),
+    freeT(pc) < r.period.length - 1 ? h("button", { class: "text-btn add", onclick: () => { pc.steps.push({ crop: choices[0], t0: freeT(pc) }); redo(); } }, `+ ${T().addPlanting}`) : null));
+  const rec = r.farm, mRec = moneyFarm(rec), mMine = moneyFarm(mine);
+  const rows = [
+    [T().cmpHarvest, fmtArea(rec.harvest), fmtArea(mine.harvest), rec.harvest, mine.harvest, true],
+    [T().cmpAnyLoss, `${Math.round(rec.anyLoss * 100)} %`, `${Math.round(mine.anyLoss * 100)} %`, rec.anyLoss, mine.anyLoss, false],
+    [T().cmpBigLoss, `${Math.round(rec.bigLoss * 100)} %`, `${Math.round(mine.bigLoss * 100)} %`, rec.bigLoss, mine.bigLoss, false],
+    [T().cmpCovered, `${Math.round(rec.covered * 100)} %`, `${Math.round(mine.covered * 100)} %`, rec.covered, mine.covered, true],
+    [T().cmpSoil, T().soilIdx(rec.loss), T().soilIdx(mine.loss), rec.loss, mine.loss, false],
+    ...(mRec != null && mMine != null ? [[T().cmpMoney, `$${mRec.toLocaleString(state.lang)}`, `$${mMine.toLocaleString(state.lang)}`, mRec, mMine, true]] : []),
+  ];
+  const better = (a, b, up) => (Math.abs(a - b) <= 0.02 * Math.max(Math.abs(a), Math.abs(b), 0.05) ? 0 : (up ? b > a : b < a) ? 1 : -1);
+  const score = rows.reduce((x, rw) => x + better(rw[3], rw[4], rw[5]), 0);
+  return h("section", { class: "panel", id: "build" },
+    h("h2", { class: "panel-h" }, T().buildTitle), h("p", { class: "small" }, T().buildSub),
+    ...parcelsUI,
+    h("div", { class: "row wrap", style: "gap:12px" },
+      h("button", { class: "btn sim", onclick: () => { C.push({ area: Math.max(0, Math.round(((P.area || 1) - used) * 100) / 100), steps: [{ crop: choices[0], t0: 0 }] }); redo(); } }, `+ ${T().addPlot}`),
+      h("button", { class: "text-btn", onclick: () => { state.custom = customFrom(r.farm); redo(); } }, T().resetToRec),
+      h("span", { class: `small${used > (P.area || 1) + 1e-6 ? " err" : ""}` }, T().landUsed(fmtArea(used / (P.area || 1)), fmtArea(1)))),
+    mine.parcels.some((pc) => pc.d.steps.length) ? farmCalendar(mine, r.period) : null,
+    h("h3", { class: "sub-h" }, T().cmpTitle),
+    h("table", { class: "cmp" }, h("thead", {}, h("tr", {}, h("th", {}), h("th", {}, T().cmpRec), h("th", {}, T().cmpMine))),
+      h("tbody", {}, ...rows.map(([label, a, b, va, vb, up]) => { const w = better(va, vb, up);
+        return h("tr", {}, h("th", { scope: "row" }, label), h("td", { class: w < 0 ? "win" : "" }, a), h("td", { class: w > 0 ? "win" : "" }, b)); }))),
+    h("p", { class: `verdict ${score > 0 ? "good" : score < 0 ? "care" : "good"}` }, score > 0 ? T().mineBetter : score < 0 ? T().recBetter : T().tie));
 }
 
 /* ---------------- when to sow each crop, and better crops ---------------- */
@@ -313,7 +457,7 @@ function sowRows(info, period) {
   const byY = {};
   period.forEach((p, t) => (byY[p.y] ||= []).push({ ...p, s: info.starts[t] }));
   return h("div", { class: "yr-cal compact sow" }, ...Object.entries(byY).map(([y, ms]) => h("div", { class: "yr-row" }, h("span", { class: "yr-y" }, y),
-    h("div", { class: "yr-m" }, ...ms.map((x) => h("span", { class: `sow-m ${x.s ? x.s.level : "none"}${x.s && info.best && x.s.t === info.best.t ? " best" : ""}`, style: `grid-column:${x.m}`,
+    h("div", { class: "yr-m" }, ...ms.map((x) => h("span", { class: `sow-m ${x.s ? x.s.level : "none"}${x.s && info.best && x.s.t === info.best.t && info.best.level !== "danger" ? " best" : ""}`, style: `grid-column:${x.m}`,
       title: x.s ? `${T().monthsLong[x.m - 1]} ${x.y}: ${Math.round(x.s.value * 100)} %` : T().noTime }))))));
 }
 function sowPanel(r) {

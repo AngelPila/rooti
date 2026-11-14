@@ -8,11 +8,14 @@ Pilot zones: Daule, Babahoyo and Quevedo (rice and maize on the Ecuadorian coast
 
 ## How to use it
 
-1. **Plan.** Pick any place in the world (search, GPS or tap the globe), a date range (for example 4 Mar 2023 to 7 Jun 2027) and the crops you want to grow.
-2. **Results.** Rooti builds rotations **only from those crops** and picks the planting months itself. The best candidate is shown as recommended; every other option stays on screen.
-3. **When to sow each crop.** For every picked crop, each month of the range is coloured by how it would go if sown that month; the best windows are named ("best to sow: Dec 2026 – Mar 2027 · up to 91 %").
-4. **Try instead.** When a picked crop does not suit the dates (under 50 % of a harvest at best), Rooti suggests crops from its list that do better on the same dates, with one tap to add them to the plan.
-5. **What if.** Each plan replayed on every real sequence of years since 1981.
+1. **Plan.** Pick any place in the world (search, GPS or tap the globe), a date range (for example 4 Mar 2023 to 7 Jun 2027) the crops you want to grow and how much land you have (ha, m², acres or cuadras).
+2. **Recommended farm plan.** The land is split into plots that run side by side, one led by each crop that suits the dates, each rotating the picked crops. Rooti says how much land goes to each crop and when, and shows one farm calendar with every crop (for example potato Jan–Apr and maize May–Aug on one plot, the opposite on the other, so both are in the ground every month). More land goes to what yields best, at least 15 % to each rotation.
+3. **Try these simulations.** Better crops for the dates, irrigation, a legume, keeping the straw, testing on dry years; one tap each.
+4. **Build your own plan and compare.** Start from the recommended plan, change crops, sowing months or land per plot, and see your plan's farm calendar and a side-by-side table: expected harvest, years with some loss, years losing over half, soil covered, soil damage and (in the pilot zones) money after costs.
+5. **Single-plot rotations.** Rooti builds rotations **only from those crops** and picks the planting months itself. The best candidate is shown as recommended; every other option stays on screen.
+6. **When to sow each crop.** For every picked crop, each month of the range is coloured by how it would go if sown that month; the best windows are named ("best to sow: Dec 2026 – Mar 2027 · up to 91 %").
+7. **Try instead.** When a picked crop does not suit the dates (under 50 % of a harvest at best), Rooti suggests crops from its list that do better on the same dates, with one tap to add them to the plan.
+8. **What if.** Each plan replayed on every real sequence of years since 1981.
 
 How the global planner works (`app/climate.js`, `app/planner.js`):
 - **NASA POWER** monthly climate for the point, 1981 to last month (monthly API plus daily data for the current year), fetched live from the browser. ET0 is FAO-56 Penman-Monteith from POWER's monthly means (`T2M`, `T2M_RANGE`, `RH2M`, `WS2M`, `ALLSKY_SFC_SW_DWN`).

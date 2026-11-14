@@ -161,7 +161,64 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
       .sort((a, b) => (+!!crops[b].n_fixing === +legume) - (+!!crops[a].n_fixing === +legume) || windows[b].best.value - windows[a].best.value).slice(0, 3);
     return { id, best: windows[id].best, alts: alts.map((x) => windows[x]) };
   }).filter((x) => x.alts.length || (x.best?.value ?? 0) < 0.35);
-  return { period, samples: S, plans, windows, substitutes };
+
+  // ---------- the farm: land split into plots that run side by side ----------
+  // Any arrangement (the recommended one or the farmer's own) is judged the same way, on the same years.
+  function evalFarm(parcelsIn) {
+    const tot = Math.max(1, parcelsIn.reduce((x, p) => x + (p.share || 0), 0));
+    const parcels = parcelsIn.map((pc, k) => {
+      const steps = [], errors = [];
+      let end = 0;
+      for (const st of [...pc.steps].sort((a, b) => a.t0 - b.t0)) {
+        const row = tab[st.crop]?.[st.t0];
+        if (!row) { errors.push({ ...st, why: "no_time" }); continue; }
+        if (st.t0 < end) { errors.push({ ...st, why: "overlap" }); continue; }
+        steps.push({ crop: st.crop, t0: st.t0, t1: st.t0 + row.L }); end = st.t0 + row.L;
+      }
+      return { share: (pc.share || 0) / tot, d: describe({ steps, v: 0 }, k), errors };
+    });
+    const per = S.map((_, si) => {
+      let harvest = 0, planted = 0, lost = 0, loss = 0;
+      for (const pc of parcels) {
+        for (const st of pc.d.steps) { const run = tab[st.crop][st.t0].runs[si]; planted += pc.share; harvest += pc.share * run.yieldShare; if (run.failed) lost += pc.share; }
+        loss += pc.share * pc.d.perSample[si].loss;
+      }
+      return { base: S[si].base, harvest, lostShare: planted ? lost / planted : 0, loss };
+    });
+    const byCrop = {};
+    for (const pc of parcels) for (const st of pc.d.steps) {
+      const row = tab[st.crop][st.t0], b = (byCrop[st.crop] ||= { crop: st.crop, area: 0, harvest: 0, plantings: [] });
+      b.area = Math.max(b.area, pc.share); b.harvest += pc.share * row.yld * (1 - 0) ; b.plantings.push({ share: pc.share, t0: st.t0, t1: st.t1, from: period[st.t0], to: period[st.t1 - 1], fail: row.fail, yld: row.yld });
+    }
+    const covered = parcels.reduce((x, pc) => x + pc.share * pc.d.covered, 0) / N;
+    const anyLoss = mean(per.map((x) => (x.lostShare > 0 ? 1 : 0))), bigLoss = mean(per.map((x) => (x.lostShare >= 0.5 ? 1 : 0)));
+    const harvest = mean(per.map((x) => x.harvest)), loss = mean(per.map((x) => x.loss));
+    const verdict = !parcels.some((pc) => pc.d.steps.length) || bigLoss >= 0.3 ? "danger" : anyLoss >= 0.3 || covered < 0.5 || loss > 2.5 ? "care" : "good";
+    // Month by month, which crop is on how much of the land, for the farm calendar.
+    const grid = period.map((pp, t) => {
+      const here = {};
+      for (const pc of parcels) {
+        const m = pc.d.months[t], k = m.crop || "bare", st = pc.d.steps.find((x) => t >= x.t0 && t < x.t1);
+        // A crop month takes the colour of how that planting ends (harvest share), not of one month's stress.
+        const lv = st ? (st.fail >= 0.5 ? "danger" : st.fail > 0.15 || st.yld < 0.6 ? "care" : "good") : m.level;
+        const c = (here[k] ||= { share: 0, levels: [] }); c.share += pc.share; c.levels.push(lv);
+      }
+      return here;
+    });
+    return { parcels, per, byCrop, covered, anyLoss, bigLoss, harvest, loss, verdict, grid, errors: parcels.flatMap((pc) => pc.errors) };
+  }
+  // Recommended farm: one plot per crop that holds up, each plot led by that crop and rotated with the others;
+  // more land to the plots that yield more, at least 15 % each so no crop carries the whole farm.
+  const viable = ids.filter((id) => (windows[id].best?.value ?? 0) >= 0.35);
+  const leads = (viable.length ? viable : ids).map((id) => best(ids, id)).filter((r) => r.steps.length);
+  const seenL = new Set(), uniqL = leads.filter((r) => { const k = r.steps.map((x) => `${x.crop}@${x.t0}`).join(","); if (seenL.has(k)) return false; seenL.add(k); return true; });
+  let farm = null;
+  if (uniqL.length) {
+    const w = uniqL.map((r) => Math.exp(1.5 * r.v)), ws = w.reduce((a, b) => a + b, 0);
+    let sh = w.map((x) => Math.max(0.15, x / ws)); const t2 = sh.reduce((a, b) => a + b, 0); sh = sh.map((x) => x / t2);
+    farm = evalFarm(uniqL.map((r, k) => ({ share: sh[k], steps: r.steps.map((x) => ({ crop: x.crop, t0: x.t0 })) })));
+  }
+  return { period, samples: S, plans, windows, substitutes, farm, evalFarm, monthsOf: (id) => cropMonths(crops[id]) };
 
   // Month-by-month picture and outcome of one plan.
   function describe(r, i) {
