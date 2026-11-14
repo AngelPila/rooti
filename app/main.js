@@ -1,8 +1,8 @@
-import { fetchClimate } from "./climate.js?v=19";
-import { plan as runPlanner, cropMonths } from "./planner.js?v=19";
-import { COPY } from "./copy.js?v=19";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=19";
-import { STR } from "./i18n.js?v=19";
+import { fetchClimate } from "./climate.js?v=21";
+import { plan as runPlanner, cropMonths } from "./planner.js?v=21";
+import { COPY } from "./copy.js?v=21";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=21";
+import { STR } from "./i18n.js?v=21";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -102,7 +102,7 @@ const monthsIn = (P) => Math.round((new Date(P.end) - new Date(P.start)) / (30.4
 
 /* ---------------- data ---------------- */
 async function loadBase() {
-  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=19").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
+  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=21").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
   DATA.crops = crops.crops; DATA.econ = econ; DATA.outlook = outlook;
 }
 function climate(pl) {
@@ -372,45 +372,45 @@ function normalRain(clim, m) {
   return normalRain.c[k];
 }
 // Farm calendar: one row per crop with the land it takes, over the whole period; split in blocks when long.
+// Farm calendar: one row per plot, its plantings in order as labelled bars (crop name + how it ends),
+// straw where the soil is covered, the grey track is bare soil. Long periods split in blocks.
 function farmCalendar(r, f, { compact = false, rain = false } = {}) {
   const N = r.period.length, size = desktop() && !compact ? (N <= 24 ? N : 12) : 12, n1 = r.samples.length;
-  const pls = plantingsOf(f);
-  const keys = [...new Set(f.grid.flatMap((g) => Object.keys(g)))].sort((a, b) => (a === "bare") - (b === "bare") || (a === "mulch") - (b === "mulch") || f.grid.findIndex((g) => g[a]) - f.grid.findIndex((g) => g[b]));
+  const plots = f.parcels.map((pc, k) => ({ pc, k })).filter((x) => x.pc.share > 0.001).sort((a, b) => b.pc.share - a.pc.share);
   const mx = Math.max(1, ...Array.from({ length: 12 }, (_, i) => normalRain(r.clim, i + 1)));
+  const lab = compact ? "62px" : desktop() ? "96px" : "70px";
   const blocks = [];
   for (let a = 0; a < N; a += size) {
     const b = Math.min(N, a + size), n = b - a, months = r.period.slice(a, b), wide = desktop() && !compact && n <= 14;
-    const head = h("div", { class: "cal-row cal-head" }, h("span"), h("div", { class: "cal-grid", style: { "--n": n } }, ...months.map((p, i) =>
-      h("span", {}, wide ? (i === 0 || p.m === 1 ? `${mon(p.m)} ${String(p.y).slice(2)}` : mon(p.m)) : S().months[p.m - 1]))));
-    const rows = keys.filter((k) => months.some((_, i) => f.grid[a + i][k]?.share > 0.001)).flatMap((k) => {
-      let items;
-      if (k === "bare" || k === "mulch") {
-        // Bare soil and straw: consecutive months merged, labelled with the most land they take.
-        items = [];
-        for (let t = a; t < b; t++) { const cc = f.grid[t][k]; if (!cc || cc.share < 0.001) continue; const last = items[items.length - 1];
-          if (last && last.t1 === t - 1) { last.t1 = t; last.share = Math.max(last.share, cc.share); last.ls.push(...cc.levels); } else items.push({ t0: t, t1: t, share: cc.share, ls: [...cc.levels] }); }
-        return [h("div", { class: "cal-row" }, h("span", { class: "cal-name" }, k === "bare" ? C().bare : cap(cropName(k))),
-          h("div", { class: "cal-grid", style: { "--n": n } }, ...items.map((s) => h("button", { class: `bar ${k === "bare" ? "bare" : "straw"}${compact ? "" : " grow"}`, style: { gridColumn: `${s.t0 - a + 1} / span ${s.t1 - s.t0 + 1}`, animationDelay: `${300 + s.t0 * 25}ms` }, onclick: () => barSheet(r, f, k, s, null) },
-            h("b", {}, fmtArea(s.share)), k === "mulch" ? h("small", {}, C().coversSoil) : null))))];
+    const head = h("div", { class: "cal-row cal-head", style: { "--lab": lab } }, h("span"), h("div", { class: "cal-grid", style: { "--n": n } }, ...months.map((p, i) =>
+      h("span", { class: p.m === 1 && i > 0 ? "yr" : "" }, wide ? (i === 0 || p.m === 1 ? `${mon(p.m)} ${String(p.y).slice(2)}` : mon(p.m)) : (desktop() && !compact && p.m === 1 && i > 0 ? `${S().months[0]}'${String(p.y).slice(2)}` : S().months[p.m - 1])))));
+    const rows = plots.map(({ pc, k }) => {
+      const bars = [];
+      for (const st of pc.d.steps) {
+        if (st.t1 <= a || st.t0 >= b) continue;
+        const s0 = Math.max(a, st.t0), s1 = Math.min(b, st.t1) - 1, lv = st.fail >= 0.5 ? "danger" : st.fail > 0.15 || st.yld < 0.6 ? "care" : "good", len = s1 - s0 + 1;
+        bars.push(h("button", { class: `bar ${lv}${compact ? "" : " grow"}`, style: { gridColumn: `${s0 - a + 1} / span ${len}`, animationDelay: `${150 + st.t0 * 20 + k * 80}ms` },
+          title: `${cap(cropName(st.crop))} · ${span(r.period[st.t0], r.period[st.t1 - 1])} · ${outcomeShort(st, n1)}`, onclick: () => stepSheet(r, pc, st) },
+          h("b", {}, cap(cropName(st.crop))), s0 === st.t0 && len >= 3 ? h("small", {}, outcomeShort(st, n1)) : null));
       }
-      // Crops: one bar per planting, for its whole duration; plantings of the same crop that overlap go on separate lanes.
-      const groups = [];
-      for (const p of pls.filter((p) => p.crop === k && p.t1 > a && p.t0 < b)) { const g = groups.find((x) => x.t0 === p.t0 && x.t1 === p.t1); if (g) { g.share += p.share; g.pl.push(p); } else groups.push({ t0: p.t0, t1: p.t1, share: p.share, pl: [p] }); }
-      const lanes = [];
-      for (const g of groups.sort((x, y) => x.t0 - y.t0)) { let L = lanes.find((ln) => ln[ln.length - 1].t1 <= g.t0); if (!L) lanes.push(L = []); L.push(g); }
-      return lanes.map((ln, li) => h("div", { class: "cal-row" }, h("span", { class: "cal-name" }, li === 0 ? cap(cropName(k)) : ""),
-        h("div", { class: "cal-grid", style: { "--n": n } }, ...ln.map((g) => {
-          const pl = g.pl[0], s0 = Math.max(a, g.t0), s1 = Math.min(b, g.t1) - 1, lv = pl.fail >= 0.5 ? "danger" : pl.fail > 0.15 || pl.yld < 0.6 ? "care" : "good";
-          return h("button", { class: `bar ${lv}${compact ? "" : " grow"}`, style: { gridColumn: `${s0 - a + 1} / span ${s1 - s0 + 1}`, animationDelay: `${150 + g.t0 * 25 + li * 90}ms` }, title: `${cap(cropName(k))} · ${fmtArea(g.share)} · ${span(r.period[g.t0], r.period[g.t1 - 1])}`, onclick: () => barSheet(r, f, k, { share: g.share, t0: g.t0, t1: g.t1 - 1 }, pl) },
-            h("b", {}, fmtArea(g.share)), s0 === g.t0 ? h("small", {}, outcomeShort(pl, n1)) : null);
-        }))));
+      // straw on the ground between plantings
+      let t = a;
+      while (t < b) { if (pc.d.months[t]?.crop === "mulch") { let u = t; while (u + 1 < b && pc.d.months[u + 1]?.crop === "mulch") u++; bars.push(h("div", { class: "bar straw", style: { gridColumn: `${t - a + 1} / span ${u - t + 1}` } }, u - t >= 1 ? h("b", {}, C().straw) : null)); t = u + 1; } else t++; }
+      return h("div", { class: "cal-row", style: { "--lab": lab } }, h("span", { class: "cal-name" }, h("b", {}, compact ? String.fromCharCode(65 + k) : `${C().plot} ${String.fromCharCode(65 + k)}`), h("small", {}, fmtArea(pc.share))),
+        h("div", { class: "cal-grid track", style: { "--n": n } }, ...bars));
     });
-    const rainRow = rain ? h("div", { class: "cal-row rain-row" }, h("span", { class: "cal-name" }, C().rain, h("br"), h("small", { style: { fontWeight: 400, fontSize: "12px", color: "var(--ink2)" } }, C().rainUnit)),
+    const rainRow = rain ? h("div", { class: "cal-row rain-row", style: { "--lab": lab } }, h("span", { class: "cal-name" }, h("b", {}, C().rain), h("small", {}, C().rainUnit)),
       h("div", { class: "cal-grid", style: { "--n": n } }, ...months.map((p) => { const v = normalRain(r.clim, p.m);
-        return h("div", { class: "rain-col" }, h("span", {}, String(Math.round(v))), h("i", { style: { height: `${Math.max(3, (v / mx) * 110)}px` } })); }))) : null;
+        return h("div", { class: "rain-col" }, n <= 14 ? h("span", {}, String(Math.round(v))) : null, h("i", { style: { height: `${Math.max(3, (v / mx) * 100)}%` } })); }))) : null;
     blocks.push(h("div", { class: "cal-block" }, head, ...rows, rainRow));
   }
-  return h("div", { class: `cal${compact ? " compact" : ""}` }, ...blocks);
+  return h("div", { class: `cal plots${compact ? " compact" : ""}` }, ...blocks);
+}
+function stepSheet(r, pc, st) {
+  sheet(h("h2", { class: "display" }, `${cap(cropName(st.crop))} · ${fmtArea(pc.share)}`), h("p", { class: "small" }, span(r.period[st.t0], r.period[st.t1 - 1])),
+    h("p", { style: { fontSize: "18px" } }, cap(outcome(st, r.samples.length))),
+    h("p", { class: "small" }, C().rainVsNeed(Math.round(st.rain), Math.round(st.need))),
+    h("p", { class: "small" }, C().checkLocal));
 }
 function barSheet(r, f, k, s, pl) {
   const name = k === "bare" ? C().lgBare : cap(cropName(k));
@@ -660,9 +660,9 @@ function money(f) {
 function viewComparar() {
   return withResults((r) => {
     const c = C(), P = state.plan, rec = r.farm, N = r.period.length;
-    if (!state.custom || state.customKey !== JSON.stringify(P)) { state.custom = customFrom(r.today || rec); state.customKey = JSON.stringify(P); }
+    if (!state.custom || state.customKey !== JSON.stringify(P)) { state.custom = customFrom(r.today || rec); state.customKey = JSON.stringify(P); state.customStraw = !r.today && P.crops.includes("mulch"); }
     const K = state.custom, redo = () => viewComparar();
-    const mine = r.evalFarm(K.map((pc) => ({ share: (+pc.area || 0) / (P.area || 1), steps: pc.steps })));
+    const mine = r.evalFarm(K.map((pc) => ({ share: (+pc.area || 0) / (P.area || 1), steps: pc.steps })), { noMulch: !state.customStraw });
     const choices = [...new Set([...P.crops.filter((id) => id !== "mulch"), ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id])])];
     const used = K.reduce((x, pc) => x + (+pc.area || 0), 0);
     const freeT = (pc) => pc.steps.reduce((e, s) => Math.max(e, s.t0 + r.monthsOf(s.crop)), 0);
@@ -704,7 +704,8 @@ function viewComparar() {
         ...plots,
         h("div", { class: "row wrap", style: { gap: "14px" } },
           h("button", { class: "btn", onclick: () => { K.push({ area: Math.max(0, +((P.area || 1) - used).toFixed(2)), steps: [{ crop: choices[0], t0: 0 }] }); redo(); } }, c.addPlot),
-          h("button", { class: "link", onclick: () => { state.custom = customFrom(rec); redo(); } }, c.reset)),
+          h("button", { class: "link", onclick: () => { state.custom = customFrom(rec); state.customStraw = P.crops.includes("mulch"); redo(); } }, c.reset)),
+        P.crops.includes("mulch") ? h("label", { class: "row", style: { gap: "8px", fontSize: "15px" } }, h("input", { type: "checkbox", checked: state.customStraw || null, onchange: (e) => { state.customStraw = e.target.checked; redo(); } }), c.keepStraw) : null,
         h("p", { class: used > (P.area || 1) + 1e-6 ? "err" : "small" }, c.uses(fmtArea(used / (P.area || 1)), fmtArea(1)))),
       h("div", { class: "col-right" },
         h("h2", { class: "display phone-only", style: { fontSize: "22px" } }, c.cmpTitle),

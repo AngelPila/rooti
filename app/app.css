@@ -498,3 +498,25 @@ body.results .bottom-nav { grid-template-columns: repeat(5, 1fr) !important; }
   body.r-planear #view { bottom: auto; max-height: calc(100% - 48px); }
   .plan-float { height: auto; max-height: calc(100dvh - 64px - 48px); }
 }
+
+/* farm calendar by plot */
+.cal.plots .cal-row { grid-template-columns: var(--lab, 70px) 1fr; }
+.cal.plots .cal-name { display: flex; flex-direction: column; line-height: 1.15; }
+.cal.plots .cal-name b { font-size: 14px; } .cal.plots .cal-name small { font-size: 12px; color: var(--ink2); font-weight: 500; }
+.cal-grid.track { background: repeating-linear-gradient(135deg, #E3E6E3 0 6px, #ECEFEC 6px 12px); border-radius: 6px; padding: 3px 0; }
+.cal.plots .bar { height: 34px; }
+.cal.plots .bar b { font-size: 12px; }
+.cal.plots .bar.straw { background: var(--straw); color: var(--ink); }
+.cal-head span.yr { color: var(--ink); }
+.rain-row .cal-grid { height: 70px; }
+.rain-col i { flex: none; }
+.farm-card { flex: none !important; overflow: hidden; }
+@media (min-width: 1024px) {
+  .cal.plots .bar { height: 46px; } .cal.plots .bar b { font-size: 14px; } .cal.plots .bar small { font-size: 12px; }
+  .cal.plots.compact .bar { height: 30px !important; } .cal.plots.compact .bar b { font-size: 12px; }
+  .cal.plots .cal-name b { font-size: 15px; }
+  .rain-row .cal-grid { height: 110px !important; }
+  .col-right { overflow: auto; }
+}
+.cal.plots .rain-row { margin-top: 22px; }
+.cal.plots .rain-col span { font-size: 11px; }
