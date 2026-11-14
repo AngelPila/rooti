@@ -29,6 +29,11 @@ Pilot zones: Daule, Babahoyo and Quevedo (rice and maize on the Ecuadorian coast
   - **Failure:** a rain-fed crop that gets less than 20 % of its water need is marked as failed.
   - **Soil risk** = rain on bare soil plus months of bare soil in the sun.
   - Scores combine water, soil and income with the farmer's priorities. Risk multiplies the score down.
+- `pipeline/outlook.py` builds the **rainy-season outlook** from October sea-surface temperatures, using NOAA CPC Niño 1+2 (the ocean right off Ecuador) and Niño 3.4.
+  - When the coast is strongly warm (Niño 1+2 ≥ +1.5 °C), the farmer sees what happened in every past year with an ocean that warm.
+  - For October 2026 (+5.3 °C, warmer than any year on record) that is 5 rainy seasons: 2 very wet (1983 and 1998, the wettest on record), 1 normal and 2 dry.
+  - A multinomial logistic regression was tested leave-one-year-out and **does not beat climatology** (hit rate 20–32 % vs 33 % by chance). It is reported in `outlook.json` but not shown to farmers. Coastal rain depends on warming that often appears only in January–March, as in the 2017 coastal El Niño.
+- `pipeline/fires.py` counts **fires seen from space** around each zone. Source: NASA MODIS MOD14A2/MYD14A2 thermal anomalies (8-day, 1 km). The count feeds the passport stamp "no burning seen by satellite".
 - `app/` is a static site: HTML, vanilla JS and **CesiumJS** (Esri World Imagery, OpenStreetMap fallback).
 - `data-pipeline/` holds the download scripts (NASA POWER, MODIS, SoilGrids, DEM, ONI) and their README with known caveats. `env/Dockerfile` is the reproducible Python environment they run in.
 

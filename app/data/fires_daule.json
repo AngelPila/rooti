@@ -1,0 +1,1 @@
+{"zone":"daule","source":"NASA MODIS MOD14A2/MYD14A2 v061 thermal anomalies (8-day, 1 km), Microsoft Planetary Computer","fire_rule":"FireMask >= 7","zone_box_km":11,"lot_box_km":3,"years":{"2023":{"zone_fires_by_month":[1,0,0,0,1,0,2,2,0,0,0,0],"lot_fires_by_month":[1,0,0,0,1,0,2,0,0,0,0,0]}}}

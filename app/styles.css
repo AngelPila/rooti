@@ -134,6 +134,13 @@ h1, h2, h3, p { margin: 0; }
 .stamp.locked .ic { background: #fff; border: 1.5px solid var(--line); color: var(--ink2); }
 .stamp small { font-size: 13px; font-weight: 400; color: var(--ink2); display: inline-flex; gap: 4px; align-items: center; }
 
+/* ---------- outlook ---------- */
+.outlook { display: flex; gap: 12px; align-items: flex-start; background: #EFF6FF; border-radius: var(--r); padding: 14px; }
+.outlook .oc-ic { width: 36px; height: 36px; border-radius: 10px; background: #1D4ED8; color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
+.outlook b { font-size: 16px; display: block; }
+.outlook p { font-size: 15px; color: var(--ink2); margin-top: 2px; }
+.oc-btn { margin-top: 8px; border: 0; background: none; padding: 6px 0; color: #1D4ED8; font-weight: 700; font-size: 16px; display: inline-flex; align-items: center; gap: 2px; }
+
 /* ---------- states ---------- */
 .banner { background: #FEF3C7; color: #92400E; font-weight: 600; font-size: 16px; padding: 12px 20px; display: flex; gap: 10px; align-items: center; }
 .skeleton { background: var(--soft); border-radius: 6px; animation: pulse 1.4s ease-in-out infinite; }

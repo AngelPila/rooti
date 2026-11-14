@@ -39,6 +39,7 @@ function h(tag, attrs = {}, ...kids) {
   for (const k of kids.flat()) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(k));
   return n;
 }
+const put = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
 function icon(id, cls = "icon") {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   s.setAttribute("class", cls); s.setAttribute("aria-hidden", "true");
@@ -51,8 +52,22 @@ const LEVEL_ICON = { good: "i-check", care: "i-minus", danger: "i-x" };
 
 /* ---------------- data ---------------- */
 async function loadBase() {
-  const [zones, crops] = await Promise.all([fetch("data/zones.json").then(ok), fetch("data/crops.json").then(ok)]);
-  DATA.zones = zones; DATA.crops = crops.crops;
+  const [zones, crops, outlook] = await Promise.all([fetch("data/zones.json").then(ok), fetch("data/crops.json").then(ok), fetch("data/outlook.json").then(ok).catch(() => null)]);
+  DATA.zones = zones; DATA.crops = crops.crops; DATA.outlook = outlook;
+}
+async function fireData(z) {
+  if (!(z in (DATA.fires ||= {}))) DATA.fires[z] = await fetch(`data/fires_${z}.json`).then(ok).catch(() => null);
+  return DATA.fires[z];
+}
+// Post-harvest season (May-Dec) fires near the lot and in the zone, per year, from MODIS.
+function fireSummary(f) {
+  if (!f) return null;
+  const yrs = Object.entries(f.years).filter(([, v]) => v.lot_fires_by_month);
+  const season = (arr) => arr.slice(4).reduce((a, b) => a + b, 0);
+  const last = yrs[yrs.length - 1];
+  const lotNow = season(last[1].lot_fires_by_month);
+  const firstMonth = last[1].lot_fires_by_month.findIndex((n, i) => i >= 4 && n > 0);
+  return { year: +last[0], lotNow, firstMonth, zoneYears: yrs.filter(([, v]) => season(v.zone_fires_by_month) > 0).length, totalYears: yrs.length };
 }
 async function zoneData(z) {
   if (!DATA.byZone[z]) DATA.byZone[z] = await fetch(`data/${z}.json`).then(ok);
@@ -117,12 +132,32 @@ function errorCard(retry) {
 }
 
 /* ---------------- views ---------------- */
+// Next rainy season, told as what happened in years when the ocean off Ecuador looked like now.
+function outlookCard() {
+  const o = DATA.outlook, z = o?.zones?.[state.lot.zone];
+  if (!z) return null;
+  const es = state.lang === "es", sst = o.predictors_now.nino12_anom_c, a = z.analogs, c = a.counts;
+  const hottest = sst > Math.max(...Object.values(a.nino12_by_year || { x: -9 }));
+  const wettest = Object.entries(a.rain_mm).sort((x, y) => y[1] - x[1])[0];
+  const line1 = es
+    ? `El mar frente a Ecuador está ${sst > 0 ? "+" : ""}${sst.toLocaleString("es", { maximumFractionDigits: 1 })}\u00a0°C${hottest ? ", más caliente que nunca" : ""}.`
+    : `The ocean off Ecuador is ${sst > 0 ? "+" : ""}${sst.toFixed(1)}\u00a0°C${hottest ? ", warmer than ever recorded" : ""}.`;
+  const n = a.years.length;
+  const line2 = a.strong_coastal_warming
+    ? (es ? `Con el mar así, ${n} inviernos: ${c.wet} muy lluviosos, ${c.normal} normal${c.normal === 1 ? "" : "es"}, ${c.dry} secos. El peor: ${wettest[0]}.`
+          : `With the ocean like this, ${n} rainy seasons: ${c.wet} very wet, ${c.normal} normal, ${c.dry} dry. Worst: ${wettest[0]}.`)
+    : (es ? `En ${n} años parecidos: ${c.wet} lluviosos, ${c.normal} normales, ${c.dry} secos.` : `In ${n} similar years: ${c.wet} wet, ${c.normal} normal, ${c.dry} dry.`);
+  return h("div", { class: "outlook" }, h("span", { class: "oc-ic" }, icon("i-rain")),
+    h("div", { style: "flex:1" }, h("b", {}, line1), h("p", {}, line2),
+      state.scenario !== "wet" ? h("button", { class: "oc-btn", onclick: () => { state.scenario = "wet"; viewLot(); } }, es ? "Ver plan para año lluvioso" : "See plan for a wet year", icon("i-chev-r")) : null));
+}
+
 function viewFind() {
   const v = $("#view"); v.className = "view find";
   const host = h("div", { class: "map-host", id: "cesium-phone" });
   const note = h("p", { class: "note hidden" });
   const choose = (z) => { state.lot = { ...state.lot, zone: z }; store.set("lot", state.lot); memo.clear(); go("configurar"); };
-  v.replaceChildren(host,
+  put(v, host,
     h("div", { class: "top" },
       h("div", { class: "row between" }, h("div", { class: "row", style: "gap:8px" }, h("span", { class: "round", style: "background:var(--brand);color:#fff;width:32px;height:32px;border-radius:9px" }, icon("i-sprout")), h("b", { style: "font-size:22px" }, "Rooti")), langToggle()),
       h("h1", { class: "h1" }, T().findTitle),
@@ -163,7 +198,7 @@ function viewSetup() {
   const save = () => { store.set("lot", state.lot); memo.clear(); viewSetup(); };
   const choice = (val, key, label, ph) => h("button", { class: "choice", "aria-pressed": String(lot[key] === val), onclick: () => { state.lot = { ...state.lot, [key]: val }; save(); } }, ph, label);
   const photo = (q) => h("span", { class: "ph", style: q ? `background-image:url(${q})` : "" }, q ? null : "+");
-  v.replaceChildren(
+  put(v, 
     h("div", { class: "row between" }, h("a", { class: "round", href: "#/inicio", "aria-label": es ? "Atrás" : "Back" }, icon("i-back")), h("a", { href: "#/lote", style: "color:var(--brand);font-weight:600;text-decoration:none" }, T().skip)),
     h("h1", { class: "h1" }, T().setupTitle(ZONE_NAMES[lot.zone])),
     h("div", { class: "plan" }, h("p", { class: "q" }, T().qCrop), h("div", { class: "choices" },
@@ -181,9 +216,9 @@ function viewSetup() {
 }
 
 async function viewLot() {
-  const v = $("#view"); v.className = "view"; v.replaceChildren(...skeleton());
+  const v = $("#view"); v.className = "view"; put(v, ...skeleton());
   let zone;
-  try { zone = await zoneData(state.lot.zone); } catch { v.replaceChildren(errorCard(viewLot)); return; }
+  try { zone = await zoneData(state.lot.zone); } catch { put(v, errorCard(viewLot)); return; }
   const meta = DATA.zones.find((z) => z.zone === state.lot.zone);
   const ps = plans(zone), es = state.lang === "es";
   const sizeTxt = `${state.lot.size.toLocaleString(state.lang)} ${state.lot.unit === "ha" ? "ha" : T().unitCuadra}`;
@@ -209,7 +244,7 @@ async function viewLot() {
     h("div", { class: "legend" }, ...[["i-drop-off", L.water], ["i-rain", L.rain], ["i-sun", L.bare]].map(([ic, l]) => h("span", {}, h("i", { style: "background:transparent;color:var(--ink)" }, icon(ic)), l))));
   const seasons = h("div", { class: "seasons" }, h("span", { class: "w" }, T().winter), h("span", { class: "s" }, T().summer), h("span", { class: "w2" }));
   const letters = h("div", { class: "letters" }, ...T().months.map((m) => h("span", {}, m)));
-  v.replaceChildren(head, h("div", { class: "row", style: "gap:16px;flex-wrap:wrap;align-items:flex-end" }, h("div", { style: "flex:1;min-width:260px" }, yearSeg), irrSeg),
+  put(v, head, h("div", { class: "row", style: "gap:16px;flex-wrap:wrap;align-items:flex-end" }, h("div", { style: "flex:1;min-width:260px" }, yearSeg), irrSeg), outlookCard(),
     h("div", { class: "plan" }, seasons, letters, ...cards), legend,
     desktop() ? h("div", { class: "desk-grid" }, whyBlock(zone, ps), pastBlock(zone, ps)) : null);
   updateMap(meta);
@@ -248,10 +283,10 @@ function whyBlock(zone, ps) {
 function choosePlan() { state.chosen = true; store.set("chosen", true); render(); }
 
 async function viewWhy() {
-  const v = $("#view"); v.className = "view"; v.replaceChildren(...skeleton());
+  const v = $("#view"); v.className = "view"; put(v, ...skeleton());
   const zone = await zoneData(state.lot.zone), ps = plans(zone), es = state.lang === "es";
   const reasons = whyReasons(zone, ps);
-  v.replaceChildren(
+  put(v, 
     h("div", { class: "row between" }, h("a", { class: "round", href: "#/lote", "aria-label": es ? "Atrás" : "Back" }, icon("i-back")),
       h("button", { class: "btn", style: "min-height:44px;border-radius:999px;background:var(--soft);border:0", onclick: () => speak(`${planName(ps[0])}. ${planSummary(ps[0])}. ${reasons.map((r) => r.big + " " + r.txt).join(". ")}. ${todoText(ps[0])}`) }, icon("i-volume"), T().listen)),
     h("div", {}, h("p", { style: "color:var(--brand);font-weight:600;font-size:16px" }, planName(ps[0])), h("h1", { class: "h1" }, planSummary(ps[0]))),
@@ -298,9 +333,9 @@ function pastBlock(zone, ps) {
   return h("section", { class: "plan", style: "gap:16px" }, h("div", {}, h("h2", { class: desktop() ? "q" : "h1" }, T().pastTitle), h("p", { class: "sub" }, T().pastSub)), ...rows, detail);
 }
 async function viewPast() {
-  const v = $("#view"); v.className = "view"; v.replaceChildren(...skeleton());
+  const v = $("#view"); v.className = "view"; put(v, ...skeleton());
   const zone = await zoneData(state.lot.zone);
-  v.replaceChildren(pastBlock(zone, plans(zone)));
+  put(v, pastBlock(zone, plans(zone)));
 }
 
 async function viewAsk() {
@@ -310,7 +345,7 @@ async function viewAsk() {
   const q1 = es ? "¿Qué siembro después del arroz?" : "What should I plant after the rice?";
   const answer = es ? `Para su ${state.lot.name}: ${todoText(ps[0])} ${r[2] ? r[2].big + " " + r[2].txt : ""}` : `For your ${state.lot.name}: ${todoText(ps[0])} ${r[2] ? r[2].big + " " + r[2].txt : ""}`;
   const audio = (d) => h("div", { class: "audio" }, icon("i-play"), h("span", { class: "wave" }), d);
-  v.replaceChildren(
+  put(v, 
     h("div", { class: "row between" }, h("div", {}, h("h1", { class: "h1" }, T().askTitle), h("p", { class: "sub" }, T().askSub)), h("span", { class: "tag-example" }, T().example)),
     h("div", { class: "chat" },
       h("div", { class: "bubble me" }, audio("0:12"), q1),
@@ -321,19 +356,23 @@ async function viewAsk() {
     h("div", { class: "row", style: "gap:10px" }, h("a", { class: "btn wa-fill", style: "flex:1", href: waLink(q1), target: "_blank", rel: "noopener" }, icon("i-mic"), T().sendAudio)));
 }
 
-function viewPassport() {
+async function viewPassport() {
   const v = $("#view"); v.className = "view"; const es = state.lang === "es";
+  const fs = fireSummary(await fireData(state.lot.zone));
   const stamp = (ic, label, tag, tagIc, locked) => h("div", { class: `stamp${locked ? " locked" : ""}` }, h("span", { class: "ic" }, icon(locked ? "i-lock" : ic)), label, h("small", {}, icon(tagIc), tag));
-  v.replaceChildren(
+  put(v, 
     h("div", { class: "row between" }, h("div", {}, h("h1", { class: "h1" }, T().passportTitle), h("p", { class: "sub" }, `${state.lot.name} · ${ZONE_NAMES[state.lot.zone]}`)), h("span", { class: "tag-example" }, T().example)),
     h("div", { class: "score" }, h("div", { class: "ring", style: "background:conic-gradient(var(--good) 0 58%, var(--line) 58% 100%)" }, h("b", {}, "58")),
       h("div", { class: "plan", style: "gap:4px" }, h("b", { style: "font-size:24px;color:var(--good)" }, es ? "Mejorando" : "Improving"), h("span", { style: "font-size:16px" }, es ? "+17 frente al año pasado" : "+17 vs last year"), h("span", { class: "sub" }, es ? "Promedio de su zona: 49" : "Your area's average: 49"))),
     h("h2", { class: "q" }, T().stamps),
     h("div", { class: "stamps" },
-      stamp("i-shield", es ? "No quemó la paja" : "Didn't burn the straw", es ? "Satélite" : "Satellite", "i-sat"),
+      fs && fs.lotNow > 0
+        ? stamp("i-shield", es ? `Fuego visto en ${T().monthsLong[fs.firstMonth]}` : `Fire seen in ${T().monthsLong[fs.firstMonth]}`, es ? `Satélite · ${fs.year}` : `Satellite · ${fs.year}`, "i-sat", true)
+        : stamp("i-shield", es ? "No quemó la paja" : "Didn't burn the straw", fs ? (es ? `Satélite · ${fs.year}` : `Satellite · ${fs.year}`) : (es ? "Satélite" : "Satellite"), "i-sat"),
       stamp("i-check", es ? "Suelo cubierto en verano" : "Soil covered in the dry season", es ? "Satélite" : "Satellite", "i-sat"),
       stamp("i-sprout", es ? "Rotó el cultivo" : "Rotated the crop", es ? "Declarado" : "Declared", "i-user"),
       stamp("i-check", es ? "3 veranos cubierto" : "3 dry seasons covered", es ? "Faltan 2" : "2 to go", "i-history", true)),
+    fs ? h("p", { class: "small" }, es ? `En su zona el satélite vio quemas en ${fs.zoneYears} de ${fs.totalYears} temporadas de cosecha (NASA MODIS, 1 km).` : `In your area, satellites saw burning in ${fs.zoneYears} of ${fs.totalYears} harvest seasons (NASA MODIS, 1 km).`) : null,
     h("div", { class: "row", style: "gap:10px" },
       h("button", { class: "btn primary", style: "flex:1", onclick: () => navigator.share ? navigator.share({ title: T().passportTitle, url: location.href }).catch(() => {}) : null }, icon("i-share"), T().share),
       h("button", { class: "btn" }, icon("i-qr"), T().qr)));
@@ -402,7 +441,7 @@ async function render() {
   const wa = $("#wa-desk"); wa.href = waLink(state.lang === "es" ? "Hola Rooti, tengo una pregunta sobre mi lote" : "Hi Rooti, I have a question about my lot"); wa.querySelector("span").textContent = T().askWa;
   if (r !== "inicio" && desktop() && !viewer) initCesium($("#cesium"));
   try {
-    ({ inicio: desktop() ? viewLot : viewFind, configurar: viewSetup, lote: viewLot, porque: viewWhy, pasado: viewPast, preguntar: viewAsk, pasaporte: viewPassport })[r]();
+    ({ inicio: desktop() ? viewLot : viewFind, configurar: viewSetup, lote: viewLot, porque: viewWhy, pasado: viewPast, preguntar: viewAsk, pasaporte: viewPassport })[r]()?.catch?.((e) => { console.error(e); put($("#view"), errorCard(render)); });
   } catch (e) { console.error(e); $("#view").replaceChildren(errorCard(render)); }
   if (r !== "inicio") $(".content").scrollTo?.(0, 0);
 }
