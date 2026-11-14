@@ -287,3 +287,17 @@ export function recommend(zone, crops, opts) {
     && (r.rotation.dry !== first.rotation.dry));
   return { current, suggestions: [first, second || alternatives[1]].filter(Boolean), ranked: all };
 }
+
+// Any plans the farmer picks, scored and drawn the same way as the recommended ones.
+export function evaluatePlans(zone, crops, rotations, opts) {
+  const ensemble = Array.isArray(opts.years) && opts.years.length >= 3;
+  return rotations.map((rot) => {
+    const r = ensemble ? scoreOverYears(zone, crops, rot, opts) : scoreRotation(zone, crops, rot, opts);
+    const calendar = ensemble ? calendarOverYears(zone, crops, rot, opts) : riskCalendar(zone, crops, rot, opts).map((c) => ({ ...c, level: trafficLight(c) }));
+    return { ...r, calendar };
+  });
+}
+// What can go in one season (the other season stays as the farmer has it).
+export function seasonChoices(crops, season) {
+  return [...cropsForSeason(crops, season).map((c) => c.id), ...(season === "dry" ? ["mulch"] : [])];
+}

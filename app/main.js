@@ -1,13 +1,14 @@
-import { recommendPlans, realPast } from "./engine.js?v=5";
-import { STR } from "./i18n.js?v=5";
+import { realPast, evaluatePlans, seasonChoices } from "./engine.js?v=6";
+import { STR } from "./i18n.js?v=6";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
 const PRIORITY_WEIGHTS = { soil: { water: 1, soil: 3, income: 1 }, water: { water: 3, soil: 1, income: 1 }, income: { water: 1, soil: 1, income: 3 } };
 const ZONE_NAMES = { babahoyo: "Babahoyo", daule: "Daule", quevedo: "Quevedo" };
-const DEFAULT_LOT = { zone: "daule", name: "Lote 3", crop: "rice", irrigation: "no", size: 5.2, unit: "ha" };
+const DEFAULT_LOT = { zone: "daule", name: "", crop: "rice", irrigation: "no", size: 1, unit: "ha" };
+const SEASON_MONTHS = { wet: [1, 2, 3, 4, 5], dry: [6, 7, 8, 9, 10, 11, 12] };
 const ROUTES = ["inicio", "configurar", "lote", "porque", "pasado", "preguntar", "pasaporte"];
-const NAV = [["lote", "i-sprout", "lot"], ["pasado", "i-history", "past"], ["pasaporte", "i-badge", "passport"]];
+const NAV = [["inicio", "i-search", "plan"], ["lote", "i-sprout", "lot"], ["pasado", "i-history", "past"], ["pasaporte", "i-badge", "passport"]];
 const CAUSE_ICON = { water_shortage: "i-drop-off", excess_rain: "i-rain", rain_on_bare: "i-rain", bare_in_sun: "i-sun", waterlogged: "i-waves" };
 const WATERLOG_LEVEL = { yes: 0.8, sometimes: 0.4, no: 0.05 };
 const LEVEL_ICON = { good: "i-check", care: "i-minus", danger: "i-x" };
@@ -20,6 +21,8 @@ const store = {
 const state = {
   lang: store.get("lang", matchMedia("(min-width: 1024px)").matches ? "en" : "es"),
   lot: store.get("lot", DEFAULT_LOT),
+  plan: store.get("plan", null),
+  draft: null,
   priority: store.get("priority", "soil"),
   scenario: "normal",
   saved: store.get("saved", null),
@@ -28,6 +31,15 @@ const state = {
   picked: null,
   savedAt: store.get("savedAt", null),
 };
+// A plan can come in the link: ?plan=daule,dry,soybean+peanut (shareable, and used for the demo).
+{
+  const q = new URLSearchParams(location.search).get("plan");
+  const [zone, season, list] = (q || "").split(",");
+  if (zone && ["wet", "dry"].includes(season) && list) {
+    state.plan = { zone, season, crops: list.split(/[+ ]/).filter(Boolean) };
+    state.lot = { ...state.lot, zone };
+  }
+}
 const DATA = { zones: null, crops: null, outlook: null, byZone: {}, fires: {} };
 const desktop = () => matchMedia("(min-width: 1024px)").matches;
 const T = () => STR[state.lang];
@@ -80,19 +92,49 @@ function opts() {
 }
 const memo = new Map();
 const cached = (key, fn) => (memo.has(key) ? memo.get(key) : (memo.set(key, fn()), memo.get(key)));
-const plans = (zone) => { const o = { ...opts(), years: likeYears(zone)?.years }; return cached(JSON.stringify(["p", state.lot.zone, o]), () => recommendPlans(zone, DATA.crops, o)); };
+const baseWet = () => (state.lot.crop === "other" ? "maize" : state.lot.crop || "rice");
+const rotationFor = (season, id) => (season === "dry" ? { wet: baseWet(), dry: id } : { wet: id, dry: "fallow" });
+const mainCrop = (p) => (p.season === "wet" ? p.rotation.wet : p.rotation.dry);
+function runPlans(zone, season, ids) {
+  const o = { ...opts(), years: likeYears(zone)?.years };
+  return evaluatePlans(zone, DATA.crops, ids.map((id) => rotationFor(season, id)), o).map((r) => ({ ...r, season }));
+}
+const plans = (zone) => cached(JSON.stringify(["p", state.lot.zone, state.plan, opts()]), () => {
+  const { season, crops } = state.plan;
+  const mine = runPlans(zone, season, crops).sort((a, b) => b.scores.total - a.scores.total).map((r, i) => ({ ...r, role: i ? `c${i}` : "best" }));
+  const today = { ...evaluatePlans(zone, DATA.crops, [opts().current], { ...opts(), years: likeYears(zone)?.years })[0], season, role: "today" };
+  return [...mine, today];
+});
+const alternatives = (zone) => cached(JSON.stringify(["a", state.lot.zone, state.plan, opts()]), () => {
+  const { season, crops } = state.plan, today = mainCrop({ season, rotation: opts().current });
+  const ids = seasonChoices(DATA.crops, season).filter((id) => !crops.includes(id) && id !== today);
+  const rank = { good: 0, care: 1, danger: 2 }, all = runPlans(zone, season, ids).map((r) => ({ ...r, role: "alt" }));
+  const mineBest = Math.min(...runPlans(zone, season, crops).map((r) => rank[verdict(r).lvl]));
+  const better = all.filter((r) => rank[verdict(r).lvl] < mineBest || (mineBest === 0 && rank[verdict(r).lvl] === 0));
+  return (better.length ? better : all.filter((r) => verdict(r).lvl !== "danger")).sort((a, b) => rank[verdict(a).lvl] - rank[verdict(b).lvl] || b.scores.total - a.scores.total).slice(0, 3);
+});
+// One word for how it would go, from the months of the chosen season and the years it failed.
+function verdict(p) {
+  const ms = p.calendar.filter((c) => SEASON_MONTHS[p.season].includes(c.month));
+  const d = ms.filter((c) => c.level === "danger").length, c = ms.filter((x) => x.level === "care").length, f = p.failShare ?? 0;
+  const lvl = f >= 0.5 || d >= 3 ? "danger" : f > 0 || d >= 1 || c >= 3 ? "care" : "good";
+  const why = f > 0 && p.nYears ? T().failsIn(Math.round(f * p.nYears), p.nYears) : null;
+  return { lvl, text: T().verdict[lvl] + (why ? `: ${why}` : "") };
+}
 const past = (zone, rotation) => cached(JSON.stringify(["r", state.lot.zone, rotation, opts().irrigation]), () =>
   realPast(zone, DATA.crops, rotation, { irrigation: opts().irrigation, weights: opts().weights })
     .map((y) => ({ ...y, level: y.failed || y.soilLoss === "high" ? "danger" : y.soilLoss === "medium" || y.verdict === "fair" ? "care" : "good" })));
 const cropName = (id) => T().crops[id] || id;
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const FEM = new Set(["soybean", "velvet_bean", "jack_bean"]);
 const theCrop = (id) => (es() ? `${FEM.has(id) ? "la" : "el"} ${cropName(id).toLowerCase()}` : `the ${cropName(id).toLowerCase()}`);
 const planName = (p) => `${cropName(p.rotation.wet)} → ${cropName(p.rotation.dry)}`;
+const seasonWord = (s) => (s === "wet" ? T().winter : T().summer).split(" (")[0].toLowerCase();
 const isLegume = (id) => !!DATA.crops[id]?.n_fixing;
 const roleOf = (ps, role) => ps.find((p) => p.role === role) || ps[0];
 
 function planSummary(p) {
-  const dry = p.rotation.dry, bare = p.calendar.filter((c) => c.kind === "bare_in_sun" || c.kind === "rain_on_bare").length;
+  const dry = mainCrop(p), bare = p.calendar.filter((c) => c.kind === "bare_in_sun" || c.kind === "rain_on_bare").length;
   if (p.role === "today") return es() ? `Así está hoy · suelo pelado ${bare} meses` : `Today · soil bare ${bare} months`;
   if (p.calendar.some((c) => c.failed)) return es() ? `Sin riego, ${cropName(dry).toLowerCase()} se seca` : `Without irrigation, ${cropName(dry).toLowerCase()} dries out`;
   if (dry === "mulch") return es() ? "Suelo cubierto en verano" : "Soil covered in the dry season";
@@ -102,6 +144,7 @@ function planSummary(p) {
 
 // The plan as one instruction, used as the answer's headline.
 function actionLine(p) {
+  if (p.season === "wet") return es() ? `Sembrar ${cropName(p.rotation.wet).toLowerCase()} en invierno` : `Sow ${cropName(p.rotation.wet).toLowerCase()} in the rainy season`;
   const d = p.rotation.dry, c = cropName(d).toLowerCase(), w = cropName(p.rotation.wet).toLowerCase();
   if (d === "mulch") return es() ? "Deje la paja sobre el lote" : "Leave the straw on the plot";
   if (d === "fallow") return es() ? "Dejar el suelo pelado" : "Leave the soil bare";
@@ -114,7 +157,7 @@ const usd = (x) => `${x < 0 ? "−" : "+"}$${Math.abs(Math.round(x / 10) * 10).t
 const usdAbs = (x) => `$${Math.abs(Math.round(x / 10) * 10).toLocaleString(state.lang)}`;
 // Dry-season money for a plan, for the whole plot: range from worst (low yield × low price − high cost) to best.
 function seasonMoney(p) {
-  const id = p.rotation.dry, e = DATA.econ?.crops?.[id], A = ha();
+  const id = mainCrop(p), e = DATA.econ?.crops?.[id], A = ha();
   if (id === "fallow" || id === "mulch") return { kind: "none" };
   if (!e?.yield_t_ha && (id === "velvet_bean" || id === "jack_bean")) return { kind: "nosale" };
   const y = e?.yield_t_ha || {}, pr = e?.price_usd_per_t || {}, co = e?.cost_usd_ha || {};
@@ -134,6 +177,7 @@ function moneyLine(p) {
   if (m.kind === "nosale") return T().noSale;
   if (m.kind === "unknown") return null;
   if (m.fails && m.fails / m.n >= 0.5) return h("span", { class: "lose" }, T().canLose(usdAbs(m.invest)));
+  if ((p.failShare ?? 0) >= 0.5) return h("span", { class: "lose" }, T().noHarvest);
   return m.netLow != null ? T().moneyRange(usd(m.netLow), usd(m.netHigh)) : `${T().moneyRange(usd(m.incomeLow), usd(m.incomeHigh))} · ${T().noCost.toLowerCase()}`;
 }
 function moneyBlock(p) {
@@ -165,14 +209,14 @@ const listenBtn = (text, label = true) => ("speechSynthesis" in window ? h("butt
 /* ---------------- shared pieces ---------------- */
 function route() {
   const [r, arg] = location.hash.replace("#/", "").split("/");
-  return { r: ROUTES.includes(r) ? r : (store.get("lot", null) ? "lote" : "inicio"), arg };
+  return { r: ROUTES.includes(r) ? r : (state.plan?.crops?.length ? "lote" : "inicio"), arg };
 }
 const go = (r) => { location.hash = "#/" + r; };
 function renderNav(active) {
   const links = (tab) => NAV.map(([r, ic, k]) => h("a", { href: "#/" + r, "aria-current": active === r ? "page" : null }, tab ? null : icon(ic), T().nav[k]));
   put($("#tabs"), links(true));
   put($("#bottom-nav"), links(false));
-  $("#bottom-nav").classList.toggle("hidden", active === "inicio" || active === "configurar");
+  $("#bottom-nav").classList.toggle("hidden", !state.plan?.crops?.length || active === "configurar");
 }
 function langToggle() {
   return h("button", { class: "pill", "aria-label": "Idioma / Language", onclick: () => { state.lang = es() ? "en" : "es"; store.set("lang", state.lang); memo.clear(); render(); } }, es() ? "ES | EN" : "EN | ES");
@@ -191,7 +235,7 @@ function timeline(p) {
   const spans = [];
   p.calendar.forEach((c) => { const k = fieldOf(c), last = spans[spans.length - 1]; if (last && last.k === k) last.ms.push(c); else spans.push({ k, ms: [c] }); });
   return h("div", { class: "tl" }, ...spans.map((sp) => h("div", { class: "tl-span", style: `grid-column: span ${sp.ms.length}` },
-    h("div", { class: "tl-fill" }, ...sp.ms.map((c) => h("button", { class: `tl-m ${c.level}`, "aria-label": `${T().monthsLong[c.month - 1]}: ${fieldName(sp.k)}, ${T().level[c.level]}`, onclick: (e) => { e.stopPropagation(); openMonth(p, c); } }))),
+    h("div", { class: "tl-fill" }, ...sp.ms.map((c) => h("button", { class: `tl-m ${c.level}${p.season && !SEASON_MONTHS[p.season].includes(c.month) ? " off" : ""}`, "aria-label": `${T().monthsLong[c.month - 1]}: ${fieldName(sp.k)}, ${T().level[c.level]}`, onclick: (e) => { e.stopPropagation(); openMonth(p, c); } }))),
     h("span", { class: `tl-lbl${sp.ms.length < 2 ? " short" : ""}` }, fieldName(sp.k)))));
 }
 function cell(p, c) {
@@ -354,28 +398,37 @@ function controls() {
       chip(priOpts, state.priority, T().priorityQ, (v) => { state.priority = v; store.set("priority", v); refresh(); }));
   }
 }
-function monthsHead() {
-  return [h("div", { class: "seasons" }, h("span", { class: "w" }, T().winter), h("span", { class: "s" }, T().summer), h("span", { class: "w2" })),
+function monthsHead(season) {
+  return [h("div", { class: `seasons on-${season || "none"}` }, h("span", { class: "w" }, T().winter), h("span", { class: "s" }, T().summer), h("span", { class: "w2" })),
     h("div", { class: "letters" }, ...T().months.map((m, i) => h("span", { class: i === NOW_MONTH ? "now" : null }, m)))];
 }
-function answerPanel(zone, ps) {
-  const p = roleOf(ps, "best"), r = reasons(zone, ps, "best")[0], saved = state.saved?.key === JSON.stringify(p.rotation), m = moneyLine(p);
+function resultPanel(zone, ps, p, i) {
+  const rs = reasons(zone, ps, p.role), r = p.season === "wet" ? rs[rs.length - 1] : rs[0], vd = verdict(p), m = moneyLine(p), name = cropName(mainCrop(p));
   return h("section", { class: "panel answer" },
-    h("p", { class: "label" }, T().forSummer),
-    h("h2", { class: "answer-h" }, actionLine(p)),
+    h("div", { class: "row between" }, h("p", { class: "label" }, i === 0 && ps.length > 2 && vd.lvl !== "danger" ? T().bestOfYours : `${T().option} ${i + 1}`),
+      h("button", { class: "text-btn", onclick: () => removeCrop(mainCrop(p)) }, T().remove)),
+    h("h2", { class: "answer-h" }, `${cap(name)} ${T().inSeason} ${seasonWord(p.season)}`),
+    h("p", { class: `verdict ${vd.lvl}` }, h("i", { class: `sw-flat ${vd.lvl}` }), vd.text),
     r ? h("p", { class: "evidence" }, h("b", {}, r.big), " ", r.txt) : null,
-    h("div", { class: "tl-wrap" }, ...monthsHead(), timeline(p)),
+    h("div", { class: "tl-wrap" }, ...monthsHead(p.season), timeline(p)),
     m ? h("p", { class: "money-line" }, icon("i-coin"), m) : null,
     h("div", { class: "row answer-actions" },
-      h("button", { class: "btn primary", "aria-pressed": String(saved), onclick: () => savePlan(p) }, saved ? [icon("i-check"), T().saved] : T().save),
-      h("a", { class: "link", href: "#/porque/best" }, T().whyLink, icon("i-chev-r"))));
+      h("a", { class: "btn", href: `#/porque/${p.role}` }, T().whyLink, icon("i-chev-r")),
+      h("a", { class: "link", href: "#/pasado", onclick: () => { state.pastRole = p.role; } }, T().pastTitle)));
 }
-function optionRow(p) {
-  const m = seasonMoney(p), lose = m.fails && m.fails / m.n >= 0.5;
-  return h("a", { class: "opt", href: `#/porque/${p.role}` },
-    h("div", { class: "row between" }, h("span", { class: "name" }, planName(p)), p.role === "today" ? h("span", { class: "badge muted" }, T().today) : icon("i-chev-r")),
-    timeline(p),
-    h("p", { class: `opt-sum${lose ? " bad" : ""}` }, lose ? `${T().canLose(usdAbs(m.invest))} · ${planSummary(p)}` : planSummary(p)));
+function altRow(p) {
+  const vd = verdict(p), id = mainCrop(p);
+  return h("div", { class: "opt" },
+    h("div", { class: "row between" },
+      h("div", {}, h("span", { class: "name" }, cap(cropName(id))), h("p", { class: `verdict small-v ${vd.lvl}` }, h("i", { class: `sw-flat ${vd.lvl}` }), vd.text)),
+      h("button", { class: "btn sim", onclick: () => addCrop(id) }, icon("i-play"), T().simulate)),
+    timeline(p));
+}
+function addCrop(id) { state.plan = { ...state.plan, crops: [...state.plan.crops, id] }; store.set("plan", state.plan); memo.clear(); render(); }
+function removeCrop(id) {
+  const crops = state.plan.crops.filter((x) => x !== id);
+  state.plan = { ...state.plan, crops }; store.set("plan", state.plan); memo.clear();
+  if (!crops.length) { state.draft = null; go("inicio"); } else render();
 }
 function legend() {
   return h("div", { class: "legend" },
@@ -383,21 +436,57 @@ function legend() {
 }
 async function viewLot() {
   const v = $("#view"); v.className = "view";
+  if (!state.plan?.crops?.length) return go("inicio");
   put(v, skeleton());
   let zone;
   try { zone = await zoneData(state.lot.zone); } catch { put(v, errorCard(viewLot)); return; }
   const meta = DATA.zones.find((z) => z.zone === state.lot.zone);
-  const ps = plans(zone), best = roleOf(ps, "best");
+  const ps = plans(zone), mine = ps.filter((p) => p.role !== "today"), best = mine[0], alts = alternatives(zone);
   const levelNow = best.calendar[NOW_MONTH].level;
-  const say = () => `${state.lot.name}. ${T().recommended}: ${planName(best)}. ${planSummary(best)}.`;
-  const title = h("div", { class: "row between" }, h("div", {}, h("h1", { class: "h1" }, state.lot.name), h("p", { class: "sub" }, `${ZONE_NAMES[state.lot.zone]} · ${state.lot.size.toLocaleString(state.lang)} ${state.lot.unit === "ha" ? "ha" : T().unitCuadra} · ${cropName(opts().current.wet).toLowerCase()}`)), h("div", { class: "row", style: "gap:8px" }, listenBtn(say, desktop()), langToggle()))
+  const say = () => mine.map((p) => `${cropName(mainCrop(p))}: ${verdict(p).text}`).join(". ");
+  const title = h("div", { class: "row between" },
+    h("div", { style: "min-width:0" }, h("h1", { class: "h1" }, T().resultsTitle), h("p", { class: "sub" }, `${ZONE_NAMES[state.lot.zone]} · ${seasonWord(state.plan.season)} (${state.plan.season === "wet" ? T().monthsWet : T().monthsDry})`)),
+    h("div", { class: "row", style: "gap:8px" }, h("a", { class: "btn small-btn", href: "#/inicio", onclick: () => { state.draft = null; } }, T().change), listenBtn(say, desktop()), desktop() ? langToggle() : null));
   const head = desktop() ? title : [mapStrip(meta, levelNow), title];
   put(v, head, controls(), seasonCard(),
-    answerPanel(zone, ps),
-    h("section", { class: "panel options" }, h("h2", { class: "panel-h" }, T().otherOptions), ...ps.filter((p) => p.role !== "best").map(optionRow)),
-    legend(),
-    desktop() ? h("section", { class: "panel" }, await pastSection(zone, ps)) : null);
+    ...mine.map((p, i) => resultPanel(zone, ps, p, i)),
+    alts.length ? h("section", { class: "panel options" }, h("h2", { class: "panel-h" }, T().tryAlso), h("p", { class: "small" }, T().tryAlsoSub(seasonWord(state.plan.season))), ...alts.map(altRow)) : null,
+    legend());
   updateMap(meta, levelNow, best);
+}
+
+
+/* ---------- plan: where, when, what ---------- */
+function viewPlan() {
+  const v = $("#view"); v.className = "view plan-view";
+  const d = (state.draft ||= { zone: state.plan?.zone || null, season: state.plan?.season || "dry", crops: [...(state.plan?.crops || [])] });
+  const redo = () => viewPlan();
+  const ok = d.zone && d.crops.length;
+  const choices = seasonChoices(DATA.crops, d.season);
+  d.crops = d.crops.filter((c) => choices.includes(c));
+  const photo = { rice: "img/rice.jpg", maize: "img/maize.jpg" };
+  const kind = (id) => (id === "mulch" ? T().kindCover : DATA.crops[id]?.n_fixing ? T().kindLegume : T().kindCash);
+  const submit = () => {
+    state.plan = { zone: d.zone, season: d.season, crops: [...d.crops] }; store.set("plan", state.plan);
+    state.lot = { ...state.lot, zone: d.zone }; store.set("lot", state.lot);
+    state.draft = null; state.pastRole = "best"; memo.clear(); go("lote");
+  };
+  state.onPick = () => { d.zone = state.picked; redo(); };
+  put(v,
+    h("div", { class: "row between" }, h("div", { class: "row", style: "gap:8px" }, h("span", { class: "logo" }, icon("i-sprout")), h("b", { style: "font-size:22px" }, "Rooti")), langToggle()),
+    h("div", { class: "find-copy" }, h("h1", { class: "h1" }, T().planTitle), h("p", { class: "lead" }, T().planLead)),
+    h("section", { class: "step" }, h("h2", { class: "step-h" }, T().where),
+      h("div", { class: "pick-row" }, ...DATA.zones.map((z) => h("button", { class: "pick", "aria-pressed": String(d.zone === z.zone), onclick: () => { d.zone = z.zone; redo(); } },
+        h("b", {}, ZONE_NAMES[z.zone]), h("small", {}, T().province[z.zone]))))),
+    h("section", { class: "step" }, h("h2", { class: "step-h" }, T().when),
+      h("div", { class: "pick-row two" }, ...["wet", "dry"].map((sn) => h("button", { class: "pick", "aria-pressed": String(d.season === sn), onclick: () => { d.season = sn; redo(); } },
+        h("b", {}, sn === "wet" ? T().seasonWet : T().seasonDry), h("small", {}, sn === "wet" ? T().monthsWet : T().monthsDry))))),
+    h("section", { class: "step" }, h("h2", { class: "step-h" }, T().what, h("span", { class: "hint" }, T().whatHint)),
+      h("div", { class: "crop-grid" }, ...choices.map((id) => h("button", { class: "crop", "aria-pressed": String(d.crops.includes(id)),
+        onclick: () => { d.crops = d.crops.includes(id) ? d.crops.filter((x) => x !== id) : [...d.crops, id]; redo(); } },
+        h("b", {}, cap(cropName(id))), h("small", {}, kind(id)), d.crops.includes(id) ? icon("i-check", "icon tick") : null)))),
+    h("button", { class: "btn primary block go", disabled: !ok, onclick: submit }, ok ? T().seeResults(d.crops.length) : (d.zone ? T().pickCrop : T().pickZone)));
+  if (desktop()) initCesium($("#cesium"), { pick: true, showLot: false });
 }
 
 /* ---------- why: one per plan ---------- */
@@ -419,14 +508,15 @@ function reasons(zone, ps, role) {
       : (es() ? `${lbl} con daño fuerte. Hoy: ${dangToday} de ${ns}.` : `${lbl} with heavy damage. Today: ${dangToday} of ${ns}.`))
       + (like ? (es() ? ` En todos los años: ${dangAll} de ${n}.` : ` In all years: ${dangAll} of ${n}.`) : "") });
   const failedAll = yrs.filter((y) => y.failed), failedLike = s.filter((y) => y.failed).length;
-  const failedCrop = theCrop((failedAll.flatMap((y) => y.failedCrops || [])[0]) || p.rotation.dry);
+  const failedCrop = theCrop((failedAll.flatMap((y) => y.failedCrops || [])[0]) || mainCrop(p));
   if (failedAll.length) out.push({ lvl: failedLike > ns / 2 ? "danger" : failedLike ? "care" : "good", big: es() ? `${failedLike} de ${ns}` : `${failedLike} of ${ns}`,
     txt: es() ? `${lbl} ${failedCrop} se secó${opts().irrigation ? "" : " sin riego"}.${like ? ` En todos los años: ${failedAll.length} de ${n}; si el verano sale seco, se pierde.` : ""}`
       : `${lbl} ${failedCrop} dried out${opts().irrigation ? "" : " without irrigation"}.${like ? ` In all years: ${failedAll.length} of ${n}; if the dry season turns out dry, it fails.` : ""}` });
-  else if (p.rotation.dry !== "fallow" && p.rotation.dry !== "mulch") out.push({ lvl: "good", big: es() ? `${n} de ${n}` : `${n} of ${n}`, txt: es() ? `años ${cropName(p.rotation.dry).toLowerCase()} dio cosecha.` : `years ${cropName(p.rotation.dry).toLowerCase()} gave a harvest.` });
+  else if (!["fallow", "mulch"].includes(mainCrop(p))) out.push({ lvl: "good", big: es() ? `${n} de ${n}` : `${n} of ${n}`, txt: es() ? `años ${cropName(mainCrop(p)).toLowerCase()} dio cosecha.` : `years ${cropName(mainCrop(p)).toLowerCase()} gave a harvest.` });
   return out;
 }
 function todoText(p, ps) {
+  if (p.season === "wet" && p.role !== "today") return es() ? `Siembre ${cropName(p.rotation.wet).toLowerCase()} con las primeras lluvias de enero y coseche antes de junio.` : `Sow ${cropName(p.rotation.wet).toLowerCase()} with the first January rains and harvest before June.`;
   const dry = p.rotation.dry, wet = cropName(p.rotation.wet).toLowerCase(), best = roleOf(ps, "best");
   if (p.role === "today") return es() ? `Hoy el suelo queda pelado después del ${wet}. Lo que más lo protege: ${planName(best).toLowerCase()}.` : `Today the soil stays bare after the ${wet}. What protects it most: ${planName(best).toLowerCase()}.`;
   if (dry === "mulch") return es() ? "Después de cosechar, no queme la paja. Déjela tendida sobre el lote hasta el próximo invierno." : "After the harvest, don't burn the straw. Leave it spread over the lot until the next rains.";
@@ -480,7 +570,7 @@ async function pastSection(zone, ps, standalone = false) {
   const step = (d) => { state.pastYear = all[Math.min(all.length - 1, Math.max(0, i + d))]; render(); };
   return h("section", { class: "plan", style: "gap:16px" },
     h("div", {}, h(standalone ? "h1" : "h2", { class: standalone ? "h1" : "h2" }, T().pastTitle), h("p", { class: "sub" }, T().pastSub)),
-    h("div", { class: "seg plan-tabs" }, ...ps.map((q) => h("button", { "aria-pressed": String(q.role === p.role), onclick: () => { state.pastRole = q.role; render(); } }, q.role === "best" ? icon("i-star") : null, cropName(q.rotation.dry)))),
+    h("div", { class: "seg plan-tabs" }, ...ps.map((q) => h("button", { "aria-pressed": String(q.role === p.role), onclick: () => { state.pastRole = q.role; render(); } }, q.role === "today" ? `${T().usual}: ${cropName(mainCrop(q)).toLowerCase()}` : cropName(mainCrop(q))))),
     h("div", { class: "counts" }, ...["good", "care", "danger"].map((l) => h("span", {}, h("i", { class: `sw-flat ${l}` }), `${cnt(l)} ${T().level[l].toLowerCase()}`))),
     h("div", { class: "years" }, ...ys.map((x) => h("button", { class: x.level, "aria-label": `${x.year}: ${T().level[x.level]}`, "aria-pressed": String(x.year === y), onclick: () => { state.pastYear = x.year; render(); } },
       h("span", {}, `'${String(x.year).slice(2)}`)))),
@@ -529,7 +619,7 @@ async function viewPassport() {
   const list = h("ul", { class: "pp-years" }, ...yrs.slice(-5, -1).reverse().map(([y, x]) => { const m = seasonFire(x);
     return h("li", {}, h("b", {}, y), h("span", { class: m < 0 ? "ok" : "bad" }, m < 0 ? T().noBurnShort : T().burnShort(T().monthsLong[m + 4]))); }));
   put(v,
-    h("div", {}, h("h1", { class: "h1" }, T().passportTitle), h("p", { class: "sub" }, `${state.lot.name} · ${ZONE_NAMES[state.lot.zone]}`)),
+    h("div", {}, h("h1", { class: "h1" }, T().passportTitle), h("p", { class: "sub" }, ZONE_NAMES[state.lot.zone])),
     head, list,
     state.saved ? h("p", { class: "small" }, icon("i-check"), " ", T().savedPlan(state.saved.name)) : null,
     yrs.length ? h("p", { class: "small" }, T().zoneFires(zoneBurn, yrs.length)) : null,
@@ -577,7 +667,7 @@ function updateMap(meta, levelNow = "good", best = null) {
   const col = { good: "#15803D", care: "#B45309", danger: "#B91C1C" }[levelNow];
   if (lotEntity) viewer.entities.remove(lotEntity);
   for (const z of DATA.zones) { const e = viewer.entities.getById("zone-" + z.zone); if (e) e.show = z.zone !== state.lot.zone; }
-  const label = best ? `${state.lot.name} · ${T().monthsLong[NOW_MONTH]}: ${T().level[levelNow]}` : state.lot.name;
+  const label = best ? `${ZONE_NAMES[state.lot.zone]} · ${T().monthsLong[NOW_MONTH]}: ${T().level[levelNow]}` : ZONE_NAMES[state.lot.zone];
   lotEntity = viewer.entities.add({
     polygon: { height: 0, hierarchy: C.Cartesian3.fromDegreesArray([meta.lon - dLon, meta.lat - dLat, meta.lon + dLon, meta.lat - dLat * 0.9, meta.lon + dLon * 0.95, meta.lat + dLat, meta.lon - dLon * 1.05, meta.lat + dLat * 0.92]), material: C.Color.fromCssColorString(col).withAlpha(0.45), outline: true, outlineColor: C.Color.WHITE, outlineWidth: 3 },
     position: C.Cartesian3.fromDegrees(meta.lon, meta.lat),
@@ -597,10 +687,10 @@ async function render() {
   const { r, arg } = route();
   document.documentElement.lang = state.lang;
   renderNav(r); offlineBanner();
-  document.body.classList.toggle("first", r === "inicio" || r === "configurar");
+  document.body.classList.toggle("first", !state.plan?.crops?.length);
   $("#search-desk").placeholder = T().search;
   if (r !== "inicio" && desktop() && (!viewer || viewer.container !== $("#cesium"))) initCesium($("#cesium"));
-  const views = { inicio: desktop() ? viewFindDesk : viewFind, configurar: viewSetup, lote: viewLot, porque: () => viewWhy(arg || "best"), pasado: viewPast, preguntar: viewAsk, pasaporte: viewPassport };
+  const views = { inicio: viewPlan, configurar: viewSetup, lote: viewLot, porque: () => viewWhy(arg || "best"), pasado: viewPast, preguntar: viewAsk, pasaporte: viewPassport };
   try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(render)); }
 }
 async function start() {
