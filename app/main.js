@@ -1,8 +1,8 @@
-import { fetchClimate } from "./climate.js?v=18";
-import { plan as runPlanner, cropMonths } from "./planner.js?v=18";
-import { COPY } from "./copy.js?v=18";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=18";
-import { STR } from "./i18n.js?v=18";
+import { fetchClimate } from "./climate.js?v=19";
+import { plan as runPlanner, cropMonths } from "./planner.js?v=19";
+import { COPY } from "./copy.js?v=19";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=19";
+import { STR } from "./i18n.js?v=19";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -102,7 +102,7 @@ const monthsIn = (P) => Math.round((new Date(P.end) - new Date(P.start)) / (30.4
 
 /* ---------------- data ---------------- */
 async function loadBase() {
-  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=18").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
+  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=19").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
   DATA.crops = crops.crops; DATA.econ = econ; DATA.outlook = outlook;
 }
 function climate(pl) {
@@ -298,24 +298,47 @@ function viewPlanear(stepArg) {
   }
   put($("#view"), h("div", { class: "step" }, head, ...body));
 }
+// Computer: the map fills the screen; one floating panel with four sections, one open at a time.
 function planDesktop(d) {
   const c = C(), err = dateErr(d), redo = () => planDesktop(d);
-  const pick = (pl) => { d.place = pl; redo(); updateMap(pl, null); };
+  const pick = (pl) => { d.place = pl; if (state.sec === 1) state.sec = 2; redo(); updateMap(pl, null); };
   state.onPick = async (lat, lon) => pick(await placeAt(lat, lon));
-  put($("#map-overlay"), h("div", { class: "map-search" }, ...searchBox(pick)), h("div", { class: "map-hint" }, icon("i-pointer"), c.clickMap));
+  put($("#map-overlay"), h("div", { class: "map-hint" }, icon("i-pointer"), c.clickMap));
+  const done = { 1: !!d.place, 2: !err, 3: d.crops.length > 0, 4: true };
+  if (state.sec == null) state.sec = !d.place ? 1 : !d.crops.length ? 3 : 0;
+  const months = monthsIn(d);
+  const summary = {
+    1: d.place ? `${d.place.name}${d.place.admin ? " · " + d.place.admin : ""}` : c.pickPlace,
+    2: err || `${fmtDate(d.start)} – ${fmtDate(d.end)} · ${c.months(months)}`,
+    3: d.crops.length ? d.crops.map((id) => cap(cropName(id))).join(", ") : c.pickCrop,
+    4: `${(d.area || 1).toLocaleString(state.lang)} ${c.units[d.unit || "ha"]} · ${d.irrigation ? c.irrig.yes : c.irrig.no} · ${c.prioShort[state.priority]}`,
+  };
+  const body = {
+    1: () => [d.place ? placeCard(d, null) : null, ...searchBox(pick), gpsBtn(pick)],
+    2: () => [dateFields(d, redo), h("div", { class: "row between wrap" }, quickDates(d, redo), h("span", { class: err ? "err" : "small" }, err || c.months(months))), periodStrip(d)],
+    3: () => [h("p", { class: "small" }, c.whatHelp), ...cropTiles(d, redo, 0)],
+    4: () => [
+      h("div", { class: "row-fields" }, h("input", { class: "num", type: "number", min: "0", step: "any", value: String(d.area), "aria-label": c.landQ, onchange: (e) => { const v = parseFloat(e.target.value); if (v > 0) { d.area = v; redo(); } } }),
+        h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, c.units[u])))),
+      h("div", { class: "q" }, h("b", {}, c.irrigQ), irrigOpts(d, redo)),
+      h("div", { class: "q" }, h("b", {}, c.prioQ), prioOpts(redo, true)),
+      h("div", { class: "q" }, h("b", {}, c.wlQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), waterlogOpts(d, redo)),
+      h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo))],
+  };
+  const titles = { 1: c.where, 2: c.when, 3: c.what, 4: c.landShort };
   const okAll = d.place && d.crops.length && !err;
-  put($("#view"), h("div", { class: "plan-panel" },
-    h("h1", { class: "display" }, c.planTitle),
-    h("div", { class: "q" }, h("b", {}, c.where), d.place ? placeCard(d, null) : h("p", { class: "small" }, c.clickMap), gpsBtn(pick)),
-    h("div", { class: "q" }, h("b", {}, c.when), dateFields(d, redo), h("div", { class: "row between wrap" }, quickDates(d, redo), h("span", { class: err ? "err" : "small" }, err || c.months(monthsIn(d)))), periodStrip(d)),
-    h("div", { class: "q" }, h("b", {}, c.what), ...cropTiles(d, redo, 0)),
-    h("div", { class: "q" }, h("b", {}, c.land), h("div", { class: "row-fields" },
-      h("input", { class: "num", type: "number", min: "0", step: "any", value: String(d.area), "aria-label": c.landQ, onchange: (e) => { const v = parseFloat(e.target.value); if (v > 0) { d.area = v; redo(); } } }),
-      h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, c.units[u]))),
-      h("div", { class: "seg" }, ...[[false, c.irrig.no], [true, c.irrig.yes]].map(([v, l]) => h("button", { "aria-pressed": String(d.irrigation === v), onclick: () => { d.irrigation = v; redo(); } }, l))))),
-    h("div", { class: "row-2q" }, h("div", { class: "q" }, h("b", {}, c.wlQ), waterlogOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.prioQ), prioOpts(redo, false))),
-    h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo)),
-    h("button", { class: "btn dark big block", disabled: !okAll, onclick: submitPlan }, okAll ? [c.seePlan, icon("i-arrow-r")] : !d.place ? c.pickPlace : err || c.pickCrop)));
+  put($("#view"), h("div", { class: "plan-float" },
+    h("div", { class: "pf-head" }, h("h1", { class: "display" }, c.planTitle), h("p", { class: "small" }, c.planLead2)),
+    h("div", { class: "pf-secs" }, ...[1, 2, 3, 4].map((n) => {
+      const open = state.sec === n;
+      return h("section", { class: `pf-sec${open ? " open" : ""}${done[n] ? " done" : ""}` },
+        h("button", { class: "pf-sec-h", "aria-expanded": String(open), onclick: () => { state.sec = open ? 0 : n; redo(); } },
+          h("span", { class: "pf-num" }, done[n] && !open ? icon("i-check") : String(n)),
+          h("span", { class: "grow" }, h("b", {}, titles[n]), open ? null : h("small", {}, summary[n])),
+          icon(open ? "i-chev-d" : "i-chev-r")),
+        open ? h("div", { class: "pf-sec-b" }, ...body[n](), n < 4 ? h("button", { class: "btn light pf-next", disabled: !done[n], onclick: () => { state.sec = n + 1; redo(); } }, c.next, icon("i-chev-r")) : null) : null);
+    })),
+    h("div", { class: "pf-foot" }, h("button", { class: "btn dark big block", disabled: !okAll, onclick: () => { state.sec = null; submitPlan(); } }, okAll ? [c.seePlan, icon("i-arrow-r")] : !d.place ? c.pickPlace : err || c.pickCrop))));
   initCesium($("#cesium"), { pick: true }).then(() => (d.place ? updateMap(d.place, null) : globeView()));
 }
 
@@ -405,7 +428,7 @@ const miniMap = (pl, v) => { const d = 0.006, bb = [pl.lon - d * 2.6, pl.lat - d
   return h("div", { class: "mini-map desk-only" }, h("img", { alt: "", loading: "lazy", src: dk ? `img/sat/${dk}.jpg` : `${ESRI}/export?bbox=${bb}&bboxSR=4326&size=800,300&format=jpg&f=image` }), h("i", { class: v || "" }),
     h("span", { class: "mm-label" }, h("b", {}, pl.name), `${pl.lat.toFixed(2)}, ${pl.lon.toFixed(2)}`)); };
 const resHead = (P) => h("div", { class: "res-head" }, h("div", { class: "grow" }, h("b", {}, `${P.place.name} · ${fmtArea(1)}`), h("small", {}, `${fmtDate(P.start)} – ${fmtDate(P.end)}`)),
-  h("a", { class: "btn", href: "#/planear", onclick: () => { state.draft = null; } }, C().change));
+  h("a", { class: "btn", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; } }, C().change));
 async function withResults(draw) {
   const v = $("#view");
   put(v, loading(C().loading));
@@ -786,7 +809,7 @@ function renderChrome(r) {
   const tabs = [["plan", c.nav.plan, "i-sprout"], ["terreno", c.nav.plot, "i-pin"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["pasado", c.nav.past, "i-history"]];
   put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, l))) : null,
-    h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; }, style: { minHeight: "40px", fontSize: "15px" } }, c.changeData) : null, langBtn()));
+    h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "15px" } }, c.changeData) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, icon(ic), l)));
   if (r !== "planear") put($("#map-overlay"));
 }

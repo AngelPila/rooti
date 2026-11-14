@@ -458,3 +458,43 @@ body.results .bottom-nav { grid-template-columns: repeat(5, 1fr) !important; }
 .mini-map i.good { background: #15803D55; } .mini-map i.care { background: #B4530966; } .mini-map i.danger { background: #B91C1C66; }
 .farm-card .bar.grow { animation-name: grow2; }
 @keyframes grow2 { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* ---------- desktop planner: full map, one floating panel ---------- */
+@media (min-width: 1024px) {
+  body.r-planear .app { position: relative; }
+  body.r-planear .map-pane { position: absolute; inset: 0; display: block; }
+  body.r-planear #view { position: absolute; z-index: 3; left: 24px; top: 24px; bottom: 24px; width: 470px; flex: none; border: 0; overflow: visible; background: transparent; }
+  .plan-float { height: 100%; display: flex; flex-direction: column; background: var(--surface); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.28); overflow: hidden; }
+  .pf-head { padding: 22px 24px 12px; }
+  .pf-head h1 { font-size: 30px; }
+  .pf-head p { margin-top: 4px; }
+  .pf-secs { flex: 1; overflow: auto; padding: 4px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .pf-sec { border-radius: 10px; }
+  .pf-sec.open { background: var(--ground); }
+  .pf-sec-h { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px; border: 0; background: none; text-align: left; border-radius: 10px; }
+  .pf-sec-h:hover { background: var(--ground); }
+  .pf-sec-h b { display: block; font-size: 17px; } .pf-sec-h small { display: block; font-size: 14px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 330px; }
+  .pf-sec-h > .icon { width: 18px; height: 18px; color: var(--ink2); }
+  .pf-num { width: 30px; height: 30px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; background: var(--surface); border: 1.5px solid var(--border); }
+  .pf-sec.open .pf-num { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pf-sec.done:not(.open) .pf-num { background: var(--good); color: #fff; border-color: var(--good); }
+  .pf-num .icon { width: 16px; height: 16px; stroke-width: 3; }
+  .pf-sec-b { padding: 0 12px 14px 54px; display: flex; flex-direction: column; gap: 12px; }
+  .pf-sec-b .crops { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .pf-sec-b .crop { min-height: 0; padding: 10px 12px; }
+  .pf-sec-b .crop b { font-size: 15px; } .pf-sec-b .crop small { font-size: 12px; }
+  .pf-sec-b .crop .tick { width: 20px; height: 20px; top: 8px; right: 8px; padding: 3px; }
+  .pf-sec-b .search { background: var(--surface); }
+  .pf-sec-b .opts .opt { font-size: 14px; min-height: 42px; padding: 8px 6px; }
+  .pf-sec-b .row-fields { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pf-sec-b .num { width: 84px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); font-weight: 700; font-size: 17px; }
+  .pf-sec-b .chip { font-size: 13px; padding: 7px 10px; }
+  .pf-sec-b .date { background: var(--surface); }
+  .pf-next { align-self: flex-start; min-height: 42px; font-size: 15px; }
+  .pf-foot { padding: 14px 24px 22px; border-top: 1px solid var(--border); }
+  body.r-planear .map-hint { left: auto; right: 24px; }
+}
+@media (min-width: 1024px) {
+  body.r-planear #view { bottom: auto; max-height: calc(100% - 48px); }
+  .plan-float { height: auto; max-height: calc(100dvh - 64px - 48px); }
+}
