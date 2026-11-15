@@ -64,6 +64,10 @@ Rules learned from design reviews. Each one comes from a correction the product 
   Why: "esto se ve terrible" (the old forest bar); "ok esto cool" on the card.
   <!-- 2026-11-15 -->
 
+- **Vecinos is a conversation thread: one column of big posts (19px text) with the author's face, replies hanging from the post on a line, "A mí también" instead of likes. No card per post, no per-post "Ejemplo" tag, and no AI field photos, illustrations or icons in posts: posts read as real farmers. Only example profile pictures are AI (with the "IA" badge, declared once on the page); a real farmer gets their initials.**
+  Why: "esto esta muy feo" (two columns of equal cards); "deben ser usuarios reales en teoria eso quita las imagenes de ia, capaz deja las de perfil nomas"; picked "1. hilo".
+  <!-- 2026-11-15 -->
+
 ## Motion
 Applied from the `remove-animations`, `choreograph` and `mobile-native` skills at the owner's request ("instala esos y aplicalos").
 - **Nothing fades in on scroll, numbers count only when their value changes, and no loop runs on a persistent element (the loader is the exception).**
