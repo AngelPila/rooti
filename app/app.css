@@ -758,3 +758,26 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 .pm-key span .tile-i { width: 24px; height: 24px; border-radius: 7px; }
 .pm-key b { font: 500 10px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; }
 body.drawing .search, body.drawing .geo, body.drawing .gps, body.drawing .pf-next, body.drawing .map-hint, body.drawing .place .link { display: none; }
+
+/* ---------- the plot in 3D ---------- */
+.p3 { display: flex; flex-direction: column; border-radius: var(--r-card-l); overflow: hidden; background: var(--paper, #FBF9F2); border: 1px solid var(--line); flex: none; }
+.res.terreno .p3 { flex: 1 1 100%; }
+.p3-stage { position: relative; height: 380px; background: #2C3A31; color: var(--cream); }
+.p3-map { position: absolute; inset: 0; }
+.p3-map .cesium-viewer-bottom { display: none; }
+.p3-stage::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 60%, rgba(17, 27, 23, .6)); pointer-events: none; }
+.p3-stage .pm-cap { pointer-events: none; }
+.p3-stage .pm-keys { pointer-events: none; }
+.pm-key em { font-style: normal; margin-left: 4px; padding: 2px 6px; border-radius: 6px; background: #D2452E; color: #fff; font-size: 11px; font-weight: 600; }
+.pm-key.drown { box-shadow: inset 3px 0 0 #D2452E; }
+.p3-ctl { display: flex; flex-direction: column; gap: 10px; padding: 14px 18px 16px; }
+.p3-month { display: inline-flex; align-items: center; gap: 8px; font-size: 18px; }
+.p3-month .icon { width: 18px; height: 18px; color: var(--lichen); }
+.p3-month b { font-weight: 500; }
+.p3-yrs button { font-size: 13px; padding: 7px 12px; }
+.p3 input[type=range] { width: 100%; accent-color: var(--forest); min-height: 32px; }
+.p3-status { display: flex; align-items: center; gap: 10px; margin: 0; padding: 10px 14px; border-radius: 14px; background: var(--cream); font-size: 15px; }
+.p3-status .icon { width: 20px; height: 20px; flex: none; color: var(--lichen); }
+.p3-status.wet { background: color-mix(in srgb, #3E7CB1 16%, var(--cream)); }
+.p3-status.wet .icon { color: #3E7CB1; }
+@media (max-width: 760px) { .p3-stage { height: 320px; } }

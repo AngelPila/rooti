@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
-import { COPY } from "./copy.js?v=43";
+import { COPY } from "./copy.js?v=44";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -877,6 +877,130 @@ function plotMap(r, f) {
       h("span", {}, tile(lead), h("b", {}, name), `${cropLabel(lead)} · ${fmtArea(pc.share)}`)))),
     h("div", { class: "pm-cap" }, h("b", {}, D.plotMap), h("span", {}, D.plotMapNote)));
 }
+/* ---------- the plot in 3D: real terrain, each crop at its height, the water a month leaves ---------- */
+// Tallest height each crop reaches, m: FAO-56 Table 12 ("maximum crop height"). Jack bean and velvet bean: estimated.
+const CROP_H = { rice: 1, maize: 2, soybean: 0.75, peanut: 0.4, common_bean: 0.4, cowpea: 0.4, sorghum: 1.5, jack_bean: 1, velvet_bean: 0.6, wheat: 1, barley: 1, potato: 0.6, sunflower: 2, chickpea: 0.4, mulch: 0.05, bare: 0 };
+const cssColor = (v) => (v.startsWith("var(") ? getComputedStyle(document.documentElement).getPropertyValue(v.slice(4, -1)).trim() || "#7A8B6F" : v);
+// The plot's corners: the drawn ones, or a rectangle of the plot's real size centred on the pin
+function lotOf(P) {
+  if (P.lot?.length >= 3) return { pts: P.lot, drawn: true };
+  const ha = (P.area || 1) * UNITS[P.unit || "ha"], w = Math.sqrt(ha * 1e4 * 2), R = 6371008.8, k = 180 / Math.PI, { lon, lat } = P.place;
+  const dLat = (w / 4 / R) * k, dLon = (w / 2 / (R * Math.cos(lat / k))) * k;
+  return { pts: [[lon - dLon, lat - dLat], [lon + dLon, lat - dLat], [lon + dLon, lat + dLat], [lon - dLon, lat + dLat]], drawn: false };
+}
+// The part of a polygon between two longitudes (Sutherland–Hodgman against two vertical lines)
+function clipLon(pts, a, b) {
+  const cut = (ps, keep, x) => { const out = []; ps.forEach((p, i) => { const q = ps[(i + 1) % ps.length], pin = keep(p[0]), qin = keep(q[0]); if (pin) out.push(p); if (pin !== qin) { const t = (x - p[0]) / (q[0] - p[0]); out.push([x, p[1] + t * (q[1] - p[1])]); } }); return out; };
+  return cut(cut(pts, (x) => x >= a, a), (x) => x <= b, b);
+}
+// Free elevation tiles (Mapzen Terrarium on AWS Open Data, mostly NASA SRTM), no key. Deeper zooms read inside a level-14 tile.
+function terrariumTerrain(Cz) {
+  const cache = new Map(), Z = 14, S = 33;
+  const tile = (x, y, z) => {
+    const k = `${z}/${x}/${y}`;
+    if (!cache.has(k)) cache.set(k, new Promise((res) => {
+      const img = new Image(); img.crossOrigin = "anonymous";
+      img.onload = () => { const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, 0, 0); res(g.getImageData(0, 0, 256, 256).data); };
+      img.onerror = () => res(null);
+      img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+    }));
+    return cache.get(k);
+  };
+  return new Cz.CustomHeightmapTerrainProvider({ width: S, height: S, tilingScheme: new Cz.WebMercatorTilingScheme(), callback: async (x, y, level) => {
+    const out = new Float32Array(S * S), z = Math.min(level, Z), f = 2 ** (level - z), d = await tile(Math.floor(x / f), Math.floor(y / f), z);
+    if (!d) return out;
+    const span = 256 / f, ox = (x % f) * span, oy = (y % f) * span;
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+      // bilinear between the four nearest pixels, so deep zooms are smooth instead of stepped
+      const u = Math.min(254.999, ox + (i / (S - 1)) * span), v = Math.min(254.999, oy + (j / (S - 1)) * span), u0 = Math.floor(u), v0 = Math.floor(v), fu = u - u0, fv = v - v0;
+      const e = (uu, vv) => { const o = (vv * 256 + uu) * 4; return d[o] * 256 + d[o + 1] + d[o + 2] / 256 - 32768; };
+      out[j * S + i] = (e(u0, v0) * (1 - fu) + e(u0 + 1, v0) * fu) * (1 - fv) + (e(u0, v0 + 1) * (1 - fu) + e(u0 + 1, v0 + 1) * fu) * fv;
+    }
+    return out;
+  } });
+}
+let viewer3d = null;
+function plot3d(r, f) {
+  const P = state.plan, N = r.period.length, T = C().p3, D = C().ds, { pts, drawn } = lotOf(P);
+  const plots = plotsOf(f).map((x) => ({ ...x, runs: runsOf(x.pc, N) }));
+  // Water a month leaves on the plot: rain minus what evaporates minus what the plot drains (same rule as the planner)
+  const drainCap = 60 + 440 * (1 - (r.site?.wl ?? 0.25)) ** 1.5;
+  const nm = normals(r.clim), normal = { months: r.period.map((p) => nm[p.m - 1]) };
+  const surplusOf = (s) => s.months.map((c) => Math.max(0, (c?.rain ?? 0) - (c?.et0 ?? 0) - drainCap));
+  const wettest = [...r.samples].sort((a, b) => surplusOf(b).reduce((x, y) => x + y, 0) - surplusOf(a).reduce((x, y) => x + y, 0))[0];
+  const yrs = [["normal", T.normal, normal]];
+  if (wettest && surplusOf(wettest).some((v) => v > 0)) yrs.push(["wet", wettest.base != null ? T.wet(`${wettest.base}-${String(wettest.base + 1).slice(2)}`) : T.thisYear, wettest]);
+  let mode = yrs[yrs.length - 1][0], t = 0;
+  { const s = surplusOf(yrs.find((y) => y[0] === mode)[2]); const mx = Math.max(...s); if (mx > 0) t = s.indexOf(mx); }
+  const span = lotSpanM(pts), k = Math.max(1, Math.round((span * 0.05) / 2));
+  const lo = pts.map((p) => p[0]), xa = Math.min(...lo), xb = Math.max(...lo), tot = plots.reduce((a, x) => a + x.pc.share, 0) || 1;
+  let acc = xa;
+  const parts = plots.map((x) => { const w = ((xb - xa) * x.pc.share) / tot, poly = clipLon(pts, acc, acc + w); acc += w; return { ...x, poly }; });
+  const at = (x) => {
+    const ru = x.runs.find((u) => t >= u.t0 && t < u.t1) || { c: "bare", t0: t, t1: t + 1 }, c = ru.c;
+    const H = CROP_H[c] ?? 1, len = ru.t1 - ru.t0, grow = c === "bare" || c === "mulch" ? 1 : Math.min(1, (t - ru.t0 + 1) / Math.max(1, Math.ceil(len * 0.6)));
+    const m = yrs.find((y) => y[0] === mode)[2].months[t], ft = { low: 0, medium: 0.5, high: 1 }[String(DATA.crops[c]?.flood_tolerance || "").toLowerCase()] ?? 0.5;
+    const sev = c === "rice" || c === "bare" || c === "mulch" ? 0 : Math.max(0, Math.min(1, ((m?.rain ?? 0) - (m?.et0 ?? 0) - drainCap) / 200)) * (1 - 0.7 * ft);
+    return { c, h: H * grow, drown: sev > 0.2 };
+  };
+  const box = h("div", { class: "p3-map" }), keys = h("div", { class: "pm-keys" }), status = h("p", { class: "p3-status" }), monthLab = h("b", {});
+  const slider = h("input", { type: "range", min: "0", max: String(N - 1), step: "1", value: String(t), "aria-label": T.month, oninput: (e) => { t = +e.target.value; paint(); } });
+  const yrBox = h("div", { class: "seg p3-yrs" });
+  const sec = h("section", { class: "p3" },
+    h("div", { class: "p3-stage" }, box, keys, h("div", { class: "pm-cap" }, h("b", {}, T.title), h("span", {}, drawn ? T.drag : T.example))),
+    h("div", { class: "p3-ctl" },
+      h("div", { class: "row between wrap", style: { gap: "8px" } }, h("span", { class: "p3-month" }, icon("i-month"), monthLab), yrBox),
+      slider, status, h("p", { class: "small" }, T.scale(k), " · ", T.waterNote)));
+  let ents = [];
+  const paint = () => {
+    const p = r.period[t], s = surplusOf(yrs.find((y) => y[0] === mode)[2])[t], now = parts.map((x) => ({ ...x, ...at(x) }));
+    monthLab.textContent = `${cap(monL(p.m))} ${p.y}`;
+    put(yrBox, ...yrs.map(([key, lab]) => h("button", { "aria-pressed": String(mode === key), onclick: () => { mode = key; paint(); } }, lab)));
+    put(keys, ...now.map((x) => h("div", { class: `pm-key${x.drown ? " drown" : ""}`, style: { "--c": look(x.c).color } },
+      h("span", {}, tile(x.c), h("b", {}, x.name), `${cropLabel(x.c)}${x.h >= 0.1 ? ` · ${num(x.h)} m` : ""}`, x.drown ? h("em", {}, T.drown) : null))));
+    status.className = `p3-status${s > 0 ? " wet" : ""}`;
+    put(status, icon(s > 0 ? "i-waves" : "i-drop-off"), s > 0 ? T.water(Math.round(s)) : T.dry);
+    const v = viewer3d, Cz = window.Cesium;
+    if (!v || v.isDestroyed() || !Cz) return;
+    ents.forEach((e) => v.entities.remove(e)); ents = [];
+    const rel = Cz.HeightReference.RELATIVE_TO_GROUND, flat = (ps) => Cz.Cartesian3.fromDegreesArray(ps.flat());
+    for (const x of now) {
+      if (x.poly.length < 3) continue;
+      const col = Cz.Color.fromCssColorString(cssColor(look(x.c).color));
+      ents.push(v.entities.add({ polygon: x.h * k >= 0.3
+        ? { hierarchy: flat(x.poly), height: 0, heightReference: rel, extrudedHeight: x.h * k, extrudedHeightReference: rel, material: col.withAlpha(x.drown ? 0.55 : 0.9), outline: false }
+        : { hierarchy: flat(x.poly), material: col.withAlpha(0.75), classificationType: Cz.ClassificationType.TERRAIN } }));
+    }
+    if (s > 0) ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: 0, heightReference: rel, extrudedHeight: Math.min(1.5, s / 1000) * k, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString("#2E6FD0").withAlpha(0.45) } }));
+    const z0 = (r.terrain?.elevation ?? 0) + 0.5;
+    ents.push(v.entities.add({ polyline: { positions: Cz.Cartesian3.fromDegreesArrayHeights([...pts, pts[0]].flatMap((q) => [q[0], q[1], z0])), width: 3, material: Cz.Color.fromCssColorString("#C8FF9E") } }));
+    [0, 200, 600, 1200].forEach((ms) => setTimeout(() => v.isDestroyed() || v.scene.requestRender(), ms));
+  };
+  paint();
+  // The 3D view loads after the page; without WebGL or Cesium the flat satellite map stays
+  setTimeout(async () => {
+    let Cz;
+    try { Cz = await loadCesium(); } catch { sec.replaceWith(plotMap(r, f)); return; }
+    if (!box.isConnected) return;
+    if (viewer3d && !viewer3d.isDestroyed()) viewer3d.destroy();
+    try {
+      viewer3d = new Cz.Viewer(box, { baseLayer: false, baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false, infoBox: false, selectionIndicator: false, requestRenderMode: true, terrainProvider: terrariumTerrain(Cz) });
+    } catch { sec.replaceWith(plotMap(r, f)); return; }
+    const v = viewer3d;
+    // Blocks sit on the ground; without this, the coarse terrain pokes through them as steps
+    v.scene.globe.depthTestAgainstTerrain = false;
+    v.scene.skyAtmosphere.show = true;
+    try { v.imageryLayers.addImageryProvider(await Cz.ArcGisMapServerImageryProvider.fromUrl(ESRI)); } catch { /* no imagery: terrain only */ }
+    if (v.isDestroyed()) return;
+    paint();
+    const [cx, cy] = lotCenter(pts), target = Cz.Cartesian3.fromDegrees(cx, cy, r.terrain?.elevation ?? 0), range = Math.max(220, span * 2.1), pitch = Cz.Math.toRadians(-32);
+    const aim = (hd) => { v.camera.lookAt(target, new Cz.HeadingPitchRange(Cz.Math.toRadians(hd), pitch, range)); v.scene.requestRender(); };
+    // One slow turn on arrival (none if the phone asks for less motion), then the farmer turns it by dragging
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) aim(20);
+    else { const t0 = performance.now(), go1 = (now) => { if (v.isDestroyed()) return; const q = Math.min(1, (now - t0) / 2600), e = 1 - (1 - q) ** 3; aim(-50 + 70 * e); if (q < 1) requestAnimationFrame(go1); }; requestAnimationFrame(go1); }
+  }, 0);
+  return sec;
+}
 function viewTerreno() {
   return withResults(async (r) => {
     const picked = (await chosen(r)).f;
@@ -893,7 +1017,7 @@ function viewTerreno() {
     const noaa = DATA.outlook?.official?.noaa, erfen = DATA.outlook?.official?.erfen;
     put($("#view"), h("div", { class: "res terreno" },
       resHead(P),
-      plotMap(r, picked),
+      plot3d(r, picked),
       h("div", { class: "col-left" },
         h("section", { class: "card" }, h("h2", { class: "card-h" }, c.yourPlot),
           row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
