@@ -406,7 +406,7 @@ body.results .bottom-nav { display: grid; grid-template-columns: repeat(4, 1fr);
 .pc-season { z-index: 1; font: 500 10px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--lichen); padding-top: 12px; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
 .pc-season::after { content: ""; flex: 1; height: 1px; background: currentColor; opacity: .35; }
 .pc-season.w { color: #3E6EA8; }
-.pc-season.short { font-size: 0; }
+.pc-season.short, .pc-season.tiny, .pc-season.nofit { font-size: 0; }
 .pc-hit { z-index: 4; border: 0; background: none; padding: 0; border-radius: 10px; }
 .pc-dot { position: absolute; z-index: 3; top: 0; left: 0; width: 0; pointer-events: none; transition: transform var(--t-base) var(--ease); }
 .pc-dot .pc-pt { position: absolute; left: 0; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--rain); box-shadow: 0 0 0 3px var(--paper); transition: top var(--t-base) var(--ease); }
@@ -573,7 +573,6 @@ body.results .bottom-nav { display: grid; grid-template-columns: repeat(4, 1fr);
   .pc-run { justify-content: flex-start; padding: 0 10px; }
   .pc-run span { display: block; }
   .pc-month { font-size: 11px; letter-spacing: .04em; }
-  .pc-season.short { font-size: 10px; }
   .strats { display: grid; grid-template-columns: 1fr 1fr; overflow: visible; margin: 0; padding: 0; }
   .stat { font-size: 96px; }
   .res-title h1 { font-size: 52px; }
@@ -647,7 +646,17 @@ body.results .bottom-nav { display: grid; grid-template-columns: repeat(4, 1fr);
   .sow-row { --lab: 146px; } .sow-row b { font-size: 16px; } .sow-cells i { height: 52px; border-radius: 8px; font-size: 15px; }
   .rain-row .cal-grid { height: 100px; }
 }
-@media (min-width: 1024px) { .pv-cards .strats { grid-template-columns: repeat(var(--k, 4), 1fr); } }
+@media (min-width: 1024px) {
+  .pv-cards .strats { grid-template-columns: repeat(var(--k, 4), 1fr); }
+  /* The route column is taller than the calendar: the year dots and soil squares fill the space under the calendar. */
+  .pv-body { grid-template-rows: auto 1fr; }
+  .pv-left { display: contents; }
+  .pv-a { grid-column: 1; grid-row: 1 / span 2; padding: 22px 18px; border-right: 1px solid var(--line); }
+  .pv-right { grid-column: 2; grid-row: 1; }
+  .pv-b { grid-column: 2; grid-row: 2; padding: 0 18px 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-content: start; gap: 22px 40px; }
+  /* Compare: the plot editor stays in view while the results column scrolls. */
+  .res.cmp > .col-left { position: sticky; top: 96px; max-height: calc(100dvh - 120px); overflow-y: auto; }
+}
 
 /* Bottom sheet slides up from the edge on phones; centred dialog fades in on a computer */
 .sheet[open] { transform: none; opacity: 1; transition: transform 420ms var(--ease-drawer), opacity 200ms ease; }

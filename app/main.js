@@ -228,7 +228,7 @@ function viewLanding() {
     h("section", { class: "l-sheet" }, h("div", { class: "l-wrap" },
       h("div", { class: "l-how", id: "how" }, ...D.how.map(([ic, t, d]) => h("div", { class: "how" }, h("span", { class: "tile-i dark" }, icon(ic)), h("b", {}, t), h("p", {}, d)))),
       h("h2", { class: "h2" }, D.examplesTitle),
-      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}.jpg`, alt: "", loading: "lazy" }),
+      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}.jpg?v=2`, alt: "", loading: "lazy" }),
         h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),
       h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "tile-i" }, icon("i-agronomist")), h("span", {}, h("b", {}, D.bootTitle), h("p", {}, D.bootLead)), icon("i-arrow-r")),
       h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
@@ -588,12 +588,14 @@ function planCalendar(el, r, f) {
   });
   const short = (p) => (N <= 12 ? cap(monL(p.m)).slice(0, 3) : cap(monL(p.m)).slice(0, 1));
   r.period.forEach((p, t) => kids.push(h("div", { class: "pc-month", style: { gridRow: String(last - 1), gridColumn: String(t + 1) } }, N > 24 ? (p.m === 1 ? `'${String(p.y).slice(2)}` : "") : short(p))));
-  for (let a = 0; a < N;) { let b = a; while (b + 1 < N && wet[b + 1] === wet[a]) b++; const w = wet[a]; kids.push(h("div", { class: `pc-season${w ? " w" : ""}${N > 24 || b - a < (N > 12 ? 2 : 1) ? " short" : ""}`, style: { gridRow: String(last), gridColumn: `${a + 1} / ${b + 2}` } }, w ? (coast ? D.wet : D.wetX) : coast ? D.dry : D.dryX)); a = b + 1; }
+  for (let a = 0; a < N;) { let b = a; while (b + 1 < N && wet[b + 1] === wet[a]) b++; const w = wet[a]; kids.push(h("div", { class: `pc-season${w ? " w" : ""}${N > 24 ? " tiny" : b - a < (N > 12 ? 2 : 1) ? " short" : ""}`, style: { gridRow: String(last), gridColumn: `${a + 1} / ${b + 2}` } }, w ? (coast ? D.wet : D.wetX) : coast ? D.dry : D.dryX)); a = b + 1; }
   const hits = r.period.map((p, t) => h("button", { class: "pc-hit", style: { gridRow: `1 / ${last + 1}`, gridColumn: String(t + 1) }, "aria-label": `${cap(monL(p.m))} ${p.y}`, tabindex: "-1" }));
   const dot = h("div", { class: "pc-dot" }, h("b"), h("span", { class: "pc-pt" }));
   const grid = h("div", { class: "pc-grid", style: { "--n": N } }, ...kids, ...hits, dot);
   const when = h("span", { class: "mono" }), big = h("span", { class: "pc-big" }), mm = h("span", { class: "pc-big" }), now = h("div", { class: "pc-now" });
   put(el, h("div", { class: "pc-head" }, h("div", { class: "pc-when" }, when, big), h("div", { class: "pc-rain" }, mm, h("span", { class: "mono" }, D.normalRain))), now, grid, h("p", { class: "small pc-note" }, D.tapMonth));
+  // A season name that does not fit its months is hidden instead of cut mid-word; the line stays.
+  new ResizeObserver(() => grid.querySelectorAll(".pc-season").forEach((x) => { x.classList.remove("nofit"); if (x.scrollWidth > x.clientWidth + 1) x.classList.add("nofit"); })).observe(grid);
   const place = () => {
     const g = grid.getBoundingClientRect(), hr = hits[sel].getBoundingClientRect(), lanes = grid.querySelectorAll(".pc-track");
     if (!g.width || !lanes.length) return;
@@ -882,7 +884,7 @@ async function ideas(r) {
   if (state.mode === "all") {
     if (ninoNow(P)) out.unshift({ icon: "i-rain", title: c.idNino, why: c.idNinoWhy, eff: c.yearsLike.nino, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "nino"; render(); } });
     out.push({ icon: "i-cloud-sun", title: c.idDry, why: c.idDryWhy, eff: c.idDryEff, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "dry"; render(); } });
-  } else out.unshift({ icon: "i-cloud-sun", title: c.idAll, why: c.idAllWhyBy[state.mode] || c.idAllWhy, eff: c.yearsLike[state.mode], on: true, apply: () => { state.mode = "all"; state.undo = null; render(); } });
+  } else out.unshift({ icon: "i-cloud-sun", title: c.idAll, why: c.idAllWhyBy[state.mode] || c.idAllWhy, eff: c.yearsLike[state.mode], apply: () => { state.mode = "all"; state.undo = null; render(); } });
   return out;
 }
 function viewProbar() {
@@ -891,7 +893,9 @@ function viewProbar() {
     const picked = P.crops.filter((id) => r.windows[id]);
     const suggested = [...new Set(list.flatMap((it) => (it.P2 ? it.P2.crops.filter((x) => !P.crops.includes(x) && r.windows[x]) : [])))];
     const N = r.period.length, lab = desktop() ? "146px" : "64px";
-    const head = h("div", { class: "sow-row", style: { "--lab": lab } }, h("span"), h("div", { class: "sow-cells", style: { "--n": N } }, ...r.period.map((p, i) => h("span", { style: { textAlign: "center", fontSize: "12px", fontWeight: 700, color: "var(--ink2)", overflow: "hidden" } }, N <= 14 && desktop() ? mon(p.m) : S().months[p.m - 1]))));
+    const head = h("div", { class: "sow-row", style: { "--lab": lab } }, h("span"), h("div", { class: "sow-cells", style: { "--n": N } }, ...r.period.map((p, i) => N > 24
+      ? h("span", { style: { fontSize: "12px", fontWeight: 700, color: "var(--ink2)", whiteSpace: "nowrap" } }, p.m === 1 ? `'${String(p.y).slice(2)}` : "")
+      : h("span", { style: { textAlign: "center", fontSize: "12px", fontWeight: 700, color: "var(--ink2)", overflow: "hidden" } }, N <= 14 && desktop() ? mon(p.m) : S().months[p.m - 1]))));
     const sowRow = (id) => {
       const w = r.windows[id];
       return h("div", { class: "sow-row", style: { "--lab": lab } }, h("b", { style: { fontSize: desktop() ? "16px" : "13px" } }, cap(cropName(id))),
@@ -965,7 +969,7 @@ function viewComparar() {
       ? (es() ? `Su plan pierde cosecha ${frac(mine.anyLoss).toLowerCase()} años; el recomendado, ${frac(rec.anyLoss).toLowerCase()}.` : `Your plan loses a harvest ${frac(mine.anyLoss).toLowerCase()} years; the recommended one, ${frac(rec.anyLoss).toLowerCase()}.`)
       : rec.harvest > mine.harvest ? (es() ? `Con el recomendado llega a cosecha ${fmtArea(rec.harvest - mine.harvest)} más.` : `The recommended plan brings ${fmtArea(rec.harvest - mine.harvest)} more to harvest.`) : "";
     const calCard = (title, f) => h("section", { class: "card" }, h("div", { class: "row between" }, h("b", {}, title), verdictEl(f.verdict)), f.parcels.some((p) => p.d.steps.length) ? farmCalendar(r, f, { compact: true }) : h("p", { class: "small" }, c.noPlans));
-    put($("#view"), h("div", { class: "res" },
+    put($("#view"), h("div", { class: "res cmp" },
       resHead(P),
       h("div", { class: "col-left wide" },
         h("div", { class: "res-title" }, h("h1", { class: "display" }, c.build), h("p", {}, c.buildLead)),
