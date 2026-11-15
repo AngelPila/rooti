@@ -253,7 +253,7 @@ function smooth(pts) {
   return d;
 }
 // Curves that converge on the headline. Decoration: drawn once, inner lines first, with uneven gaps.
-function heroLines(svg, title) {
+function heroLines(svg, title, animate = true) {
   const art = svg.parentElement;
   if (!art?.isConnected || getComputedStyle(art).display === "none") return;
   const a = art.getBoundingClientRect(), t = title.getBoundingClientRect(), H = a.height, k = H / 860;
@@ -265,7 +265,7 @@ function heroLines(svg, title) {
   svg.innerHTML = all.map((l) => `<path d="${curve(l)}"/><circle cx="${l[0][0]}" cy="${l[0][1]}" r="3.5"/><circle cx="${l[1][0]}" cy="${l[1][1]}" r="3"/>`).join("") +
     (top > 140 ? `<path d="M720,110 V${top}"/><circle cx="720" cy="${top}" r="3"/><circle cx="720" cy="110" r="3"/>` : "");
   const geo = { all, top: top > 140 ? top : 0, cy };
-  if (!MOTION()) return geo;
+  if (!MOTION() || !animate) return geo;
   const AT = [90, 0, 30, 140];
   svg.querySelectorAll("path").forEach((p, i) => {
     const n = p.getTotalLength(); p.style.strokeDasharray = n;
@@ -327,7 +327,24 @@ function heroSignals(svg, g, stage, start) {
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); });
   };
   addEventListener("scroll", onScroll, { passive: true });
+  stage.cleanup = () => {
+    removeEventListener("scroll", onScroll);
+    [...inLabs, ...outLabs, dot, hubLab, end].forEach((el) => el.remove());
+    for (const el of [copy, src]) el.style.opacity = el.style.transform = el.style.visibility = "";
+  };
   draw();
+}
+// Geometry depends on the window size and the stage only exists from 721px up, so a resize rebuilds it from scratch.
+function mountHero(art, title, start) {
+  const stage = $(".hero-stage");
+  heroSignals(art, heroLines(art, title), stage, start);
+  let t = 0;
+  const onResize = () => {
+    if (!stage.isConnected) return removeEventListener("resize", onResize);
+    clearTimeout(t);
+    t = setTimeout(() => { stage.cleanup?.(); stage.cleanup = null; heroSignals(art, heroLines(art, title, false), stage, start); }, 150);
+  };
+  addEventListener("resize", onResize);
 }
 const MOTION = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
 const ILLU = { daule: "rice", quevedo: "maize", iowa: "soybean" };
@@ -360,7 +377,7 @@ function viewLanding() {
       h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
     h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"))))));
   tilt(document.querySelectorAll(".how"));
-  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => heroSignals(art, heroLines(art, title), $(".hero-stage"), start));
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => mountHero(art, title, start));
 }
 // Cards lean toward the pointer on desktop; CSS eases the vars so each move stays short.
 function tilt(cards) {
