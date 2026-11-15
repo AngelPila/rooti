@@ -292,7 +292,7 @@ function viewLanding() {
       h("div", { class: "l-how-head", id: "how" }, h("span", { class: "eyebrow lime-tag" }, D.howEyebrow), h("h2", { class: "h2" }, D.howTitle)),
       h("div", { class: "l-how" }, ...D.how.map(([img, t, d, alt], i, all) => {
         const agent = i === all.length - 1;
-        return h("article", { class: agent ? "how agent" : "how" }, h("img", { src: `img/how/${img}.png`, alt, loading: "lazy" }),
+        return h("article", { class: agent ? "how agent" : "how" }, h("span", { class: "how-img" }, h("img", { src: `img/how/${img}.png`, alt, loading: "lazy" })),
           agent ? h("span", { class: "eyebrow lime-tag" }, D.howAgent) : null,
           h("b", {}, h("i", {}, `${i + 1}.`), " ", t), h("p", {}, d));
       })),
@@ -302,7 +302,20 @@ function viewLanding() {
       h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "tile-i" }, icon("i-agronomist")), h("span", {}, h("b", {}, D.bootTitle), h("p", {}, D.bootLead)), icon("i-arrow-r")),
       h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
     h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"))))));
+  tilt(document.querySelectorAll(".how"));
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => heroLines(art, title));
+}
+// Cards lean toward the pointer on desktop; CSS eases the vars so each move stays short.
+function tilt(cards) {
+  if (!MOTION() || !matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+  cards.forEach((el) => {
+    el.addEventListener("pointermove", (e) => {
+      const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+      el.style.setProperty("--rx", `${(-y * 5).toFixed(2)}deg`); el.style.setProperty("--ry", `${(x * 6).toFixed(2)}deg`);
+      el.style.setProperty("--mx", `${((x + .5) * 100).toFixed(1)}%`); el.style.setProperty("--my", `${((y + .5) * 100).toFixed(1)}%`);
+    });
+    el.addEventListener("pointerleave", () => { el.style.removeProperty("--rx"); el.style.removeProperty("--ry"); });
+  });
 }
 
 /* ================= planner ================= */
