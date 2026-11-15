@@ -36,3 +36,11 @@
 - [IICA, Introduction to Regenerative Agriculture](https://agreg.iica.int/) and [SEED course catalog](https://seed.iica.int/). Free training on soil health, biodiversity, and soil cover.
 - [FAO, Climate-smart soil and land management](https://elearning.fao.org/course/view.php?id=435) and its [Spanish edition](https://elearning.fao.org/course/view.php?id=496&lang=es). Free training on soil, erosion, and water management.
 - [W.carter, Corn in a field by Myrstigen 1](https://commons.wikimedia.org/wiki/File:Corn_in_a_field_by_Myrstigen_1.jpg). Bootcamp header photo, CC BY-SA 4.0.
+
+## Design system (`design/system/`)
+
+- Visual direction inspired by [overstory.com](https://www.overstory.com/) (layout, palette structure, motion). No code, fonts or images copied.
+- Fonts from Google Fonts (SIL Open Font License): Geist, Geist Mono, Funnel Display, Instrument Serif, Space Grotesk.
+- Crop illustrations (maize, rice, soybean, straw mulch) generated with AI (OpenAI image generation through Codex). Each carries a visible "IMAGEN GENERADA CON IA" watermark.
+- Icons and the vector logo mark were drawn by hand for this project.
+- Agent skills in `.claude/skills/` (learn-taste, mobile-native, break-ui, remove-animations, find-animation-opportunities, choreograph, prototype) copied from [emilkowalski/skills](https://github.com/emilkowalski/skills) (MIT), commit 0f2e23b. License in `.claude/skills/EMIL-SKILLS-LICENSE`.
