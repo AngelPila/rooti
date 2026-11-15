@@ -47,7 +47,8 @@ export async function chat(body) {
   const r = await fetch(CHAT_URL, {
     method: "POST", signal: AbortSignal.timeout(40e3),
     headers: { "content-type": "application/json", authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
-    body: JSON.stringify({ model: MODEL, temperature: 0.4, max_tokens: 500, tools: TOOLS, tool_choice: "auto",
+    // The last round of a turn must answer in words, so a model that keeps calling tools still says something
+    body: JSON.stringify({ model: MODEL, temperature: 0.4, max_tokens: 400, tools: TOOLS, tool_choice: body.final ? "none" : "auto",
       messages: [{ role: "system", content: system(lang, clean(body.context, 8000)) }, ...msgs] }),
   });
   if (!r.ok) { console.error("rooti: model", r.status, (await r.text()).slice(0, 300)); return { status: 502, body: { error: "model" } }; }
@@ -63,6 +64,8 @@ export async function transcribe(audio, type, lang) {
   fd.append("model", "whisper-large-v3-turbo");
   fd.append("language", lang === "en" ? "en" : "es");
   fd.append("response_format", "json");
+  // Place and crop names Whisper otherwise mishears ("Daule" came back as "dable")
+  if (lang !== "en") fd.append("prompt", "Daule, Babahoyo, Quevedo, Salitre, Vinces, Los Ríos, Guayas, cuadras, hectáreas, arroz, maíz, soya, maní, fréjol, riego, invierno, verano, El Niño, Rooti.");
   const r = await fetch(STT_URL, { method: "POST", body: fd, signal: AbortSignal.timeout(30e3), headers: { authorization: `Bearer ${process.env.GROQ_API_KEY}` } });
   if (!r.ok) { console.error("rooti: voice", r.status, (await r.text()).slice(0, 300)); return { status: 502, body: { error: "voice" } }; }
   return { status: 200, body: { text: String((await r.json()).text || "").trim().slice(0, 1500) } };

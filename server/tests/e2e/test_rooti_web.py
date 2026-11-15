@@ -36,7 +36,10 @@ SCRIPT = {
     "tres cuadras": (call("change_plot", area=3, unit="cuadra"), "Listo, veci: cambié su tierra a tres cuadras. Si me equivoqué, toque Deshacer."),
     "años": (call("show_on_page", screen="plan", mark="years"), "Fíjese en los puntos: cada uno es un año real."),
     "riego": (call("try_idea", idea="irrigation"), "Con riego le iría mejor. Si le convence, toque el botón."),
+    # A real model sometimes acts and then says nothing until it is told it may not call tools
+    "por qué": (call("show_on_page", screen="plan", mark="route"), "Este orden deja la tierra cubierta casi todo el año."),
 }
+SILENT_UNTIL_FINAL = {"por qué"}
 
 
 class FakeModel(BaseHTTPRequestHandler):
@@ -47,7 +50,12 @@ class FakeModel(BaseHTTPRequestHandler):
         FakeModel.requests.append(body)
         last, user = body["messages"][-1], next(m for m in reversed(body["messages"]) if m["role"] == "user")
         key = next(k for k in SCRIPT if k in user["content"].lower())
-        message = {"role": "assistant", "content": SCRIPT[key][1]} if last["role"] == "tool" else SCRIPT[key][0]
+        if last["role"] != "tool":
+            message = SCRIPT[key][0]
+        elif key in SILENT_UNTIL_FINAL and body.get("tool_choice") != "none":
+            message = {"role": "assistant", "content": ""}
+        else:
+            message = {"role": "assistant", "content": SCRIPT[key][1]}
         out = json.dumps({"choices": [{"message": message}]}).encode()
         self.send_response(200)
         self.send_header("content-type", "application/json")
@@ -150,6 +158,16 @@ def test_phone_rooti_marks_what_it_explains_and_offers_ideas_without_applying_th
     assert saved_plan(page)["irrigation"] is False
     offer.click()
     assert saved_plan(page)["irrigation"] is True
+
+
+def test_rooti_always_answers_in_words_after_acting(app_url, browser):
+    page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True)
+    open_example(page, app_url)
+    page.locator(".rt-fab").click()
+    page.locator(".rt-cmp input").fill("¿Por qué este plan?")
+    page.keyboard.press("Enter")
+    expect(page.locator(".rt-peek")).to_contain_text("tierra cubierta", timeout=15_000)
+    assert FakeModel.requests[-1]["tool_choice"] == "none"
 
 
 def test_computer_panel_sits_beside_the_page(app_url, browser):

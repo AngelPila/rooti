@@ -136,12 +136,15 @@ export function createRooti(app) {
     const cards = []; let acted = false, reply = "";
     try {
       for (let round = 0; round < 5; round++) {
+        const final = round === 4;
         const r = await fetch("/api/rooti", { method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ lang: app.lang(), context: await app.context(), messages: recent() }) });
+          body: JSON.stringify({ lang: app.lang(), context: await app.context(), messages: recent(), final }) });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const { message } = await r.json();
+        // After acting, the model sometimes ends with no words; the final round forces them
+        if (!message.tool_calls?.length && !message.content?.trim() && round > 0 && !final) { round = 3; continue; }
+        if (!message.tool_calls?.length || final) { reply = message.content; S.history.push({ role: "assistant", content: reply }); break; }
         S.history.push(message);
-        if (!message.tool_calls?.length) { reply = message.content; break; }
         for (const call of message.tool_calls) {
           let args = {}; try { args = JSON.parse(call.function.arguments || "{}"); } catch { /* the model sent bad JSON: the tool reports it */ }
           const out = await runTool(call.function.name, args).catch((e) => ({ result: { error: String(e.message || e) } }));

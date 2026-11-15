@@ -24,6 +24,8 @@ PROMPTS = config.REPO / "bot" / "hermes" / "rooti"
 CHAT_URL = os.environ.get("ROOTI_CHAT_URL", "https://api.deepseek.com/chat/completions")
 STT_URL = os.environ.get("ROOTI_STT_URL", "https://api.groq.com/openai/v1/audio/transcriptions")
 LANGUAGE = {"es": "Spanish, always with «usted».", "en": "English. Keep the same warmth, without the coastal Spanish slang."}
+# Place and crop names Whisper otherwise mishears ("Daule" came back as "dable")
+VOCABULARY = "Daule, Babahoyo, Quevedo, Salitre, Vinces, Los Ríos, Guayas, cuadras, hectáreas, arroz, maíz, soya, maní, fréjol, riego, invierno, verano, El Niño, Rooti."
 LIMITS = {"chat": 80, "voice": 30}  # per address every 10 minutes; a question takes one call per tool round
 _hits: dict[str, list[float]] = {}
 _lock = threading.Lock()
@@ -99,7 +101,9 @@ def mount(api: FastAPI) -> None:
         if not msgs:
             raise HTTPException(400, "messages")
         lang = "en" if body.get("lang") == "en" else "es"
-        payload = {"model": config.model()[1], "temperature": 0.4, "max_tokens": 500, "tools": TOOLS, "tool_choice": "auto",
+        # The last round of a turn must answer in words, so a model that keeps calling tools still says something
+        payload = {"model": config.model()[1], "temperature": 0.4, "max_tokens": 400, "tools": TOOLS,
+                   "tool_choice": "none" if body.get("final") else "auto",
                    "messages": [{"role": "system", "content": _system(lang, _clean(body.get("context"), 8000))}, *msgs]}
         async with httpx.AsyncClient(timeout=40) as http:
             r = await http.post(CHAT_URL, json=payload, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"})
@@ -126,7 +130,8 @@ def mount(api: FastAPI) -> None:
         async with httpx.AsyncClient(timeout=30) as http:
             r = await http.post(STT_URL, headers={"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"},
                                 files={"file": (f"voice.{ext}", audio, kind)},
-                                data={"model": "whisper-large-v3-turbo", "language": "en" if lang == "en" else "es", "response_format": "json"})
+                                data={"model": "whisper-large-v3-turbo", "language": "en" if lang == "en" else "es", "response_format": "json",
+                                      **({} if lang == "en" else {"prompt": VOCABULARY})})
         if r.status_code != 200:
             log.error("voice %s: %s", r.status_code, r.text[:300])
             raise HTTPException(502, "voice")
