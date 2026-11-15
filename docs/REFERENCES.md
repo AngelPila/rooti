@@ -65,3 +65,10 @@
 - Terrain: [Terrain Tiles on AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Mapzen/Tilezen, Terrarium encoding), mostly built from NASA SRTM; read in the browser with CesiumJS `CustomHeightmapTerrainProvider`, not exaggerated.
 - Crop heights: Allen et al. (1998), *FAO Irrigation and Drainage Paper 56*, Table 12, "maximum crop height". Jack bean and velvet bean are estimated. Heights are drawn ×k (shown on screen) so they read against the plot's size.
 - Water left on the plot each month: rain minus ET₀ minus what the plot drains, the same rule the planner uses (NASA POWER monthly rain and ET₀, ~50 km cells).
+
+## Soil 3D prototype (`prototypes/soil3d/`)
+- [three.js](https://threejs.org/) 0.160.0 (MIT), loaded from jsDelivr: the 3D scene and orbit controls.
+- Esri World Imagery tiles: the satellite photo draped on the terrain.
+- [Terrain Tiles on AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Terrarium encoding, mostly NASA SRTM): the relief, exaggerated on purpose and labelled as such.
+- Plant height on the surface is estimated from the photo's excess-green index; it is a visual aid, not a measurement.
+- Soil, soil water, rain and greenness come from `app/data/daule.json` (ISRIC SoilGrids, NASA GLDAS, NASA POWER, NASA MODIS NDVI).
