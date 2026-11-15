@@ -101,7 +101,7 @@ def script(req: dict) -> dict:
         return {"status": 401, "error": "Invalid API key: this is not an OpenRouter API key."}
     if "avíseme" in said:
         return {"tool_calls": [(tool(req, "guardar_lote"), {"alerts_ok": True})]}
-    return {"content": "Hola, soy Rooti. ¿Me manda la ubicación de su lote con el clip?"}
+    return {"content": "¡Buenas, veci! Aquí Rooti 🌱 ¿Me manda la ubicación de su lote con el clip?"}
 
 
 class Gateway:
@@ -201,7 +201,7 @@ def test_farmer_on_whatsapp(tmp_path):
 
         # 1. A new farmer: the turn starts with what Rooti knows, and it asks for the plot's location.
         first = reply(lambda: wa.say(FARMER, "hola"), timeout=180)
-        assert [m["message"] for m in first] == ["Hola, soy Rooti. ¿Me manda la ubicación de su lote con el clip?"], \
+        assert [m["message"] for m in first] == ["¡Buenas, veci! Aquí Rooti 🌱 ¿Me manda la ubicación de su lote con el clip?"], \
             "solo la respuesta de Rooti: ningún aviso de Hermes"
         turns = [r for r in llm.requests if r.get("tools")]  # not Hermes' own side calls (the session title)
         first_turn = "\n".join(text_of(m) for m in turns[0]["messages"])

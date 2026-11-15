@@ -47,8 +47,8 @@ EDGE_RATE = 24000  # Edge TTS speaks 24 kHz mp3; ffmpeg turns each sentence into
 CALL_RULES = """
 ## En esta llamada
 
-Ahora hablas en vivo, por voz, con el agricultor (como una llamada). Frases todavía más cortas: una o dos por turno,
-y deja que él hable. Nada de emojis, símbolos ni números con decimales: «casi dos cuadras», «unos cuarenta
+Ahora hablas en vivo, por voz, con el agricultor (como una llamada), con la misma personalidad costeña. Frases todavía
+más cortas: una o dos por turno, y deja hablar al agricultor. Nada de emojis, símbolos ni números con decimales: «casi dos cuadras», «unos cuarenta
 milímetros». Si te interrumpe, para y escúchalo. Cuando ya no tenga preguntas, despídete en una frase.
 """
 

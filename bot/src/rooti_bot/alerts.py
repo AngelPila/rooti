@@ -42,7 +42,7 @@ def heavy_rain(farmer: dict, forecast=_forecast) -> tuple[str, str] | None:
     day, mm = max(days, key=lambda x: x[1])
     weekday = WEEKDAYS[datetime.fromisoformat(day).weekday()]
     place = f" en {farmer['place']}" if farmer.get("place") else " por su lote"
-    return day, (f"Hola, soy Rooti. Para el {weekday} se esperan unos {round(mm)} milímetros de lluvia{place}: es "
+    return day, (f"¡Pilas, veci! Aquí Rooti. Para el {weekday} vienen unos {round(mm)} milímetros de lluvia{place}: es "
                  f"lluvia fuerte. Si tiene algo recién sembrado o el lote se encharca, toca prepararse.")
 
 
@@ -58,8 +58,8 @@ def sow_window(farmer: dict, plan: dict | None, today=None) -> tuple[str, str] |
     if not crops:
         return None
     crop = crops[0]
-    return f"{crop}@{month}", (f"Hola, soy Rooti. Según su plan, en {MONTHS[soon.month - 1]} toca sembrar {crop}. "
-                               f"Antes de sembrar, revisemos cómo viene la lluvia.")
+    return f"{crop}@{month}", (f"¡Buenas, veci! Aquí Rooti. Según su plan, en {MONTHS[soon.month - 1]} toca sembrar {crop}. "
+                               f"Antes de sembrar, veamos cómo viene la lluvia.")
 
 
 def _send(phone: str, alert_id: int, text: str, at: float) -> None:
