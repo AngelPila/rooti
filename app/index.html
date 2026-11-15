@@ -1,16 +1,17 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<title>Rooti · Sepa qué sembrar, y cuándo</title>
-<meta name="description" content="Rooti arma la rotación de su lote con el clima real de la NASA: qué cultivo, en qué meses y en cuánta tierra. NASA Space Apps 2026 · Field Shift.">
-<meta name="theme-color" content="#16301F">
+<title>Rooti · Plant knowing</title>
+<meta name="description" content="Rooti plans the crop rotation for a small farm: which crop, in which months and on how much land, tested against every year of local climate since 1981. NASA Space Apps 2026 · Field Shift.">
+<meta name="theme-color" content="#F3F0E5">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22 fill=%22%23153E32%22%3E%3Cpath d=%22M14 0H32V36H50V53H0V14A14 14 0 0 1 14 0Z%22/%3E%3Cpath d=%22M37 0H86A14 14 0 0 1 100 14V47H74V31H37Z%22/%3E%3Cpath d=%22M55 52H100V86A14 14 0 0 1 86 100H70V70H55Z%22/%3E%3Cpath d=%22M0 58H27V75H65V100H14A14 14 0 0 1 0 86Z%22/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..600&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-<link href="app.css?v=25" rel="stylesheet">
-<link href="bootcamp.css?v=2" rel="stylesheet">
+<link href="app.css?v=30" rel="stylesheet">
+<link href="bootcamp.css?v=3" rel="stylesheet">
 </head>
 <body>
 <header id="topbar"></header>
@@ -21,15 +22,103 @@
 <nav class="bottom-nav" id="bottom-nav" aria-label="Secciones"></nav>
 <dialog id="sheet" class="sheet" aria-label="Detalle"></dialog>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-maize" viewBox="0 0 24 24" fill="currentColor">
+      <path fill-rule="evenodd" d="M12 2.4c2.3 0 3.9 2 3.9 4.7v6.8c0 2.6-1.7 4.3-3.9 4.3s-3.9-1.7-3.9-4.3V7.1c0-2.7 1.6-4.7 3.9-4.7zM10.7 5.6a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm2.6 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zM10.7 8.6a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm2.6 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zM10.7 11.6a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm2.6 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5z"/>
+      <path d="M11.4 21.8C7.3 21.3 4.6 18 4.2 11.8c3.1 1.4 5.2 4.1 6.2 8z"/>
+      <path d="M12.6 21.8c4.1-.5 6.8-3.8 7.2-10-3.1 1.4-5.2 4.1-6.2 8z"/>
+    </symbol>
+    <symbol id="i-rice" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M6.6 21.8C6.3 14 8.7 7.6 14.6 4.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M14.6 4.6c2.5 1.6 4.1 6 4.4 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M6.7 16.6C4.3 15.5 2.9 13.4 2.6 10.6c2.6.9 4.2 2.9 4.6 5.3z"/>
+      <ellipse cx="17.6" cy="6.9" rx="1" ry="1.8" transform="rotate(-38 17.6 6.9)"/>
+      <ellipse cx="19.1" cy="10.2" rx="1" ry="1.8" transform="rotate(-26 19.1 10.2)"/>
+      <ellipse cx="20.1" cy="13.6" rx="1" ry="1.8" transform="rotate(-14 20.1 13.6)"/>
+      <ellipse cx="15.2" cy="8.7" rx="1" ry="1.8" transform="rotate(28 15.2 8.7)"/>
+      <ellipse cx="16.4" cy="12" rx="1" ry="1.8" transform="rotate(20 16.4 12)"/>
+      <ellipse cx="17.2" cy="15.4" rx="1" ry="1.8" transform="rotate(12 17.2 15.4)"/>
+      <ellipse cx="19.1" cy="18.4" rx="1" ry="1.8"/>
+    </symbol>
+    <symbol id="i-soybean" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M4.3 19.7c-1.6-1.6-1-4.5 1.3-6.5l7.5-7.1c2.4-2.2 5.3-2.9 6.8-1.4 1.5 1.5.8 4.4-1.4 6.8l-7.1 7.5c-2 2.3-4.9 2.9-7.1.7z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+      <circle cx="7.5" cy="16.5" r="2.3"/>
+      <circle cx="11.6" cy="12.4" r="2.3"/>
+      <circle cx="15.7" cy="8.3" r="2.3"/>
+      <path d="M19.4 4.6l2.2-2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-straw" viewBox="0 0 24 24" fill="currentColor">
+      <path fill-rule="evenodd" d="M4.1 11.6h15.8a1.6 1.6 0 0 1 1.6 1.6v1.6a1.6 1.6 0 0 1-1.6 1.6H4.1a1.6 1.6 0 0 1-1.6-1.6v-1.6a1.6 1.6 0 0 1 1.6-1.6zM5.6 12.4l-1.5 2.8h1.2l1.5-2.8zm3.4 0l-1.5 2.8h1.2l1.5-2.8zm3.4 0l-1.5 2.8h1.2l1.5-2.8zm3.4 0l-1.5 2.8h1.2l1.5-2.8zm3.4 0l-1.5 2.8h1.2l1.5-2.8z"/>
+      <rect x="2.5" y="17.6" width="19" height="3.9" rx="1.2" opacity=".45"/>
+      <path d="M12 10.4V6.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M12 7.4C11.6 5.3 10 4 7.8 3.9c.3 2.2 1.9 3.6 4.2 3.5zM12 6.6c.5-2 2.1-3.1 4.2-3 -.4 2.1-2 3.2-4.2 3z"/>
+    </symbol>
+    <symbol id="i-rain" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M7.2 14.2a4.1 4.1 0 0 1-.5-8.2 5.6 5.6 0 0 1 10.6.9 3.7 3.7 0 0 1-.2 7.3z"/>
+      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8.2 17l-1 3.4"/><path d="M12.4 17l-1 3.4"/><path d="M16.6 17l-1 3.4"/></g>
+    </symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="12" cy="12" r="4.4"/>
+      <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/>
+      </g>
+    </symbol>
+    <symbol id="i-sow" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M2.5 16h6.8a2.7 2.7 0 0 0 5.4 0h6.8v5.5h-19z"/>
+      <ellipse cx="12" cy="13.6" rx="1.7" ry="2.2"/>
+      <path d="M12 2.5v6.5M9 6.6l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="i-harvest" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8.4 2.6h7.2l-1.3 3.2H9.7z"/>
+      <path fill-rule="evenodd" d="M9.2 7h5.6c3.3 1.7 5.2 5 5.2 8.6 0 3.4-2.4 5.8-5.6 5.8H9.6C6.4 21.4 4 19 4 15.6 4 12 5.9 8.7 9.2 7zM7.2 13.3h9.6v2.2H7.2z"/>
+    </symbol>
+    <symbol id="i-plot" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="2.5" y="2.5" width="8.6" height="8.6" rx="2.2"/>
+      <g fill="none" stroke="currentColor" stroke-width="1.6"><rect x="13.7" y="3.3" width="7" height="7" rx="1.8"/><rect x="3.3" y="13.7" width="7" height="7" rx="1.8"/><rect x="13.7" y="13.7" width="7" height="7" rx="1.8"/></g>
+    </symbol>
+    <symbol id="i-care" viewBox="0 0 24 24" fill="currentColor">
+      <path fill-rule="evenodd" d="M10.3 3.6a2 2 0 0 1 3.4 0l8 13.8a2 2 0 0 1-1.7 3H4a2 2 0 0 1-1.7-3zM11 8.6h2v5.6h-2zM12 15.6a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5z"/>
+    </symbol>
+    <symbol id="i-water" viewBox="0 0 24 24" fill="currentColor">
+      <path fill-rule="evenodd" d="M12 2.6c3.7 4.6 6.3 8.2 6.3 11.7a6.3 6.3 0 0 1-12.6 0c0-3.5 2.6-7.1 6.3-11.7zM9.2 14.3a3 3 0 0 0 3 3v-1.7a1.3 1.3 0 0 1-1.3-1.3z"/>
+    </symbol>
+    <symbol id="i-nino" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <path d="M2.5 8c2.4 0 2.4-2.2 4.75-2.2S9.6 8 12 8s2.4-2.2 4.75-2.2S19.1 8 21.5 8"/>
+      <path d="M2.5 13c2.4 0 2.4-2.2 4.75-2.2S9.6 13 12 13s2.4-2.2 4.75-2.2S19.1 13 21.5 13"/>
+      <path d="M2.5 18c2.4 0 2.4-2.2 4.75-2.2S9.6 18 12 18s2.4-2.2 4.75-2.2S19.1 18 21.5 18" opacity=".45"/>
+    </symbol>
+    <symbol id="i-income" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="5" y="4.2" width="16.5" height="10.2" rx="2.2" opacity=".45"/>
+      <path fill-rule="evenodd" d="M4.7 8.6h12.1a2.2 2.2 0 0 1 2.2 2.2v6.6a2.2 2.2 0 0 1-2.2 2.2H4.7a2.2 2.2 0 0 1-2.2-2.2v-6.6a2.2 2.2 0 0 1 2.2-2.2zm6.05 2.1a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8zM5.2 13.4a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8zm11.1 0a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8z"/>
+    </symbol>
+    <symbol id="i-soil" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M2.5 8.2c3-1.7 6.2-1.7 9.5 0s6.5 1.7 9.5 0v3.6h-19z"/>
+      <rect x="2.5" y="13.4" width="19" height="3.3" rx=".9"/>
+      <rect x="2.5" y="18.3" width="19" height="3.2" rx=".9" opacity=".5"/>
+    </symbol>
+    <symbol id="i-agronomist" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="12" cy="7.4" r="3.8"/>
+      <path d="M4.3 21.3c0-4.4 3.4-7.6 7.7-7.6s7.7 3.2 7.7 7.6z"/>
+    </symbol>
+    <symbol id="i-month" viewBox="0 0 24 24" fill="currentColor">
+      <path fill-rule="evenodd" d="M5.4 4.6h13.2A2.4 2.4 0 0 1 21 7v11.6a2.4 2.4 0 0 1-2.4 2.4H5.4A2.4 2.4 0 0 1 3 18.6V7a2.4 2.4 0 0 1 2.4-2.4zM6 11v3h3v-3zm4.5 0v3h3v-3zm4.5 0v3h3v-3zM6 15.5v3h3v-3zm4.5 0v3h3v-3z"/>
+      <rect x="7" y="2.4" width="2" height="4" rx="1"/><rect x="15" y="2.4" width="2" height="4" rx="1"/>
+    </symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="currentColor">
+      <path fill-rule="evenodd" d="M12 2.4l7.8 2.9v5.9c0 5.1-3.3 9-7.8 10.6-4.5-1.6-7.8-5.5-7.8-10.6V5.3zM15.9 9l-5.1 5.1-2.7-2.7-1.4 1.4 4.1 4.1 6.5-6.5z"/>
+    </symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12h13M13 6.5l5.5 5.5-5.5 5.5"/>
+    </symbol>
+    <symbol id="i-info" viewBox="0 0 24 24" fill="currentColor">
+      <path fill-rule="evenodd" d="M12 2.5a9.5 9.5 0 1 1 0 19 9.5 9.5 0 0 1 0-19zM11 10.5h2V17h-2zM12 6.6a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5z"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
   <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M14.5 9a2.5 2 0 0 0-2.5-1.5c-1.7 0-2.5 1-2.5 2s1 1.6 2.5 2 2.5 1 2.5 2-.8 2-2.5 2A2.5 2 0 0 1 9.5 15M12 6v1.5M12 16.5V18"/></symbol>
   <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
   <symbol id="i-waves" viewBox="0 0 24 24"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></symbol>
-  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
   <symbol id="i-drop-off" viewBox="0 0 24 24"><path d="M12 2.7s-6 6.4-6 11.3a6 6 0 0 0 10.5 4"/><path d="M17.9 13.4C17.4 10.6 15 7.4 13.6 5.8"/><path d="m2 2 20 20"/></symbol>
-  <symbol id="i-rain" viewBox="0 0 24 24"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M16 14v6M8 14v6M12 16v6"/></symbol>
-  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></symbol>
   <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
-  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
   <symbol id="i-sprout" viewBox="0 0 24 24"><path d="M7 20h10M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></symbol>
   <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/></symbol>
   <symbol id="i-chat" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/></symbol>
@@ -41,7 +130,6 @@
   <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></symbol>
-  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.7 8.9a1 1 0 0 1-.7 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
   <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3l14 9-14 9z"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></symbol>
@@ -61,13 +149,12 @@
   <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10z"/><path d="M2 21c0-3 1.9-5.4 5.1-6C9.5 14.5 12 13 13 12"/></symbol>
   <symbol id="i-wheat" viewBox="0 0 24 24"><path d="M2 22 16 8M3.5 12.5 5 11l1.5 1.5a3.5 3.5 0 0 1 0 5L5 19l-1.5-1.5a3.5 3.5 0 0 1 0-5zM7.5 8.5 9 7l1.5 1.5a3.5 3.5 0 0 1 0 5L9 15l-1.5-1.5a3.5 3.5 0 0 1 0-5zM11.5 4.5 13 3l1.5 1.5a3.5 3.5 0 0 1 0 5L13 11l-1.5-1.5a3.5 3.5 0 0 1 0-5zM20 2h2v2a4 4 0 0 1-4 4h-2V6a4 4 0 0 1 4-4z"/></symbol>
   <symbol id="i-cloud-sun" viewBox="0 0 24 24"><path d="M12 2v2M4.9 4.9l1.4 1.4M20 12h2M19.1 4.9l-1.4 1.4M15.9 13A4 4 0 0 0 8.4 10.7M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6z"/></symbol>
-  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
   <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></symbol>
   <symbol id="i-pointer" viewBox="0 0 24 24"><path d="M9 9l5 12 1.8-5.2L21 14z"/><path d="M7.2 2.2 8 5.1M5.1 8l-2.9-.8M14 4.1 12 6M6 12l-1.9 2"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3M12 9v4M12 17h.01"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></symbol>
 </svg>
-<noscript><p style="padding:20px">Rooti necesita JavaScript.</p></noscript>
-<script type="module" src="main.js?v=26"></script>
+<noscript><p style="padding:20px">Rooti needs JavaScript.</p></noscript>
+<script type="module" src="main.js?v=30"></script>
 </body>
 </html>

@@ -41,6 +41,6 @@
 
 - Visual direction inspired by [overstory.com](https://www.overstory.com/) (layout, palette structure, motion). No code, fonts or images copied.
 - Fonts from Google Fonts (SIL Open Font License): Geist, Geist Mono, Funnel Display, Instrument Serif, Space Grotesk.
-- Crop illustrations (maize, rice, soybean, straw mulch) generated with AI (OpenAI image generation through Codex). Each carries a visible "IMAGEN GENERADA CON IA" watermark.
+- Crop illustrations (maize, rice, soybean, straw mulch) generated with AI (OpenAI image generation through Codex). Each carries a visible "IMAGEN GENERADA CON IA" watermark. The app uses the same files on the landing page (`app/img/illu/`).
 - Icons and the vector logo mark were drawn by hand for this project.
 - Agent skills in `.claude/skills/` (learn-taste, mobile-native, break-ui, remove-animations, find-animation-opportunities, choreograph, prototype) copied from [emilkowalski/skills](https://github.com/emilkowalski/skills) (MIT), commit 0f2e23b. License in `.claude/skills/EMIL-SKILLS-LICENSE`.
