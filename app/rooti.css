@@ -1,6 +1,6 @@
 /* Rooti, the in-app assistant: a floating avatar, a sheet on the phone, a side panel on the computer. */
 #rooti { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
-#rooti > * { pointer-events: auto; }
+#rooti > :not(.rt-greet) { pointer-events: auto; }
 #rooti[hidden] { display: none; }
 
 .rt-face { display: block; width: 100%; height: 100%; flex: none; }
