@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=23";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=56";
+import { COPY } from "./copy.js?v=57";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=24";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -1549,7 +1549,7 @@ function loadVecinos(pl = state.plan?.place, fresh = false) {
   return (VEC.load = (async () => {
     if (z) try { const d = await vecApi(`?zone=${encodeURIComponent(z)}`); VEC.posts = d.posts || []; VEC.server = true; return; } catch { /* no server: examples and this phone */ }
     VEC.server = false;
-    try { const d = await fetch("data/vecinos.json?v=1").then(ok); VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true })); } catch { VEC.posts = []; }
+    try { const d = await fetch("data/vecinos.json?v=2").then(ok); VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true })); } catch { VEC.posts = []; }
   })());
 }
 const zoneKey = (pl) => nearPilot(pl) || `pt:${pl.lat.toFixed(1)},${pl.lon.toFixed(1)}`;
@@ -1586,12 +1586,28 @@ function vecChipsOf(r, pc, all, seen = new Set()) {
   return out.length ? h("div", { class: "vec-chips" }, ...out) : null;
 }
 const VEC_BADGE = { bien: "good", regular: "care", perdio: "danger" };
-function vecAuthor(x, V) {
-  return h("p", { class: "vp-by" }, h("b", {}, x.author), x.role === "tecnico" ? h("span", { class: "vp-tech" }, icon("i-agronomist"), V.tech) : null, h("span", {}, fmtDate(x.date)));
+// Example posts carry an AI profile picture so the demo reads like real people; anyone else gets their initials.
+// Babahoyo and Quevedo reuse Daule's faces: the feed only ever shows one zone.
+const VEC_AVATAR = { "Don J. M.": "jm", "Doña R. C.": "rc", "J. P.": "jp", "Ing. P. A.": "pa", "Don C. B.": "cb", "Don F. A.": "fa", "L. V.": "lv", "Doña M. T.": "mt",
+  "Don E. G.": "cb", "Doña A. S.": "lv", "Don W. Z.": "fa", "Doña G. L.": "mt" };
+const vecInitials = (n) => (n || "").replace(/^(don|doña|ing\.)\s+/i, "").replace(/\./g, "").split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?";
+function vecAvatar(x, example, size) {
+  const k = example && VEC_AVATAR[x.author];
+  return k ? h("img", { class: `vh-av ${size}`, src: `img/vecinos/${k}.webp`, alt: "", loading: "lazy" })
+    : h("span", { class: `vh-av ${size}${x.role === "tecnico" ? " tech" : ""}`, "aria-hidden": "true" }, vecInitials(x.author));
 }
+function vecAgo(s) {
+  const V = C().vec, day = (t) => new Date(t.slice(0, 10) + "T12:00:00"), then = day(s), d = Math.round((day(iso(new Date())) - then) / 864e5);
+  if (d <= 0) return V.today;
+  if (d === 1) return V.yesterday;
+  if (d < 7) return V.ago(d, "d");
+  if (d < 28) return V.ago(Math.floor(d / 7), "w");
+  return cap(then.toLocaleDateString(state.lang, { month: "long", ...(then.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) }));
+}
+const vecWho = (x, V, ...more) => h("header", { class: "vh-who" }, h("b", {}, x.author), x.role === "tecnico" ? h("span", { class: "vh-tech" }, V.tech) : null, h("span", { class: "vh-when" }, vecAgo(x.date || x.ts)), ...more);
 function vecCard(p, redraw) {
   const c = C(), V = c.vec;
-  if (p.hidden) return h("article", { class: "vp hidden" }, h("p", { class: "small" }, V.reported), h("button", { class: "link", onclick: () => { store.set("vecHidden1", store.get("vecHidden1", []).filter((x) => x !== p.id)); redraw(); } }, V.undoReport));
+  if (p.hidden) return h("article", { class: "vh-post hidden" }, h("p", { class: "small" }, V.reported), h("button", { class: "link", onclick: () => { store.set("vecHidden1", store.get("vecHidden1", []).filter((x) => x !== p.id)); redraw(); } }, V.undoReport));
   const replyBox = h("div", { class: "vp-reply" });
   const openReply = () => {
     const input = h("textarea", { rows: 2, maxlength: 280, placeholder: V.replyPh, "aria-label": V.reply });
@@ -1603,16 +1619,25 @@ function vecCard(p, redraw) {
       h("button", { class: "btn soft", onclick: () => put(replyBox) }, V.fCancel)));
     input.focus();
   };
-  return h("article", { class: `vp t-${p.type}` },
-    h("div", { class: "vp-head" }, h("span", { class: "mono vp-type" }, V.type1[p.type]), p.example || p.local ? h("span", { class: `vp-tag${p.example ? "" : " mine"}` }, p.example ? V.example : V.local) : null),
-    p.crop ? h("div", { class: "vp-crop" }, tile(p.crop), h("b", {}, V.sown(cropLabel(p.crop), monL(p.sowMonth), p.sowYear)), p.area ? h("span", { class: "small" }, `${num(p.area)} ${c.units[p.unit] || p.unit || ""}`) : null) : null,
-    p.result ? h("span", { class: `badge ${VEC_BADGE[p.result]}` }, V.results[p.result]) : null,
-    vecText(p) ? h("p", { class: "vp-text" }, vecText(p)) : null,
-    vecAuthor(p, V),
-    p.replies.length ? h("ul", { class: "vp-replies", "aria-label": V.replies(p.replies.length) }, ...p.replies.map((x) => h("li", { class: x.role === "tecnico" ? "tech" : "" }, vecAuthor(x, V), h("p", {}, vecText(x))))) : null,
-    h("div", { class: "vp-acts" }, h("button", { class: "link", onclick: openReply }, icon("i-chat"), V.reply),
-      h("button", { class: "link quiet", onclick: () => { store.set("vecHidden1", [...store.get("vecHidden1", []), p.id]); if (VEC.server && !p.local) vecApi(`/${encodeURIComponent(p.id)}/report`, { device: vecDevice() }).catch(() => {}); redraw(); } }, V.report)),
-    replyBox);
+  // "Same here" lives on this phone only, like Report: the count is the example's plus this farmer's tap
+  const same = store.get("vecSame1", []), mine = same.includes(p.id), n = (p.same || 0) + (mine ? 1 : 0);
+  const L = p.crop ? look(p.crop) : null;
+  return h("article", { class: `vh-post t-${p.type}` },
+    h("div", { class: "vh-rail" }, vecAvatar(p, p.example, "l"), p.replies.length ? h("span", { class: "vh-line" }) : null),
+    h("div", { class: "vh-body" },
+      vecWho(p, V, p.local ? h("span", { class: "vh-tag" }, V.local) : null, p.type !== "asi_me_fue" ? h("span", { class: `vh-kind k-${p.type}` }, V.type1[p.type]) : null),
+      vecText(p) ? h("p", { class: "vh-text" }, vecText(p)) : null,
+      p.crop ? h("div", { class: "vh-report" },
+        h("span", { class: "vh-crop", style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, cropLabel(p.crop)),
+        p.sowMonth ? h("span", { class: "vh-sown" }, V.sownAt(monL(p.sowMonth), p.sowYear, p.area ? `${num(p.area)} ${c.units[p.unit] || p.unit || ""}` : "")) : null,
+        p.result ? h("span", { class: `vh-res ${VEC_BADGE[p.result]}` }, V.results[p.result]) : null) : null,
+      h("footer", { class: "vh-acts" },
+        h("button", { class: "vh-act", onclick: openReply }, V.reply),
+        h("button", { class: "vh-act same", "aria-pressed": String(mine), onclick: () => { store.set("vecSame1", mine ? same.filter((x) => x !== p.id) : [...same, p.id]); redraw(); } }, V.same, n ? h("b", {}, String(n)) : null),
+        h("button", { class: "link quiet", onclick: () => { store.set("vecHidden1", [...store.get("vecHidden1", []), p.id]); if (VEC.server && !p.local) vecApi(`/${encodeURIComponent(p.id)}/report`, { device: vecDevice() }).catch(() => {}); redraw(); } }, V.report)),
+      p.replies.length ? h("ul", { class: "vh-reps", "aria-label": V.replies(p.replies.length) }, ...p.replies.map((x) => h("li", { class: x.role === "tecnico" ? "tech" : "" },
+        vecAvatar(x, x.example || p.example, "m"), h("div", {}, vecWho(x, V), h("p", {}, vecText(x)))))) : null,
+      replyBox));
 }
 function vecForm(P, done) {
   const c = C(), V = c.vec, d = (state.vecDraft ||= { type: "asi_me_fue", crop: null, sowMonth: new Date(P.start + "T12:00:00").getMonth() + 1, result: null, text: "" });
@@ -1654,26 +1679,29 @@ async function viewVecinos(arg) {
   state.vecName ??= store.get("vecName1", "");
   if (arg && arg !== state.vecArg) { state.vecArg = arg; state.vecCrop = CROP_LOOK[arg] ? arg : null; state.vecType = "asi_me_fue"; }
   state.vecType ||= "all";
-  const feed = h("div", { class: "vec-feed" }), side = h("div", { class: "vec-side" }), note = h("p", { class: "vec-saved", role: "status" });
+  const feed = h("div", { class: "vh-feed" }), side = h("aside", { class: "vh-side" }), note = h("p", { class: "vec-saved", role: "status" });
   const draw = () => {
     const all = vecPosts(P.place), cropsIn = [...new Set(all.filter((p) => p.crop).map((p) => p.crop))];
     const list = all.filter((p) => (state.vecType === "all" || p.type === state.vecType) && (!state.vecCrop || p.crop === state.vecCrop));
+    const people = [...new Map(all.filter((p) => !p.hidden).flatMap((p) => [p, ...p.replies.map((x) => ({ ...x, example: x.example || p.example }))]).map((x) => [x.author, x])).values()];
     put(side,
-      h("div", { class: "res-title" }, h("h1", { class: "display" }, V.title), h("p", {}, z ? V.lead(cap(z)) : V.leadFar)),
+      h("div", { class: "res-title" }, h("h1", { class: "display" }, z ? V.group(cap(z)) : V.groupFar), h("p", {}, z ? V.lead(cap(z)) : V.leadFar)),
+      people.length ? h("div", { class: "vh-members" }, h("span", { class: "vh-stack" }, ...people.slice(0, 5).map((x) => vecAvatar(x, x.example, "s"))), h("span", {}, V.members(people.length))) : null,
+      h("p", { class: "vh-fine" }, V.peer, all.some((p) => p.example) ? ` ${V.demoShort}` : ""));
+    put(feed,
       state.vecForm ? vecForm(P, async (saved) => { state.vecForm = false; if (saved === "server") await loadVecinos(P.place, true); note.textContent = saved === "server" ? V.savedServer : saved ? V.saved : ""; draw(); })
-        : h("button", { class: "btn lime big", onclick: () => { state.vecForm = true; note.textContent = ""; draw(); } }, icon("i-plus"), V.publish),
+        : h("button", { class: "vh-compose", onclick: () => { state.vecForm = true; note.textContent = ""; draw(); } },
+          h("span", { class: "vh-av m me", "aria-hidden": "true" }, V.you), h("span", { class: "vh-compose-ph" }, V.compose), h("span", { class: "vh-compose-go" }, V.publish)),
       note,
-      h("div", { class: "vec-filters" },
-        h("div", { class: "seg", role: "group", "aria-label": V.title }, ...["all", "asi_me_fue", "aviso", "pregunta"].map((k) => h("button", { "aria-pressed": String(state.vecType === k), onclick: () => { state.vecType = k; draw(); } }, V.types[k]))),
-        cropsIn.length > 1 ? h("div", { class: "row wrap", style: { gap: "6px" } },
-          h("button", { class: "chip", "aria-pressed": String(!state.vecCrop), onclick: () => { state.vecCrop = null; draw(); } }, V.allCrops),
-          ...cropsIn.map((id) => h("button", { class: "chip", "aria-pressed": String(state.vecCrop === id), onclick: () => { state.vecCrop = id; draw(); } }, tile(id), cropLabel(id)))) : null),
-      h("p", { class: "vec-note" }, icon("i-agronomist"), h("span", {}, V.peer)),
-      h("p", { class: "vec-note" }, icon("i-info"), h("span", {}, VEC.server ? V.demoServer : V.demo)));
-    put(feed, ...(list.length ? list.map((p) => vecCard(p, draw)) : [h("div", { class: "card vec-empty" }, h("p", {}, all.length ? V.emptyFilter : V.empty))]));
+      h("div", { class: "vh-filters" },
+        h("div", { class: "vh-tabs", role: "group", "aria-label": V.title }, ...["all", "asi_me_fue", "aviso", "pregunta"].map((k) => h("button", { "aria-pressed": String(state.vecType === k), onclick: () => { state.vecType = k; draw(); } }, V.types[k]))),
+        cropsIn.length > 1 ? h("div", { class: "vh-crops", role: "group", "aria-label": V.allCrops },
+          h("button", { "aria-pressed": String(!state.vecCrop), onclick: () => { state.vecCrop = null; draw(); } }, V.allCrops),
+          ...cropsIn.map((id) => h("button", { "aria-pressed": String(state.vecCrop === id), onclick: () => { state.vecCrop = id; draw(); } }, h("i", { style: { background: look(id).color } }), cropLabel(id)))) : null),
+      ...(list.length ? list.map((p) => vecCard(p, draw)) : [h("p", { class: "vh-empty" }, all.length ? V.emptyFilter : V.empty)]));
   };
   draw();
-  put($("#view"), h("div", { class: "res vec" }, resHead(P), h("div", { class: "vec-grid" }, side, feed)));
+  put($("#view"), h("div", { class: "res vec" }, resHead(P), h("div", { class: "vh-grid" }, side, feed)));
 }
 
 /* ================= Rooti, the in-app assistant ================= */
