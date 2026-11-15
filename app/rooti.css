@@ -102,7 +102,11 @@ body.results .rt-peek { bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
 .rt-more .icon { transform: rotate(180deg); }
 
 /* What Rooti is talking about, marked on the page */
-.rt-marked { outline: 3px solid var(--lime); outline-offset: 3px; box-shadow: 0 0 0 7px var(--forest); border-radius: 14px; position: relative; z-index: 2; transition: outline-color var(--t-base), box-shadow var(--t-base); }
+/* One lime patch with room around it, so the ring never touches what it points at */
+.rt-marked { --wash: color-mix(in srgb, var(--lime) 40%, transparent); --halo: 0 0 0 10px var(--wash); outline: 1.5px solid var(--forest); outline-offset: 10px; box-shadow: var(--halo); position: relative; z-index: 2; transition: outline-offset var(--t-base), box-shadow var(--t-base); }
+/* Low specificity: an element with its own radius or background keeps it */
+:where(.rt-marked) { border-radius: 12px; background-color: var(--wash); }
+.rt-steps li.rt-marked { box-shadow: inset 0 -2px 0 var(--edge), var(--halo); }
 
 @media (min-width: 1024px) {
   .rt-fab, body.results .rt-fab { right: 24px; bottom: 24px; width: 60px; height: 60px; }
