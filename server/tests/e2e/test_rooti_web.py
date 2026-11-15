@@ -114,7 +114,8 @@ def open_example(page, url):
     page.goto(url + "/?lang=es#/")
     page.locator(".hero-actions .btn.glass").click()
     page.wait_for_url("**#/plan")
-    expect(page.locator("[data-rooti='route']")).to_be_visible(timeout=30_000)
+    # The plan screen first lists the plans; Rooti opens one when it needs its route or years
+    expect(page.locator("[data-rooti='plans']")).to_be_visible(timeout=30_000)
 
 
 def test_phone_farmer_changes_the_plot_by_writing_and_undoes_it(app_url, browser):
