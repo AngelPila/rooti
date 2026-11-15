@@ -90,6 +90,13 @@ uv pip install --python .venv/bin/python pytest
 .venv/bin/rooti-bot avisos --probar                     # what the alerts would send now, without sending
 ```
 
+How fast Rooti answers, from the farmer's message to the first text and the first voice note (median and p90 over
+the last week), in the container's terminal:
+
+```bash
+rooti-bot tiempos [--dias 7]
+```
+
 ## Known limits
 
 - **The bridge is an unofficial WhatsApp client**, as with Vinci, and WhatsApp may ban a number that uses it. Alerts

@@ -197,6 +197,9 @@ def test_farmer_on_whatsapp(tmp_path):
         assert "Agricultor nuevo" in "\n".join(text_of(m) for m in turns[0]["messages"]), \
             "el turno empieza con el contexto del lote (rooti-bot contexto)"
 
+        report = subprocess.run([str(BIN), "tiempos"], env=env, capture_output=True, text=True, check=True).stdout
+        assert re.search(r"texto → texto: mediana \d+\.\d s", report), report
+
         # 2. The location, then the crops: the lot is saved and its plan computed (live NASA POWER).
         reply(lambda: wa.location(FARMER, *DAULE))
         done = reply(lambda: wa.say(FARMER, "siembro arroz y a veces maíz, son 3 cuadras y no se encharca."), timeout=180)

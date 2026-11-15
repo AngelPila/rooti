@@ -30,6 +30,33 @@ def context(chat: str) -> str:
     return "\n".join(lines)
 
 
+def times(days: int) -> str:
+    """Median and p90 seconds from the farmer's message to Rooti's first text and first voice note."""
+    import statistics
+    from rooti_bot import config
+    path = config.data_dir() / "tiempos.jsonl"
+    since = time.time() - days * 86400
+    rows = []
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row.get("a", 0) >= since:
+                rows.append(row)
+    lines = [f"Últimos {days} días: {len({(r['chat'], r['a']) for r in rows})} mensajes de agricultores."]
+    for asked, answer, label in (("texto", "texto", "texto → texto"), ("voz", "texto", "audio → texto"),
+                                 ("voz", "voz", "audio → nota de voz")):
+        secs = sorted(r["segundos"] for r in rows if r["en"] == asked and r["respuesta"] == answer)
+        if secs:
+            p90 = secs[min(len(secs) - 1, int(len(secs) * 0.9))]
+            lines.append(f"  {label}: mediana {statistics.median(secs):.1f} s, p90 {p90:.1f} s ({len(secs)})")
+        else:
+            lines.append(f"  {label}: sin datos")
+    return "\n".join(lines)
+
+
 def serve_alerts(every: int) -> int:
     from rooti_bot import alerts
     while True:
@@ -54,6 +81,8 @@ def main(argv=None) -> int:
     av.add_argument("--probar", action="store_true", help="muestra lo que mandaría, sin mandar nada")
     av.add_argument("--servicio", action="store_true")
     av.add_argument("--cada", type=int, default=1800)
+    tm = sub.add_parser("tiempos", help="cuánto tarda Rooti en responder (mediana y p90)")
+    tm.add_argument("--dias", type=int, default=7)
     call = sub.add_parser("llamada", help="la página y el servidor de la llamada en vivo")
     call.add_argument("--host", default="0.0.0.0")
     call.add_argument("--puerto", type=int, default=7860)
@@ -79,6 +108,9 @@ def main(argv=None) -> int:
             return serve_alerts(args.cada)
         from rooti_bot import alerts
         print(json.dumps(alerts.run(dry_run=args.probar), ensure_ascii=False, indent=1))
+        return 0
+    if args.cmd == "tiempos":
+        print(times(args.dias))
         return 0
     if args.cmd == "llamada":
         from rooti_bot import call_server

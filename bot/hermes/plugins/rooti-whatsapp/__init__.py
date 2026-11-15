@@ -10,9 +10,13 @@ Rooti on WhatsApp, adapted from Vinci's vinci-whatsapp and vinci-botones plugins
 - Every Rooti tool call carries the chat it comes from (`_canal`), so the tools read that farmer's lot and two
   farmers at once never mix; the model never sees or sets it.
 - Every turn starts with the farmer's lot (`rooti-bot contexto`), so the first answer needs no tool round trip.
+- How long each answer took, from the farmer's message to Rooti's first text and first voice note, goes to
+  <ROOTI_DATA>/tiempos.jsonl (`rooti-bot tiempos` sums it up). The clock starts once the bubbles are joined, so
+  the farmer also waits the 0.3–3 s of endpointing on top. The chat is kept only as a hash.
 Voice replies to voice notes are Hermes' own (voice.auto_tts), with Edge TTS's Ecuadorian voice.
 """
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -29,7 +33,9 @@ AUDIO = ("ptt", "audio")
 HERMES_NOTICE_RE = re.compile(
     r"\s*(?:💾\s|💡\s*First-time tip|[↪⏩⏳⚡]️?\s*(?:Redirected|Steered|Queued for|Interrupting|"
     r"Ejecución actual redirigida|Redirigido a la ejecución|En cola para el siguiente|Interrumpiendo la tarea))")
+TIMES = "{{DATA}}/tiempos.jsonl"
 _HEARD = {}
+_TURNS = {}  # chat → the farmer's last message: when it arrived and whether it was a voice note
 
 
 def register(ctx):
@@ -50,6 +56,8 @@ async def _dispatch(event=None, **_):
     if getattr(source, "chat_type", "dm") == "group":
         return _skip("grupo")
     raw = getattr(event, "raw_message", None) or {}
+    _TURNS[str(getattr(source, "chat_id", ""))] = {"at": time.time(),
+                                                   "kind": "voz" if raw.get("mediaType") == "ptt" else "texto"}
     if raw.get("mediaType") == "sticker":
         return _skip("sticker")
     urls = getattr(event, "media_urls", None) or []
@@ -105,6 +113,35 @@ def _turn_context(**_):
 def _wire(_native, adapter):
     _wire_burst(adapter)
     _quiet(adapter)
+    _time_voice(adapter)
+
+
+def _note_reply(chat_id, what):
+    """The first text and the first voice note after the farmer's message, in seconds."""
+    turn = _TURNS.get(str(chat_id))
+    if not turn or what in turn:
+        return
+    turn[what] = round(time.time() - turn["at"], 2)
+    try:
+        with open(TIMES, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"chat": hashlib.sha256(str(chat_id).encode()).hexdigest()[:12], "en": turn["kind"],
+                                 "a": round(turn["at"]), "respuesta": what, "segundos": turn[what]}) + "\n")
+    except OSError as exc:
+        logger.warning("tiempos: %s", exc)
+
+
+def _time_voice(adapter):
+    if getattr(adapter, "_rooti_timed", False):
+        return
+    play = adapter.play_tts
+
+    async def timed_play(chat_id, audio_path, **kwargs):
+        result = await play(chat_id, audio_path, **kwargs)
+        _note_reply(chat_id, "voz")
+        return result
+
+    adapter.play_tts = timed_play
+    adapter._rooti_timed = True
 
 
 # Vinci's endpointing (vinci-whatsapp), itself ported from Jelou's Jey: no model call, a wrong guess costs one wait.
@@ -183,7 +220,9 @@ def _quiet(adapter):
         if isinstance(content, str) and HERMES_NOTICE_RE.match(content):
             from gateway.platforms.base import SendResult
             return SendResult(success=True)
-        return await send(chat_id, content, reply_to=reply_to, metadata=metadata, **kwargs)
+        result = await send(chat_id, content, reply_to=reply_to, metadata=metadata, **kwargs)
+        _note_reply(chat_id, "texto")
+        return result
 
     adapter.send = quiet_send
     adapter._rooti_quiet = True
