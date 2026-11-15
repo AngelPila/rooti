@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
-import { COPY } from "./copy.js?v=46";
+import { COPY } from "./copy.js?v=47";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -945,6 +945,9 @@ function plot3d(r, f, extras = []) {
   };
   // What the page knew as text, drawn on the scene: terrain chips, the month's weather, the soil under the plot
   const tr = r.terrain, sd = describeSoil(tr?.soil), c0 = C(), slope = tr?.slopePct, wl = r.site?.wl ?? 0.25;
+  // Relief only where the plot is not flat: SRTM is radar, a few metres off every 30-90 m and it counts roofs and trees,
+  // so on flat ground it only draws waves (a runway looked like a rollercoaster). Flat ground is drawn flat.
+  const relief = slope != null && slope >= 2, gz = relief ? tr?.elevation ?? 0 : 0;
   const nm12 = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([kk]) => +kk.slice(5) === i + 1 && +kk.slice(0, 4) >= 1991 && +kk.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (q) => vs.reduce((a, v) => a + (v[q] ?? 0), 0) / Math.max(1, vs.length); return { rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
   const chip = (ic, lab, val) => h("div", { class: "p3-chip" }, icon(ic), h("span", {}, h("small", {}, lab), h("b", {}, val)));
   const terrainChips = h("div", { class: "p3-hud" },
@@ -999,7 +1002,7 @@ function plot3d(r, f, extras = []) {
     const v = viewer3d, Cz = window.Cesium;
     if (!v || v.isDestroyed() || !Cz) return;
     ents.forEach((e) => v.entities.remove(e)); ents = [];
-    const rel = Cz.HeightReference.RELATIVE_TO_GROUND, flat = (ps) => Cz.Cartesian3.fromDegreesArray(ps.flat()), z0 = tr?.elevation ?? 0;
+    const rel = Cz.HeightReference.RELATIVE_TO_GROUND, flat = (ps) => Cz.Cartesian3.fromDegreesArray(ps.flat()), z0 = gz;
     // The soil under the plot: the top 60 cm the roots use, coloured by texture, drawn at the same scale as the crops
     if (sd) {
       const soilCol = { clay: "#7A4A32", clay_loam: "#8B5E3C", loam: "#9C7448", sandy_loam: "#B88E5A", sand: "#CDAA72" }[sd.texture];
@@ -1016,7 +1019,7 @@ function plot3d(r, f, extras = []) {
     }
     if (s > 0) ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: 0, heightReference: rel, extrudedHeight: Math.min(1.5, s / 1000) * k, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString("#2E6FD0").withAlpha(0.42) } }));
     ents.push(v.entities.add({ polyline: { positions: Cz.Cartesian3.fromDegreesArrayHeights([...pts, pts[0]].flatMap((q) => [q[0], q[1], z0 + 0.5])), width: 3, material: Cz.Color.fromCssColorString("#C8FF9E") } }));
-    [0, 200, 600, 1200].forEach((ms) => setTimeout(() => v.isDestroyed() || v.scene.requestRender(), ms));
+    [0, 200, 600, 1200, 2000, 3500, 6000].forEach((ms) => setTimeout(() => v.isDestroyed() || v.scene.requestRender(), ms));
   };
   paint();
   // The 3D view loads after the page; without WebGL or Cesium the flat satellite map stays
@@ -1026,19 +1029,21 @@ function plot3d(r, f, extras = []) {
     if (!box.isConnected) return;
     if (viewer3d && !viewer3d.isDestroyed()) viewer3d.destroy();
     try {
-      viewer3d = new Cz.Viewer(box, { baseLayer: false, baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false, infoBox: false, selectionIndicator: false, requestRenderMode: true, terrainProvider: terrariumTerrain(Cz) });
+      viewer3d = new Cz.Viewer(box, { baseLayer: false, baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false, infoBox: false, selectionIndicator: false, requestRenderMode: false, targetFrameRate: 30, ...(relief ? { terrainProvider: terrariumTerrain(Cz) } : {}) });
     } catch { sec.replaceWith(plotMap(r, f)); return; }
     const v = viewer3d;
     // Blocks sit on the ground; without this, the coarse terrain pokes through them as steps
     v.scene.globe.depthTestAgainstTerrain = false;
     v.scene.skyAtmosphere.show = true;
+    // requestRenderMode only repaints on input; repaint as imagery tiles arrive and while entity geometry is built
+    v.scene.globe.tileLoadProgressEvent.addEventListener(() => v.isDestroyed() || v.scene.requestRender());
     try { v.imageryLayers.addImageryProvider(await Cz.ArcGisMapServerImageryProvider.fromUrl(ESRI)); } catch { /* no imagery: terrain only */ }
     if (v.isDestroyed()) return;
     paint();
     v.resize();
     // Fit the plot (and the soil under it) whatever the box's shape: Cesium's 60° covers the longer side, so a wide box sees little height
     const fr = v.camera.frustum, fy = fr.fovy || 0.6, fovy = Math.min(fy, 2 * Math.atan(Math.tan(fy / 2) * (fr.aspectRatio || 1))), pitch = Cz.Math.toRadians(-30);
-    const [cx, cy] = lotCenter(pts), target = Cz.Cartesian3.fromDegrees(cx, cy, (r.terrain?.elevation ?? 0) - 0.3 * k), range = Math.max(180, (span * 0.62) / Math.sin(fovy / 2));
+    const [cx, cy] = lotCenter(pts), target = Cz.Cartesian3.fromDegrees(cx, cy, gz - 0.3 * k), range = Math.max(180, (span * 0.62) / Math.sin(fovy / 2));
     const aim = (hd) => { v.camera.lookAt(target, new Cz.HeadingPitchRange(Cz.Math.toRadians(hd), pitch, range)); v.scene.requestRender(); };
     // One slow turn on arrival (none if the phone asks for less motion), then the farmer turns it by dragging
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) aim(20);
