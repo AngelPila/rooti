@@ -72,9 +72,12 @@ def _missing(f: dict) -> list[str]:
 def my_lot(farmer_id: str, _args: dict) -> dict:
     f = _farmer(farmer_id)
     saved = store.saved_plan(farmer_id)
-    return {"lote": {k: f[k] for k in ("name", "place", "lat", "lon", "crops", "current", "area", "unit", "irrigation",
-                                       "waterlog", "priority", "alerts_ok", "notes")},
-            "falta_saber": _missing(f), "plan_listo": bool(saved)}
+    lot = {k: f[k] for k in ("name", "place", "lat", "lon", "crops", "current", "area", "unit", "irrigation", "waterlog",
+                             "alerts_ok", "notes")}
+    # «soil» is the default and nobody is asked for a priority (DESIGN.md): shown, the model takes it for the farmer's.
+    if f["priority"] != "soil":
+        lot["priority"] = f["priority"]
+    return {"lote": lot, "falta_saber": _missing(f), "plan_listo": bool(saved)}
 
 
 def _crops(values, field) -> list[str]:
