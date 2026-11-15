@@ -192,6 +192,10 @@ export const COPY = {
       },
       call: "Hablar con Rooti", seePlan: "Ver mi plan",
     },
+    sum: {
+      eyebrow: "Su plan", others: "Otros caminos", detail: "Ver todo el detalle", noNext: "Su plan ya terminó: márquelo de nuevo con las fechas que vienen.",
+      sow: (crop, area, month) => `siembre ${crop} en ${area}, en ${month}`, growing: (crop, area, month) => `ahora va ${crop} en ${area}, hasta ${month}`,
+    },
     close: "Cerrar", checkLocal: "Confírmelo con su técnico antes de cambiar.", approx: "Algunos cultivos usan datos aproximados.",
   },
   en: {
@@ -383,6 +387,10 @@ export const COPY = {
         sow_window: [["i-rain", "Check the rain of these days before sowing: seeds come up better in moist soil."], ["i-month", "Your plan says what and when: open it for the full calendar."], ["i-agronomist", "Check seed and fertilizer with your agronomist."]],
       },
       call: "Talk to Rooti", seePlan: "See my plan",
+    },
+    sum: {
+      eyebrow: "Your plan", others: "Other paths", detail: "See the full plan", noNext: "Your plan has ended: mark it again with the coming dates.",
+      sow: (crop, area, month) => `sow ${crop} on ${area}, in ${month}`, growing: (crop, area, month) => `${crop} is on ${area} now, until ${month}`,
     },
     close: "Close", checkLocal: "Check with your agronomist before changing.", approx: "Some crops use approximate data.",
   },

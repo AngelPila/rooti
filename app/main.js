@@ -1055,7 +1055,55 @@ async function viewAviso() {
     h("section", { class: "av-hero" }, h("span", { class: "pill-eyebrow glass mono" }, W.kind[A.kind] || W.crumb), h("h1", { class: "h2" }, alertTitle(A, days)), es() ? h("p", {}, A.text) : null),
     h("section", { class: "card" }, h("b", { class: "card-h" }, W.nextDays), days ? rainChart(days) : h("p", { class: "small" }, W.noForecast), h("p", { class: "small" }, W.forecastSrc)),
     h("section", { class: "card" }, h("b", { class: "card-h" }, W.todo), tipList(W.tips[A.kind] || [])),
-    h("div", { class: "av-acts" }, h("a", { class: "btn lime big block", href: link.call }, icon("i-mic"), W.call), h("a", { class: "btn big block", href: "#/plan" }, icon("i-month"), W.seePlan))));
+    h("div", { class: "av-acts" }, h("a", { class: "btn lime big block", href: link.call }, icon("i-mic"), W.call), h("a", { class: "btn big block", href: "#/resumen" }, icon("i-month"), W.seePlan))));
+}
+
+/* ================= Resumen: the page behind WhatsApp's «Ver mi plan» ================= */
+// The chat explains; this page is for seeing the plan at a glance and picking one. The full plan is one tap away.
+function nextUp(r, f) {
+  const N = r.period.length, now = new Date(), ym = now.getFullYear() * 12 + now.getMonth() + 1;
+  let t = r.period.findIndex((p) => p.y * 12 + p.m === ym), early = false;
+  // A plan that has not started yet: everything in it is still to sow
+  if (t < 0) { early = r.period[0].y * 12 + r.period[0].m > ym; t = early ? 0 : N - 1; }
+  const crop = (x) => x && x.c !== "bare" && x.c !== "mulch";
+  return plotsOf(f).map(({ pc, name }) => {
+    const runs = runsOf(pc, N), cur = runs.find((x) => x.t0 <= t && t < x.t1);
+    const run = crop(cur) ? cur : runs.find((x) => x.t0 > t && crop(x));
+    return run && { pc, name, run, now: run === cur && !early };
+  }).filter(Boolean);
+}
+function viewResumen() {
+  return withResults(async (r) => {
+    const c = C(), D = c.ds, S2 = c.sum, P = state.plan, N = r.period.length, multi = r.samples.length > 1;
+    const plans = await namedPlans(P);
+    if (!plans.length) { put($("#view"), h("div", { class: "res aviso" }, h("section", { class: "card" }, h("p", {}, c.noPlans), h("a", { class: "btn dark", href: "#/planear" }, c.changeData)))); return; }
+    if (!plans.some((x) => x.key === state.pick)) state.pick = plans.some((x) => x.key === link.chosen?.key) ? link.chosen.key : plans[0].key;
+    const cur = () => plans.find((x) => x.key === state.pick);
+    const thisYear = new Date().getFullYear();
+    const monthOf = (t) => { const p = r.period[t]; return monL(p.m) + (p.y !== thisYear ? ` ${p.y}` : ""); };
+    const line = (x) => (x.now ? S2.growing : S2.sow)(cropName(x.run.c).toLowerCase(), fmtArea(x.pc.share), monthOf(x.now ? x.run.t1 - 1 : x.run.t0));
+    const draw = () => {
+      const it = cur(), f = it.f, next = nextUp(r, f), good = f.per.filter((x) => yearLv(x) === "g").length;
+      const e = explain(f, r), note = e.risks[0] || e.why[0];
+      const [a, b, z] = D.goodYears(f.per.length);
+      put($("#view"), h("div", { class: "res aviso sum" },
+        h("section", { class: "av-hero sum-hero", "data-rooti": "route" },
+          h("span", { class: "pill-eyebrow glass mono" }, `${S2.eyebrow} · ${D.names[it.key]}`),
+          h("h1", { class: "h2" }, next.length ? cap(line(next[0])) : S2.noNext),
+          next.length > 1 ? h("ul", { class: "sum-next" }, ...next.slice(1).map((x) => h("li", {}, tile(x.run.c), h("span", {}, h("b", {}, x.name), cap(line(x)))))) : null),
+        tagged(ninoBanner(r), "nino"),
+        h("section", { class: "card" }, h("b", { class: "card-h" }, D.whatWhen), routeEl(r, f)),
+        multi ? h("section", { class: "card", "data-rooti": "years" }, h("div", { class: "statbox" }, h("div", { class: "stat" }, String(good)), h("p", {}, a, h("b", {}, b), z)),
+          note ? h("p", { class: "sum-note" }, icon(e.risks.length ? "i-care" : "i-check"), h("span", {}, note)) : null) : null,
+        plans.length > 1 ? h("section", { class: "sum-plans", "data-rooti": "plans" }, h("b", { class: "card-h" }, S2.others),
+          h("div", { class: "sum-chips", role: "radiogroup", "aria-label": D.planLabel }, ...plans.map((x) => h("button", { class: "sum-chip", role: "radio", "aria-checked": String(x.key === it.key),
+            onclick: () => { if (x.key !== state.pick) { state.pick = x.key; draw(); } } }, icon(NAMED_ICON[x.key]), D.names[x.key])))) : null,
+        linked() ? pickBar(r, cur) : canHandoff() ? handoffCard(P) : null,
+        h("div", { class: "sum-foot" }, h("a", { class: "link", href: `#/plan/${it.key}` }, S2.detail, icon("i-chev-r")),
+          listenBtn(() => `${D.names[it.key]}. ${next.map(line).join(". ")}. ${a}${b}${z}: ${good}.`, c.listen), sourceNote(r, f))));
+    };
+    draw();
+  });
 }
 
 /* ---------- why, risks, what we don't know, questions for the agronomist ---------- */
@@ -1684,7 +1732,7 @@ const MODE_WORDS = { all: "every real run of years since 1981", nino: "only the 
 const goOrRender = (r) => (route().r === r ? render() : go(r));
 function rootiName(r) {
   const n = C().nav, name = { "": es() ? "la portada" : "the home page", planear: es() ? "Planear" : "the planner", bootcamp: C().ctaBootcamp, plan: n.plan, terreno: n.plot, probar: n.try,
-    comparar: n.compare, pasado: n.past, vecinos: n.neighbors, pasaporte: es() ? "el pasaporte del suelo" : "the soil passport", aviso: es() ? "el aviso" : "the alert" }[r ?? ""] || r;
+    comparar: n.compare, pasado: n.past, vecinos: n.neighbors, pasaporte: es() ? "el pasaporte del suelo" : "the soil passport", aviso: es() ? "el aviso" : "the alert", resumen: es() ? "el resumen de su plan" : "the plan summary" }[r ?? ""] || r;
   return es() ? `«${name}»` : `“${name}”`;
 }
 const rootiPlot = (P) => `${P.place ? `${P.place.name}${P.place.admin ? `, ${P.place.admin}` : ""}` : "place not given yet"}; ${P.area} ${C().units[P.unit || "ha"]}; from ${P.start} to ${P.end}; crops the plan may use: ${P.crops.map(cropName).join(", ") || "none yet"}; grows today: ${(P.current || []).map(cropName).join(", ") || "not said"}; irrigation: ${P.irrigation ? "yes" : "no"}; floods: ${P.waterlog || "not said"}.`;
@@ -1806,7 +1854,8 @@ function route() {
   if (RESULTS.includes(r) && !state.plan) return { r: "planear", arg: state.linkError && state.draft.place && dateErr(state.draft) ? "2" : undefined };
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
   if (r === "aviso" && !(link.alert && state.plan)) return { r: state.plan ? "plan" : "planear" };
-  return { r: ["", "planear", "bootcamp", "aviso", ...RESULTS].includes(r) ? r : "", arg, courseId, lessonNumber };
+  if (r === "resumen" && !state.plan) return { r: "planear" };
+  return { r: ["", "planear", "bootcamp", "aviso", "resumen", ...RESULTS].includes(r) ? r : "", arg, courseId, lessonNumber };
 }
 const TAB_ORDER = ["plan", "terreno", "probar", "comparar", "vecinos"];
 const tabIx = (r) => TAB_ORDER.indexOf(r === "pasado" ? "plan" : r);
@@ -1834,8 +1883,8 @@ function renderChrome(r) {
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
   // Off the results there are no tabs, so the bar carries a way back: to the plan when there is one, else home
-  const back = isRes ? null : h("a", { class: "round", href: (r === "planear" || r === "aviso") && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtSpan(P)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : c.planTitle}`)),
+  const back = isRes ? null : h("a", { class: "round", href: ["planear", "aviso", "resumen"].includes(r) && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtSpan(P)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : r === "resumen" ? c.sum.eyebrow : c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null,
       linked() && hasWhatsApp() ? h("a", { class: "round", href: waUrl(), "aria-label": c.wa.back, title: c.wa.back }, icon("i-chat")) : null, langBtn()));
@@ -1876,7 +1925,7 @@ async function render() {
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
   rooti.route(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: () => viewBootcamp(arg, courseId, lessonNumber), plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: () => viewBootcamp(arg, courseId, lessonNumber), plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso, resumen: viewResumen };
   try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
@@ -1891,7 +1940,7 @@ async function start() {
       // A farmer from WhatsApp: their lot from Rooti, in Spanish unless they switched, on the page the button named
       if (store.get("lang", null) == null) state.lang = "es";
       state.plan = link.plan; state.custom = null; state.draft = null;
-      if (!location.hash.replace(/^#\/?/, "")) history.replaceState(null, "", "#/" + (link.alert && link.plan ? "aviso" : link.plan ? "plan" : "planear/1"));
+      if (!location.hash.replace(/^#\/?/, "")) history.replaceState(null, "", "#/" + (link.alert && link.plan ? "aviso" : link.plan ? "resumen" : "planear/1"));
     }
   } catch (e) {
     const W = C().wa;

@@ -71,7 +71,7 @@ def _confirm_lot(phone: str) -> None:
         bridge.send_text(phone, f"Listo, recibí su lote: {lot}. Su plan está en la página; si quiere, pregúnteme aquí.")
         return
     bridge.send_button(phone, f"Listo, recibí su lote: {lot}. Ya revisé su plan con los datos de la NASA: aquí lo "
-                              "tiene para volver a verlo cuando quiera.", "Ver mi plan", calls.page(phone, "plan"))
+                              "tiene para volver a verlo cuando quiera.", "Ver mi plan", calls.page(phone, "resumen"))
 
 
 def _confirm_choice(phone: str) -> None:
