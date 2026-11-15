@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
-import { COPY } from "./copy.js?v=42";
+import { COPY } from "./copy.js?v=43";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -73,6 +73,12 @@ function h(tag, attrs = {}, ...kids) {
     else n.setAttribute(k, v === true ? "" : v);
   }
   for (const k of kids.flat(Infinity)) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(k));
+  return n;
+}
+function svg(tag, attrs = {}, ...kids) {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) if (v != null) n.setAttribute(k, v);
+  for (const k of kids.flat(Infinity)) if (k) n.append(k);
   return n;
 }
 const put = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false));
@@ -271,8 +277,40 @@ function searchBox(onPick) {
   });
   return [h("label", { class: "search" }, icon("i-search"), input), results];
 }
+const endDraw = () => { state.drawing = false; state.addCorner = null; document.body.classList.remove("drawing"); };
+/* ---------- the plot drawn on the map: corners as [lon, lat] ---------- */
+// Area on a local flat projection (shoelace): exact enough for a farm, a few metres across
+const lotXY = (pts) => { const R = 6371008.8, k = Math.PI / 180, lat0 = pts.reduce((a, p) => a + p[1], 0) / pts.length * k; return pts.map(([lo, la]) => [lo * k * R * Math.cos(lat0), la * k * R]); };
+const lotHa = (pts) => { if (!pts || pts.length < 3) return 0; const xy = lotXY(pts); let s = 0; xy.forEach((p, i) => { const q = xy[(i + 1) % xy.length]; s += p[0] * q[1] - q[0] * p[1]; }); return Math.abs(s) / 2 / 1e4; };
+const lotCenter = (pts) => [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+const lotSpanM = (pts) => { if (!pts?.length) return 0; const xy = lotXY(pts), xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]); return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)); };
+const inUnit = (ha, unit) => { const v = ha / UNITS[unit || "ha"]; return unit === "m2" ? Math.round(v) : Math.round(v * 100) / 100; };
+const areaText = (ha, unit) => `${inUnit(ha, unit).toLocaleString(state.lang)} ${C().units[unit || "ha"]}`;
+// Tap each corner on the map; the area fills itself in. Repaints only its own box and the map, so the map does not reload per tap.
+function lotTools(d, after) {
+  const box = h("div", { class: "lot-tools" }), L = C().lot;
+  let before = null;
+  const sync = (fly = false) => { if (d.lot?.length >= 3) d.area = Math.max(d.unit === "m2" ? 1 : 0.01, inUnit(lotHa(d.lot), d.unit)); updateMap(d.place, null, d.lot, fly); paint(); };
+  const start = () => { before = { lot: d.lot ? [...d.lot] : null, area: d.area }; state.drawing = true; d.lot = []; sync("draw"); };
+  const stop = (keep) => { state.drawing = false; document.body.classList.remove("drawing"); if (!keep) { d.lot = before.lot; d.area = before.area; } state.addCorner = null; after(); };
+  const paint = () => {
+    const n = d.lot?.length || 0;
+    document.body.classList.toggle("drawing", !!state.drawing);
+    state.addCorner = state.drawing ? (lon, lat) => { (d.lot ||= []).push([lon, lat]); sync(); } : null;
+    put(box, ...(state.drawing ? [
+      h("p", { class: "lot-hint" }, icon("i-pointer"), h("span", {}, n < 3 ? L.tap(n) : L.size(areaText(lotHa(d.lot), d.unit)))),
+      h("div", { class: "lot-acts" },
+        h("button", { class: "btn dark", disabled: n < 3, onclick: () => stop(true) }, icon("i-check"), L.done),
+        h("button", { class: "btn light", disabled: !n, onclick: () => { d.lot.pop(); sync(); } }, icon("i-undo"), L.undo),
+        h("button", { class: "link", onclick: () => stop(false) }, L.cancel))]
+      : n >= 3 ? [h("div", { class: "lot-row" }, icon("i-plot"), h("span", { class: "grow" }, h("b", {}, L.drawn), h("small", {}, L.size(areaText(lotHa(d.lot), d.unit)))), h("button", { class: "link", onclick: start }, L.redraw))]
+      : [h("button", { class: "btn light block", onclick: start }, icon("i-plot"), L.draw), h("p", { class: "small" }, L.why)]));
+  };
+  paint();
+  return box;
+}
 const placeCard = (d, onChange) => h("div", { class: "place" }, icon("i-pin"), h("div", { class: "grow" }, h("b", {}, d.place.name), h("small", {}, d.place.admin || "")), onChange ? h("button", { class: "link", onclick: onChange }, C().change) : null);
-const gpsBtn = (onPick) => h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: (e) => { const b = e.currentTarget; b.disabled = true; navigator.geolocation?.getCurrentPosition(async (p) => onPick(await placeAt(p.coords.latitude, p.coords.longitude)), () => { b.disabled = false; }, { timeout: 10000 }); } }, icon("i-locate"), " ", C().useLocation);
+const gpsBtn = (onPick) => h("button", { class: "link gps", style: { alignSelf: "flex-start" }, onclick: (e) => { const b = e.currentTarget; b.disabled = true; navigator.geolocation?.getCurrentPosition(async (p) => onPick(await placeAt(p.coords.latitude, p.coords.longitude)), () => { b.disabled = false; }, { timeout: 10000 }); } }, icon("i-locate"), " ", C().useLocation);
 function periodStrip(d) {
   const a = new Date(d.start + "T12:00:00"), n = Math.max(0, Math.min(24, monthsIn(d)));
   return h("div", { class: "period", "aria-hidden": "true" }, ...Array.from({ length: n }, (_, i) => h("i", { class: (a.getMonth() + i) % 12 < 5 ? "w" : "s" })));
@@ -300,7 +338,7 @@ function areaBox(d, redo) {
     h("div", { class: "area-num" }, h("button", { class: "round", "aria-label": "−", onclick: () => set(d.area - STEP[d.unit]) }, icon("i-minus")),
       h("input", { type: "number", inputmode: "decimal", min: "0", step: "any", value: String(d.area), "aria-label": C().landQ, onchange: (e) => { const n = parseFloat(e.target.value); if (n > 0) set(n); } }),
       h("button", { class: "round", "aria-label": "+", onclick: () => set(d.area + STEP[d.unit]) }, icon("i-plus"))),
-    h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, C().units[u]))));
+    h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; if (d.lot?.length >= 3) d.area = inUnit(lotHa(d.lot), u); redo(); } }, C().units[u]))));
 }
 const currentChips = (d, redo) => h("div", { class: "row wrap", style: { gap: "6px" } }, ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id]).slice(0, 8).map((id) => {
   const on = (d.current || []).includes(id);
@@ -322,11 +360,11 @@ function viewPlanear(stepArg) {
   const nextBtn = (label, okk, to) => h("button", { class: "btn dark big block", disabled: !okk, onclick: to }, label);
   let body;
   if (n === 1) {
-    const pick = (pl) => { d.place = pl; redo(); };
-    state.onPick = async (lat, lon) => pick(await placeAt(lat, lon));
+    const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); };
+    state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
     const box = h("div", { class: "mapbox" });
-    body = [title(c.whereQ, c.whereHelp), ...(d.place ? [] : searchBox(pick)), box, d.place ? placeCard(d, () => { d.place = null; redo(); }) : h("p", { class: "small" }, c.tapMap), gpsBtn(pick), h("div", { class: "spacer" }), nextBtn(c.next, !!d.place, () => go("planear/2"))];
-    setTimeout(() => initCesium(box, { pick: true }).then(() => (d.place ? updateMap(d.place, null) : globeView())), 0);
+    body = [title(c.whereQ, c.whereHelp), ...(d.place ? [] : searchBox(pick)), box, d.place ? placeCard(d, () => { d.place = null; d.lot = null; state.drawing = false; redo(); }) : h("p", { class: "small" }, c.tapMap), d.place ? lotTools(d, redo) : null, state.drawing ? null : gpsBtn(pick), h("div", { class: "spacer" }), nextBtn(c.next, !!d.place, () => go("planear/2"))];
+    setTimeout(() => initCesium(box, { pick: true }).then(() => (d.place ? updateMap(d.place, null, d.lot, state.drawing ? false : d.lot?.length >= 3 ? "lot" : "place") : globeView())), 0);
   } else if (n === 2) {
     body = [title(c.whenQ, c.whenHelp), dateFields(d, redo), quickDates(d, redo), h("div", { class: "card", style: { gap: "8px", padding: "16px" } }, h("b", {}, c.months(Math.max(0, monthsIn(d)))), periodStrip(d)), err ? h("p", { class: "err" }, err) : null, h("div", { class: "spacer" }), nextBtn(c.next, !err, () => go("planear/3"))];
   } else if (n === 3) {
@@ -341,9 +379,9 @@ function viewPlanear(stepArg) {
 // Computer: the map fills the screen; one floating panel with four sections, one open at a time.
 function planDesktop(d) {
   const c = C(), err = dateErr(d), redo = () => planDesktop(d);
-  const pick = (pl) => { d.place = pl; if (state.sec === 1) state.sec = 2; redo(); updateMap(pl, null); };
-  state.onPick = async (lat, lon) => pick(await placeAt(lat, lon));
-  put($("#map-overlay"), h("div", { class: "map-hint" }, icon("i-pointer"), c.clickMap));
+  const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); updateMap(pl, null); };
+  state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
+  put($("#map-overlay"), state.drawing ? null : h("div", { class: "map-hint" }, icon("i-pointer"), d.place ? c.lot.clickMore : c.clickMap));
   const done = { 1: !!d.place, 2: !err, 3: d.crops.length > 0, 4: true };
   if (state.sec == null) state.sec = !d.place ? 1 : !d.crops.length ? 3 : 0;
   const months = monthsIn(d);
@@ -351,15 +389,15 @@ function planDesktop(d) {
     1: d.place ? `${d.place.name}${d.place.admin ? " · " + d.place.admin : ""}` : c.pickPlace,
     2: err || `${fmtDate(d.start)} – ${fmtDate(d.end)} · ${c.months(months)}`,
     3: d.crops.length ? d.crops.map((id) => cap(cropName(id))).join(", ") : c.pickCrop,
-    4: `${(d.area || 1).toLocaleString(state.lang)} ${c.units[d.unit || "ha"]} · ${d.irrigation ? c.irrig.yes : c.irrig.no}`,
+    4: `${(d.area || 1).toLocaleString(state.lang)} ${c.units[d.unit || "ha"]}${d.lot?.length >= 3 ? " · " + c.lot.fromMap : ""} · ${d.irrigation ? c.irrig.yes : c.irrig.no}`,
   };
   const body = {
-    1: () => [d.place ? placeCard(d, null) : null, ...searchBox(pick), gpsBtn(pick)],
+    1: () => state.drawing ? [lotTools(d, redo)] : [d.place ? placeCard(d, null) : null, d.place ? lotTools(d, redo) : null, ...searchBox(pick), gpsBtn(pick)],
     2: () => [dateFields(d, redo), h("div", { class: "row between wrap" }, quickDates(d, redo), h("span", { class: err ? "err" : "small" }, err || c.months(months))), periodStrip(d)],
     3: () => [h("p", { class: "small" }, c.whatHelp), ...cropTiles(d, redo, 0)],
     4: () => [
       h("div", { class: "row-fields" }, h("input", { class: "num", type: "number", min: "0", step: "any", value: String(d.area), "aria-label": c.landQ, onchange: (e) => { const v = parseFloat(e.target.value); if (v > 0) { d.area = v; redo(); } } }),
-        h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, c.units[u])))),
+        h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; if (d.lot?.length >= 3) d.area = inUnit(lotHa(d.lot), u); redo(); } }, c.units[u])))),
       h("div", { class: "q" }, h("b", {}, c.irrigQ), irrigOpts(d, redo)),
       h("div", { class: "q" }, h("b", {}, c.wlQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), waterlogOpts(d, redo)),
       h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo))],
@@ -378,7 +416,7 @@ function planDesktop(d) {
         open ? h("div", { class: "pf-sec-b" }, ...body[n](), n < 4 ? h("button", { class: "btn light pf-next", disabled: !done[n], onclick: () => { state.sec = n + 1; redo(); } }, c.next, icon("i-chev-r")) : null) : null);
     })),
     h("div", { class: "pf-foot" }, h("button", { class: "btn dark big block", disabled: !okAll, onclick: () => { state.sec = null; submitPlan(); } }, okAll ? [c.seePlan, icon("i-arrow-r")] : !d.place ? c.pickPlace : err || c.pickCrop))));
-  initCesium($("#cesium"), { pick: true }).then(() => (d.place ? updateMap(d.place, null) : globeView()));
+  initCesium($("#cesium"), { pick: true }).then(() => (d.place ? updateMap(d.place, null, d.lot, state.drawing ? false : d.lot?.length >= 3 ? "lot" : "place") : globeView()));
 }
 
 /* ================= results ================= */
@@ -519,8 +557,8 @@ function normals(clim) {
 function routeEl(r, f) {
   const N = r.period.length, D = C().ds, long = N > 12, all = !long || state.routeAll, vseen = new Set();
   const box = h("div", { class: "route" }, ...plotsOf(f).map(({ pc, name }) => h("div", { class: "rt-plot" }, h("span", { class: "rt-lab" }, `${name} · ${fmtArea(pc.share)}`),
-    h("ol", { class: "rt-steps" }, ...runsOf(pc, N).filter((ru) => all || ru.t0 < 12).flatMap((ru, i) => [i ? icon("i-arrow", "icon rt-arrow") : null,
-      h("li", { class: ru.c === "bare" ? "bare" : "" }, tile(ru.c), h("p", {}, h("b", {}, cropLabel(ru.c)), h("span", {}, monthsText(r, ru))))])),
+    h("ol", { class: "rt-steps" }, ...runsOf(pc, N).filter((ru) => all || ru.t0 < 12).map((ru) =>
+      h("li", { class: ru.c === "bare" ? "bare" : "", style: { "--c": look(ru.c).color } }, tile(ru.c), h("p", {}, h("b", {}, cropLabel(ru.c)), h("span", {}, monthsText(r, ru)))))),
     vecChips(r, pc, all, vseen))));
   if (long) box.append(h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { state.routeAll = !all; box.replaceWith(routeEl(r, f)); } },
     all ? D.routeFirst : D.routeAll(Math.ceil(N / 12))));
@@ -813,6 +851,26 @@ function plotMap(r, f) {
   const P = state.plan, pl = P.place, D = C().ds, dk = demoKey(pl), d = 0.006, N = r.period.length;
   const bb = [pl.lon - d * 2.6, pl.lat - d, pl.lon + d * 2.6, pl.lat + d].join(",");
   const plots = plotsOf(f).map((x) => ({ ...x, lead: runsOf(x.pc, N).find((ru) => ru.c !== "bare" && ru.c !== "mulch")?.c || "bare" }));
+  const label = ({ name, lead, pc }) => h("span", {}, tile(lead), h("b", {}, name), `${cropLabel(lead)} · ${fmtArea(pc.share)}`);
+  if (P.lot?.length >= 3) {
+    // The drawn plot on the image, split in strips by share. Image and SVG share the same box in degrees (EPSG:4326, W:H = 1000:420).
+    const lo = P.lot.map((p) => p[0]), la = P.lot.map((p) => p[1]), cx = (Math.min(...lo) + Math.max(...lo)) / 2, cy = (Math.min(...la) + Math.max(...la)) / 2;
+    let hh = Math.max(Math.max(...la) - Math.min(...la), (Math.max(...lo) - Math.min(...lo)) * 420 / 1000) * 1.9; hh = Math.max(hh, 0.0012);
+    const ww = hh * 1000 / 420, x0 = cx - ww / 2, y1 = cy + hh / 2;
+    const X = (v) => ((v - x0) / ww) * 1000, Y = (v) => ((y1 - v) / hh) * 420, pts = P.lot.map((p) => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
+    const xa = X(Math.min(...lo)), xb = X(Math.max(...lo)), tot = plots.reduce((a, x) => a + x.pc.share, 0) || 1;
+    let acc = xa;
+    const strips = plots.map(({ pc, lead }) => { const w = ((xb - xa) * pc.share) / tot, r = svg("rect", { x: acc, y: 0, width: w, height: 420, fill: look(lead).color, "fill-opacity": 0.38 }); acc += w; return r; });
+    const cuts = strips.slice(1).map((r) => svg("line", { x1: r.getAttribute("x"), x2: r.getAttribute("x"), y1: 0, y2: 420, stroke: "#F3F0E5", "stroke-width": 2, "stroke-dasharray": "6 5" }));
+    return h("section", { class: "plot-map" },
+      h("img", { alt: "", src: `${ESRI}/export?bbox=${[x0, cy - hh / 2, x0 + ww, y1].join(",")}&bboxSR=4326&imageSR=4326&size=1000,420&format=jpg&f=image` }),
+      svg("svg", { class: "pm-shape", viewBox: "0 0 1000 420", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true" },
+        svg("defs", {}, svg("clipPath", { id: "pmClip" }, svg("polygon", { points: pts }))),
+        svg("g", { "clip-path": "url(#pmClip)" }, ...strips, ...cuts),
+        svg("polygon", { points: pts, fill: "none", stroke: "#C8FF9E", "stroke-width": 3, "stroke-linejoin": "round" })),
+      h("div", { class: "pm-keys" }, ...plots.map((x) => h("div", { class: "pm-key", style: { "--c": look(x.lead).color } }, label(x)))),
+      h("div", { class: "pm-cap" }, h("b", {}, D.plotMap), h("span", {}, D.plotMapNote)));
+  }
   return h("section", { class: "plot-map" },
     h("img", { alt: "", src: dk ? `img/sat/${dk}.jpg` : `${ESRI}/export?bbox=${bb}&bboxSR=4326&size=1000,420&format=jpg&f=image` }),
     h("div", { class: "pm-lot" }, ...plots.map(({ pc, name, lead }) => h("div", { class: "pm-plot", style: { flexGrow: String(pc.share), "--c": look(lead).color } },
@@ -1067,20 +1125,31 @@ async function initCesium(container, { pick = false } = {}) {
   }
 }
 function globeView() { if (viewer && window.Cesium) viewer.camera.flyTo({ destination: window.Cesium.Cartesian3.fromDegrees(-70, -5, 14e6), duration: 1.2 }); }
-function updateMap(pl, verdict) {
+// The plot on the globe: the pin alone until the farmer draws the plot's corners; then the real shape.
+// fly: "place" (oblique view of the area), "draw" (straight down, close, to tap corners), "lot" (straight down, framing the plot), false (stay)
+let lotDots = [];
+function updateMap(pl, verdict, lot, fly = "place") {
   if (!viewer || !window.Cesium || !pl) return;
-  const Cz = window.Cesium, d = 0.0012;
-  const col = verdict ? { good: "#2F7D4F", care: "#C7860F", danger: "#D2452E" }[verdict] : "#153E32";
+  const Cz = window.Cesium, col = (s) => Cz.Color.fromCssColorString(s);
+  const fill = verdict ? { good: "#2F7D4F", care: "#C7860F", danger: "#D2452E" }[verdict] : "#C8FF9E";
   if (lotEntity) viewer.entities.remove(lotEntity);
+  lotDots.forEach((e) => viewer.entities.remove(e)); lotDots = [];
+  const pts = lot || [], closed = pts.length >= 3 && !state.drawing, c = pts.length >= 3 ? lotCenter(pts) : [pl.lon, pl.lat];
+  const flat = (ps) => Cz.Cartesian3.fromDegreesArray(ps.flat());
   lotEntity = viewer.entities.add({
-    polygon: { height: 0, hierarchy: Cz.Cartesian3.fromDegreesArray([pl.lon - d, pl.lat - d, pl.lon + d, pl.lat - d * 0.9, pl.lon + d * 0.95, pl.lat + d, pl.lon - d * 1.05, pl.lat + d * 0.92]), material: Cz.Color.fromCssColorString(col).withAlpha(0.25) },
-    polyline: { clampToGround: true, width: 3, material: Cz.Color.fromCssColorString("#C8FF9E"), positions: Cz.Cartesian3.fromDegreesArray([pl.lon - d, pl.lat - d, pl.lon + d, pl.lat - d * 0.9, pl.lon + d * 0.95, pl.lat + d, pl.lon - d * 1.05, pl.lat + d * 0.92, pl.lon - d, pl.lat - d]) },
-    position: Cz.Cartesian3.fromDegrees(pl.lon, pl.lat),
-    point: { pixelSize: 12, color: Cz.Color.fromCssColorString("#C8FF9E"), outlineColor: Cz.Color.fromCssColorString("#153E32"), outlineWidth: 3, heightReference: Cz.HeightReference.CLAMP_TO_GROUND },
-    label: { text: pl.name, font: "500 15px Geist, sans-serif", fillColor: Cz.Color.fromCssColorString("#F3F0E5"), showBackground: true, backgroundColor: Cz.Color.fromCssColorString("#153E32"), backgroundPadding: new Cz.Cartesian2(12, 8), pixelOffset: new Cz.Cartesian2(0, -30), heightReference: Cz.HeightReference.CLAMP_TO_GROUND },
+    polygon: pts.length >= 3 ? { height: 0, hierarchy: flat(pts), material: col(fill).withAlpha(closed ? 0.22 : 0.15) } : undefined,
+    polyline: pts.length >= 2 ? { clampToGround: true, width: 3, material: col("#C8FF9E"), positions: flat(pts.length >= 3 ? [...pts, pts[0]] : pts) } : undefined,
+    position: Cz.Cartesian3.fromDegrees(c[0], c[1]),
+    point: state.drawing ? undefined : { pixelSize: 12, color: col("#C8FF9E"), outlineColor: col("#153E32"), outlineWidth: 3, heightReference: Cz.HeightReference.CLAMP_TO_GROUND },
+    label: state.drawing ? undefined : { text: pl.name, font: "500 15px Geist, sans-serif", fillColor: col("#F3F0E5"), showBackground: true, backgroundColor: col("#153E32"), backgroundPadding: new Cz.Cartesian2(12, 8), pixelOffset: new Cz.Cartesian2(0, -30), heightReference: Cz.HeightReference.CLAMP_TO_GROUND },
   });
-  viewer.camera.flyTo({ destination: Cz.Cartesian3.fromDegrees(pl.lon, pl.lat - 0.02, 4500), orientation: { heading: 0, pitch: Cz.Math.toRadians(-55), roll: 0 }, duration: 1.6 });
-  viewer.scene.requestRender();
+  if (state.drawing) lotDots = pts.map((p, i) => viewer.entities.add({ position: Cz.Cartesian3.fromDegrees(p[0], p[1]), point: { pixelSize: i === pts.length - 1 ? 14 : 10, color: col("#C8FF9E"), outlineColor: col("#153E32"), outlineWidth: 2 } }));
+  const down = { heading: 0, pitch: Cz.Math.toRadians(-90), roll: 0 };
+  if (fly === "place") viewer.camera.flyTo({ destination: Cz.Cartesian3.fromDegrees(c[0], c[1] - 0.02, 4500), orientation: { heading: 0, pitch: Cz.Math.toRadians(-55), roll: 0 }, duration: 1.6 });
+  else if (fly === "draw") viewer.camera.flyTo({ destination: Cz.Cartesian3.fromDegrees(c[0], c[1], 1100), orientation: down, duration: 1.2 });
+  else if (fly === "lot") { const span = lotSpanM(pts); viewer.camera.flyTo({ destination: Cz.Cartesian3.fromDegrees(c[0], c[1], Math.min(8000, Math.max(600, span * 5))), orientation: down, duration: 1.2 }); }
+  // Ground shapes are built off the main thread; with requestRenderMode they only show on a later frame
+  [0, 150, 400, 900].forEach((t) => setTimeout(() => viewer?.scene.requestRender(), t));
 }
 
 /* ================= Vecinos: what farmers nearby saw, next to the satellite data ================= */
@@ -1264,7 +1333,7 @@ async function start() {
   put($("#view"), loading());
   try { await loadBase(); } catch { put($("#view"), errorCard(C().climateError, start)); return; }
   if (state.plan) state.mode = defaultMode(state.plan);
-  addEventListener("hashchange", () => { render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
+  addEventListener("hashchange", () => { state.drawing = false; document.body.classList.remove("drawing"); state.addCorner = null; render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
   let w = desktop(); addEventListener("resize", () => { if (desktop() !== w) { w = desktop(); if (viewer) { viewer.destroy(); viewer = null; lotEntity = null; pickBound = false; } render(); } });
   render();
 }

@@ -338,14 +338,21 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 .route { display: flex; flex-direction: column; gap: 14px; }
 .rt-plot + .rt-plot { padding-top: 14px; border-top: 1px solid var(--line); }
 .rt-lab { display: block; font: 500 10px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--lichen); margin-bottom: 8px; }
-.rt-steps { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.rt-steps li { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border-radius: 14px; background: var(--cream); }
-.rt-steps li.bare { background: rgba(184, 100, 58, .1); box-shadow: inset 0 0 0 1.5px rgba(184, 100, 58, .5); }
+/* The route as stacked blocks (like Scratch): each block's tab fits into the next one, so the order reads top to bottom */
+.rt-steps { display: flex; flex-direction: column; align-items: stretch; width: fit-content; min-width: min(100%, 230px); max-width: 100%; }
+.rt-steps li { --fill: color-mix(in srgb, var(--c) 24%, var(--cream)); position: relative; display: flex; align-items: center; gap: 10px; padding: 9px 16px 9px 7px; background: var(--fill); border-radius: 6px; }
+.rt-steps li:first-child { border-top-left-radius: 14px; border-top-right-radius: 14px; }
+.rt-steps li:last-child { border-bottom-left-radius: 14px; border-bottom-right-radius: 14px; }
+.rt-steps li { --edge: color-mix(in srgb, var(--c) 60%, var(--cream)); box-shadow: inset 0 -2px 0 var(--edge); }
+.rt-steps li + li { margin-top: 2px; }
+/* the tab: a darker outline (::before) with the block's fill on top (::after) */
+.rt-steps li:not(:last-child)::before, .rt-steps li:not(:last-child)::after { content: ""; position: absolute; left: 16px; width: 32px; clip-path: polygon(0 0, 100% 0, 76% 100%, 24% 100%); }
+.rt-steps li:not(:last-child)::before { z-index: 2; bottom: -10px; height: 10px; background: var(--edge); }
+.rt-steps li:not(:last-child)::after { z-index: 3; left: 18px; width: 28px; bottom: -7px; height: 9px; background: var(--fill); }
 .rt-steps li.bare b { color: #8A4626; }
 .rt-steps p { line-height: 1.2; }
 .rt-steps b { display: block; font-weight: 500; font-size: 15px; }
-.rt-steps p span { font-size: 13px; color: var(--lichen); }
-.rt-arrow { width: 16px; height: 16px; color: var(--lichen); flex: none; transform: rotate(90deg); margin: -2px 0 -2px 15px; }
+.rt-steps p span { font-size: 13px; color: color-mix(in srgb, var(--forest) 70%, transparent); }
 
 /* Stat: the number, then a plain sentence */
 .statbox { display: flex; align-items: flex-end; gap: 14px; }
@@ -734,3 +741,20 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 /* Accessibility: the green badge text reaches 4.5:1 on its pale pill; bottom-nav labels never below 11px. */
 .verdict.v-good, .badge.good { color: #23633E; }
 .bottom-nav a { font-size: 11px; letter-spacing: .02em; }
+
+/* ---------- the plot drawn on the map ---------- */
+.lot-tools { display: flex; flex-direction: column; gap: 10px; }
+.lot-tools .btn.block { justify-content: center; }
+.lot-hint { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--lime); color: var(--forest); font-weight: 500; font-size: 15px; }
+.lot-hint .icon { width: 18px; height: 18px; flex: none; }
+.lot-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lot-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 18px; background: var(--parchment); border: 1px solid var(--line-2); }
+.lot-row > .icon { width: 22px; height: 22px; color: var(--forest); flex: none; }
+.lot-row b { display: block; font-weight: 500; } .lot-row small { color: var(--lichen); font-size: 14px; }
+.pm-shape { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+.pm-keys { position: absolute; z-index: 2; left: 16px; top: 16px; right: 16px; display: flex; flex-wrap: wrap; gap: 6px; }
+.pm-key { padding: 8px 10px; border-radius: 12px; background: rgba(17, 27, 23, .72); box-shadow: inset 3px 0 0 var(--c); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.pm-key span { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 1.2; }
+.pm-key span .tile-i { width: 24px; height: 24px; border-radius: 7px; }
+.pm-key b { font: 500 10px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; }
+body.drawing .search, body.drawing .geo, body.drawing .gps, body.drawing .pf-next, body.drawing .map-hint, body.drawing .place .link { display: none; }

@@ -43,6 +43,7 @@ export const COPY = {
     // planner
     planTitle: "Planee su siembra", stepOf: (n) => `Paso ${n} de 4`, next: "Siguiente", seePlan: "Ver mi plan",
     where: "Dónde", whereQ: "¿Dónde está su lote?", whereHelp: "Busque el lugar o toque el mapa.", search: "Busque un pueblo, ciudad o recinto", noPlace: "No encontramos ese lugar.",
+    lot: { draw: "Dibujar mi lote en el mapa", why: "Toque cada esquina de su terreno y Rooti mide cuánta tierra tiene.", tap: (n) => (n === 0 ? "Toque la primera esquina de su lote" : `Esquina ${n} marcada. Toque la siguiente`), size: (a) => `Su lote mide ${a}`, done: "Listo", undo: "Quitar la última", cancel: "Cancelar", drawn: "Lote dibujado", redraw: "Dibujar de nuevo", fromMap: "medido en el mapa", clickMore: "Haga clic en el mapa para mover el punto" },
     useLocation: "Usar mi ubicación", clickMap: "Haga clic en el mapa para marcar su lote", tapMap: "Toque el mapa para marcar su lote", change: "Cambiar",
     when: "Cuándo", whenQ: "¿Desde cuándo hasta cuándo?", whenHelp: "El periodo en el que quiere sembrar.", from: "Desde", to: "Hasta",
     quick: [["6", "6 meses"], ["12", "12 meses"], ["24", "2 años"]], months: (n) => `${n} meses`, tooShort: "El periodo debe durar al menos 2 meses", tooLong: "El periodo puede durar hasta 6 años",
@@ -207,6 +208,7 @@ export const COPY = {
     sampleCard: "Your plan · 5 ha · 2027", sampleTitle: "Potato and maize, always both", sampleVerdict: "Would go well · soil covered all year",
     planTitle: "Plan your planting", stepOf: (n) => `Step ${n} of 4`, next: "Next", seePlan: "See my plan",
     where: "Where", whereQ: "Where is your plot?", whereHelp: "Search the place or tap the map.", search: "Search a town, city or village", noPlace: "We couldn't find that place.",
+    lot: { draw: "Draw my plot on the map", why: "Tap each corner of your land and Rooti measures how much you have.", tap: (n) => (n === 0 ? "Tap the first corner of your plot" : `Corner ${n} marked. Tap the next one`), size: (a) => `Your plot is ${a}`, done: "Done", undo: "Remove the last one", cancel: "Cancel", drawn: "Plot drawn", redraw: "Draw again", fromMap: "measured on the map", clickMore: "Click the map to move the pin" },
     useLocation: "Use my location", clickMap: "Click the map to mark your plot", tapMap: "Tap the map to mark your plot", change: "Change",
     when: "When", whenQ: "From when to when?", whenHelp: "The period you want to plant in.", from: "From", to: "To",
     quick: [["6", "6 months"], ["12", "12 months"], ["24", "2 years"]], months: (n) => `${n} months`, tooShort: "The period must be at least 2 months", tooLong: "The period can be up to 6 years",
