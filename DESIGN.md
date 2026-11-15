@@ -45,7 +45,7 @@ Rules learned from design reviews. Each one comes from a correction the product 
   <!-- 2026-11-15 -->
 
 ## Icons and images
-- **UI icons are hand-drawn SVG symbols on a 24 grid, filled shapes with cuts like the logo, using `currentColor`. Never AI-generated raster icons.** AI images are only for large illustrations, and each one carries a visible "IMAGEN GENERADA CON IA" watermark (competition rule).
+- **UI icons are hand-drawn SVG symbols on a 24 grid, filled shapes with cuts like the logo, using `currentColor`. Never AI-generated raster icons, except the seven hero badges (`img/badges/`), which the owner chose over SVG; they are declared in the footer credits and `img/badges/PROMPTS.md`.** AI images are only for large illustrations, and each one carries a visible "IMAGEN GENERADA CON IA" watermark (competition rule).
   Why: confirmed choice ("ok lo recomendado"): icons must stay sharp at 16px, recolor with the theme, and a watermark cannot fit on an icon.
   <!-- 2026-11-15 -->
 
@@ -53,8 +53,8 @@ Rules learned from design reviews. Each one comes from a correction the product 
 Applied from the `remove-animations`, `choreograph` and `mobile-native` skills at the owner's request ("instala esos y aplicalos").
 - **Nothing fades in on scroll, numbers count only when their value changes, and no loop runs on a persistent element (the loader is the exception).**
 - **UI transitions stay under 300ms (`--t-fast` 150ms, `--t-base` 250ms); only drawings that explain something (the rain curve, the hero lines) take longer, once.**
-- **On a computer the hero is a scroll stage: it stays pinned while the scroll draws the data sources into "your rotation plan" and out to the four plans, then the sheet rises over it. Labels open with a clip, never a fade-in, and everything runs backwards with the scroll. Phones and reduced motion keep the plain hero.**
-  Why: the owner wanted the Overstory-style "connect every signal" animation on the hero itself ("la idea era de que esto sea para esto").
+- **The hero's lines carry four weather words (Lluvia, Sol, Suelo, El Niño) into the headline and three crops out of it. The left side draws once on load; on a computer a short scroll (60svh) sends a dot down each line and draws the crops, and runs backwards with it. One or two words per chip, no dataset names: "Cómo funciona" already explains the data.**
+  Why: the first version (dataset names, hub, four plans, 140svh) "no se entiende"; the owner asked for short words, a few seconds, little scroll, on the hero.
   <!-- 2026-11-15 -->
 - **Hover styles live inside `@media (hover: hover) and (pointer: fine)`; every tappable element has an `:active` state instead.**
 
