@@ -179,12 +179,19 @@ const bareCell = (c) => (c.rain >= 40 || c.rainPeak >= 20
 const coverCell = (c) => ({ crop: "mulch", kind: "covered", sev: 0, rain: c.rain, need: 0, obs: !!c.obs });
 const levelOf = (k, sev) => (k === "ok" || k === "covered" ? "good" : sev >= 0.8 ? "danger" : "care");
 
-export function plan(clim, crops, picked, { start, end, irrigation = false, priority = "soil", mode = "all", ninoOffset = 0, site = null, current = null }) {
+// Outcomes depend on weather, dates, irrigation and soil, independently of the rotation objective.
+// Keep only the last two tables per location so switching priority or crops can reuse the daily runs.
+const plantingCache = new WeakMap();
+function plantingTable(clim, crops, { start, end, irrigation, mode, ninoOffset, site }) {
+  const key = JSON.stringify([start, end, irrigation, mode, ninoOffset, site]);
+  let cache = plantingCache.get(clim);
+  if (cache?.crops !== crops) {
+    cache = { crops, tables: new Map() };
+    plantingCache.set(clim, cache);
+  }
+  if (cache.tables.has(key)) return cache.tables.get(key);
   const period = monthsBetween(start, end), N = period.length;
   const S = samples(clim, period, mode, ninoOffset);
-  if (!S.length) return { period, samples: S, plans: [] };
-  const W = PRIORITY_WEIGHTS[priority], Wsum = W.water + W.soil + W.income;
-  const useMulch = picked.includes("mulch"), ids = picked.filter((id) => id !== "mulch" && crops[id]);
 
   // Planting table: every crop at every start month, over every sample.
   const awc = site?.awc ?? 90;
@@ -208,6 +215,18 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
   }
   const slopeF = 1 + Math.min(1, (site?.slope ?? 0) / 12);
   const bareSev = period.map((_, t) => mean(S.map((s) => Math.min(1, bareCell(s.months[t]).sev * slopeF))));
+  const table = { period, S, tab, all, bareSev };
+  if (cache.tables.size >= 2) cache.tables.delete(cache.tables.keys().next().value);
+  cache.tables.set(key, table);
+  return table;
+}
+
+export function plan(clim, crops, picked, { start, end, irrigation = false, priority = "soil", mode = "all", ninoOffset = 0, site = null, current = null }) {
+  const { period, S, tab, all, bareSev } = plantingTable(clim, crops, { start, end, irrigation, mode, ninoOffset, site });
+  const N = period.length;
+  if (!S.length) return { period, samples: S, plans: [] };
+  const W = PRIORITY_WEIGHTS[priority], Wsum = W.water + W.soil + W.income;
+  const useMulch = picked.includes("mulch"), ids = picked.filter((id) => id !== "mulch" && crops[id]);
 
   // Best sequence by dynamic programming over (month, previous crop, straw on the ground).
   function best(allowed, firstForced) {
@@ -303,7 +322,8 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
     const covered = parcels.reduce((x, pc) => x + pc.share * pc.d.covered, 0) / N;
     const anyLoss = mean(per.map((x) => (x.lostShare > 0 ? 1 : 0))), bigLoss = mean(per.map((x) => (x.lostShare >= 0.5 ? 1 : 0)));
     const harvest = mean(per.map((x) => x.harvest)), loss = mean(per.map((x) => x.loss));
-    const verdict = !parcels.some((pc) => pc.d.steps.length) || bigLoss >= 0.3 ? "danger" : anyLoss >= 0.3 || loss > 2.5 ? "care" : "good"; // bare soil only counts when it actually loses soil (cold winters do not)
+    const planted = parcels.reduce((area, pc) => area + pc.share * pc.d.steps.length, 0);
+    const verdict = !planted || harvest / planted < 0.35 || bigLoss >= 0.3 ? "danger" : anyLoss >= 0.3 || loss > 2.5 ? "care" : "good";
     // Month by month, which crop is on how much of the land, for the farm calendar.
     const grid = period.map((pp, t) => {
       const here = {};
@@ -325,16 +345,25 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
   const leads = (viable.length ? viable : ids).map((id) => best(ids, id)).filter((r) => r.steps.length);
   const seenL = new Set(), uniqL = leads.filter((r) => { const k = r.steps.map((x) => `${x.crop}@${x.t0}`).join(","); if (seenL.has(k)) return false; seenL.add(k); return true; })
     .sort((a, b) => b.v - a.v).slice(0, MAX_PLOTS);
-  let farm = null;
+  // The optimizer may prefer leaving all land idle. Show the best actual attempt for diagnosis.
+  function diagnostic(choices, opt) {
+    const attempt = choices.map((crop) => ({ crop, start: windows[crop]?.best })).filter((x) => x.start)
+      .sort((a, b) => b.start.yld - a.start.yld || a.start.fail - b.start.fail)[0];
+    const steps = attempt ? [{ crop: attempt.crop, t0: attempt.start.t }] : [];
+    return { ...evalFarm([{ share: 1, steps }], opt), verdict: "danger", issue: attempt ? "risk" : "no_time" };
+  }
+  let farm;
   if (uniqL.length) {
     const w = uniqL.map((r) => Math.exp(1.5 * r.v)), ws = w.reduce((a, b) => a + b, 0);
     let sh = w.map((x) => Math.max(0.15, x / ws)); const t2 = sh.reduce((a, b) => a + b, 0); sh = sh.map((x) => x / t2);
     farm = evalFarm(uniqL.map((r, k) => ({ share: sh[k], steps: r.steps.map((x) => ({ crop: x.crop, t0: x.t0 })) })));
-  }
+  } else farm = diagnostic(ids);
   const asFarm = (r) => evalFarm([{ share: 1, steps: r.steps.map((x) => ({ crop: x.crop, t0: x.t0 })) }]);
   const todayIds = (current || []).filter((id) => crops[id]);
   // What the farmer does today: their crops only, and no straw cover (most burn or leave the field bare).
-  const today = todayIds.length ? evalFarm([{ share: 1, steps: best(todayIds).steps.map((x) => ({ crop: x.crop, t0: x.t0 })) }], { noMulch: true }) : null;
+  const todaySteps = todayIds.length ? best(todayIds).steps : [];
+  const today = todaySteps.length ? evalFarm([{ share: 1, steps: todaySteps }], { noMulch: true })
+    : todayIds.length ? diagnostic(todayIds, { noMulch: true }) : null;
   const others = uniq.filter((r) => r.steps.length).slice(0, 4).map(asFarm);
   return { period, samples: S, plans, windows, substitutes, farm, today, others, evalFarm, monthsOf: (id) => cropMonths(crops[id]) };
 

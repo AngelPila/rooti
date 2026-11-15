@@ -49,16 +49,17 @@ export function et0Day({ t, tmax, tmin, rh, ws, rs }, lat, elev, m, dayOfYear) {
   return Math.max(0, et0);
 }
 
-async function getJSON(url, timeout = 20000) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(timeout) });
+async function getJSON(url, timeout = 12000) {
+  const response = await fetch(url, { signal: typeof timeout === 'number' ? AbortSignal.timeout(timeout) : timeout });
   if (!response.ok) throw new Error('HTTP ' + response.status + ' from ' + url.split('?')[0]);
   return response.json();
 }
 
 async function browserCatalog() {
-  const catalog = await getJSON('api/nasa/imerg', 13000).catch(() => null);
+  const bundled = getJSON('data/earthdata-imerg.json', 3000).catch(() => null);
+  const catalog = await getJSON('api/nasa/imerg', 1500).catch(() => null);
   if (catalog?.collections?.length) return catalog;
-  return getJSON('data/earthdata-imerg.json', 3000).catch(() => null);
+  return bundled;
 }
 
 const valid = (value) => Number.isFinite(value) && value > -900;
@@ -83,7 +84,7 @@ async function fetchImerg(query, coverage, end) {
   const first = coverage.map((item) => item.start).sort()[0];
   if (first > end) return null;
   const url = API + '/daily/point?parameters=IMERG_PRECTOT&' + query + '&start=' + compactDate(first) + '&end=' + compactDate(end);
-  const data = await getJSON(url);
+  const data = await getJSON(url, 8500);
   if (!data.header?.sources?.includes('IMERG') || data.parameters?.IMERG_PRECTOT?.units !== 'mm/day') {
     throw new Error('Invalid NASA POWER IMERG source or units');
   }
@@ -144,7 +145,8 @@ function dailyMonths(data, imerg, coverage, lat, endMonth) {
 
 async function monthlyFallback(query, y, lat) {
   const url = API + '/monthly/point?parameters=' + MONTHLY + '&' + query + '&start=' + FIRST_YEAR + '&end=';
-  const data = await getJSON(url + (y - 1)).catch(() => getJSON(url + (y - 2)));
+  const signal = AbortSignal.timeout(6500);
+  const data = await getJSON(url + (y - 1), signal).catch(() => getJSON(url + (y - 2), signal));
   const elev = data.geometry?.coordinates?.[2] ?? 0;
   const months = {}, P = data.properties.parameter;
   for (const key of Object.keys(P.T2M)) {
@@ -164,8 +166,9 @@ async function monthlyFallback(query, y, lat) {
 export async function fetchClimate(lat, lon, { catalog = browserCatalog } = {}) {
   const la = +lat.toFixed(2), lo = +lon.toFixed(2);
   const cacheKey = 'rooti:clim:v3:' + la + ',' + lo;
+  let cached;
   try {
-    const cached = JSON.parse(localStorage.getItem(cacheKey));
+    cached = JSON.parse(localStorage.getItem(cacheKey));
     if (cached && Date.now() - cached.at < (cached.data.reducedCoverage ? 60 * 60 * 1000 : 7 * DAY_MS)) return cached.data;
   } catch { /* storage can be unavailable or full */ }
 
@@ -173,18 +176,25 @@ export async function fetchClimate(lat, lon, { catalog = browserCatalog } = {}) 
   const end = new Date(Date.UTC(y, now.getUTCMonth(), 0)).toISOString().slice(0, 10);
   const query = 'community=AG&longitude=' + lo + '&latitude=' + la + '&time-standard=UTC&format=JSON';
   const weatherPromise = getJSON(API + '/daily/point?parameters=' + DAILY + '&' + query + '&start=' + FIRST_YEAR + '0101&end=' + compactDate(end)).catch(() => null);
-  const coverage = await Promise.resolve().then(catalog).then((data) => imergCoverage(data, la, lo)).catch(() => []);
-  const [weather, imerg] = await Promise.all([weatherPromise, fetchImerg(query, coverage, end).catch(() => null)]);
+  let monthly;
+  const loadMonthly = () => (monthly ??= monthlyFallback(query, y, la).catch(() => null));
+  const timer = setTimeout(loadMonthly, 4500);
+  const satellite = Promise.resolve().then(catalog).then((data) => imergCoverage(data, la, lo)).catch(() => [])
+    .then(async (coverage) => ({ coverage, imerg: await fetchImerg(query, coverage, end).catch(() => null) }));
+  const weather = await weatherPromise;
+  clearTimeout(timer);
+  if (!weather) loadMonthly();
+  const { coverage, imerg } = weather ? await satellite : { coverage: [], imerg: null };
   const daily = weather ? dailyMonths(weather, imerg, coverage, la, end.slice(0, 7)) : null;
   const historicalMonths = 12 * (y - FIRST_YEAR);
   const availableHistory = Object.keys(daily?.months || {}).filter((month) => month < mkey(y, 1)).length;
-  const fallback = availableHistory < historicalMonths ? await monthlyFallback(query, y, la).catch(() => null) : null;
-  const months = { ...fallback?.months, ...daily?.months };
+  const fallback = availableHistory < historicalMonths ? await loadMonthly() : null;
+  const months = { ...fallback?.months, ...cached?.data.months, ...daily?.months };
   const keys = Object.keys(months).sort();
   if (!keys.length) throw new Error('No usable NASA POWER climate observations');
   const lastFullYear = Number(keys.filter((key) => key.endsWith('-12') && +key.slice(0, 4) < y).at(-1)?.slice(0, 4) || FIRST_YEAR - 1);
   const data = {
-    lat: la, lon: lo, elev: daily?.elev ?? fallback?.elev ?? 0, months,
+    lat: la, lon: lo, elev: daily?.elev ?? cached?.data.elev ?? fallback?.elev ?? 0, months,
     first: keys[0], last: keys.at(-1), lastFullYear,
     imergCollections: imerg ? coverage.map((item) => item.id) : [],
     reducedCoverage: availableHistory < historicalMonths || !imerg,

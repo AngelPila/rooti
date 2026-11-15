@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from rooti_bot import config, store
 
 ENGINE = config.BOT_DIR / "engine" / "rooti.mjs"
-PLAN_VERSION = 2  # Invalidate plans calculated from the old monthly weather inputs.
+PLAN_VERSION = 3  # Invalidate saved plans when the calculation changes.
 
 
 class EngineError(Exception):

@@ -6,13 +6,12 @@ const SG = "https://rest.isric.org/soilgrids/v2.0/properties/query";
 const PROPS = ["clay", "sand", "phh2o", "soc", "nitrogen"];
 const SCALE = { clay: 10, sand: 10, phh2o: 10, soc: 10, nitrogen: 100 }; // mapped units -> %, %, pH, g/kg, g/kg
 
-const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
-const getJSON = async (url, ms = 15000) => { const r = await withTimeout(fetch(url), ms); if (!r.ok) throw new Error(r.status); return r.json(); };
+const getJSON = async (url, signal) => { const r = await fetch(url, { signal }); if (!r.ok) throw new Error(r.status); return r.json(); };
 
-async function elevationAndSlope(lat, lon) {
+async function elevationAndSlope(lat, lon, signal) {
   const d = 0.0027; // ~300 m
   const la = [lat, lat + d, lat - d, lat, lat], lo = [lon, lon, lon, lon + d, lon - d];
-  const r = await getJSON(`${ELEV}?latitude=${la.join(",")}&longitude=${lo.join(",")}`, 10000);
+  const r = await getJSON(`${ELEV}?latitude=${la.join(",")}&longitude=${lo.join(",")}`, signal);
   const [z0, zn, zs, ze, zw] = r.elevation, dy = 2 * d * 111320, dx = 2 * d * 111320 * Math.cos((lat * Math.PI) / 180);
   const slope = Math.hypot((zn - zs) / dy, (ze - zw) / dx) * 100;
   return { elevation: Math.round(z0), slopePct: +slope.toFixed(1) };
@@ -29,13 +28,14 @@ function parseSoil(j) {
   }
   return Object.keys(out).length ? out : null;
 }
-async function soilAt(lat, lon) {
-  const q = (la, lo) => getJSON(`${SG}?lon=${lo.toFixed(4)}&lat=${la.toFixed(4)}&${PROPS.map((p) => "property=" + p).join("&")}&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean`, 15000).then(parseSoil).catch(() => null);
+async function soilAt(lat, lon, signal) {
+  const q = (la, lo) => getJSON(`${SG}?lon=${lo.toFixed(4)}&lat=${la.toFixed(4)}&${PROPS.map((p) => "property=" + p).join("&")}&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean`, signal).then(parseSoil);
   const first = await q(lat, lon);
   if (first) return { ...first, offsetKm: 0 };
   for (const km of [3, 6]) {
     const d = km / 111;
-    const ring = await Promise.all([[d, 0], [-d, 0], [0, d], [0, -d]].map(([a, b]) => q(lat + a, lon + b)));
+    if (signal.aborted) break;
+    const ring = await Promise.all([[d, 0], [-d, 0], [0, d], [0, -d]].map(([a, b]) => q(lat + a, lon + b).catch(() => null)));
     const ok = ring.filter(Boolean);
     if (ok.length) { const avg = {}; for (const k of PROPS) avg[k] = ok.reduce((s, x) => s + x[k], 0) / ok.length; return { ...avg, offsetKm: km }; }
   }
@@ -43,11 +43,12 @@ async function soilAt(lat, lon) {
 }
 
 export async function fetchTerrain(lat, lon, pilotSoil = null) {
-  const key = `rooti:terrain:v1:${lat.toFixed(3)},${lon.toFixed(3)}`;
-  try { const c = JSON.parse(localStorage.getItem(key)); if (c) return c; } catch { /* no cache */ }
-  const [topo, soil] = await Promise.all([elevationAndSlope(lat, lon).catch(() => null), pilotSoil ? Promise.resolve({ ...pilotSoil, offsetKm: 0, source: "pilot" }) : soilAt(lat, lon)]);
+  const key = `rooti:terrain:v2:${lat.toFixed(3)},${lon.toFixed(3)}`;
+  try { const c = JSON.parse(localStorage.getItem(key)); if (c && Date.now() - c.at < (c.data.soil && c.data.slopePct != null ? 30 * 864e5 : 300000)) return c.data; } catch { /* no cache */ }
+  const signal = AbortSignal.timeout(6000);
+  const [topo, soil] = await Promise.all([elevationAndSlope(lat, lon, signal).catch(() => null), pilotSoil ? Promise.resolve({ ...pilotSoil, offsetKm: 0, source: "pilot" }) : soilAt(lat, lon, signal).catch(() => null)]);
   const t = { ...(topo || {}), soil };
-  if (topo || soil) try { localStorage.setItem(key, JSON.stringify(t)); } catch { /* quota */ }
+  try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), data: t })); } catch { /* quota */ }
   return t;
 }
 

@@ -77,8 +77,10 @@ async function planCmd(lot, mode = "auto") {
     years_with_some_loss: yearsOf(r.farm.anyLoss, n),
     years_losing_over_half: yearsOf(r.farm.bigLoss, n),
     verdict: r.farm.verdict,
+    ...(r.farm.issue && { issue: r.farm.issue }),
   };
-  const today = r.today && { years_with_some_loss: yearsOf(r.today.anyLoss, n), bare_soil_months: Math.round((1 - r.today.covered) * r.period.length), verdict: r.today.verdict };
+  const today = r.today && { years_with_some_loss: yearsOf(r.today.anyLoss, n), bare_soil_months: Math.round((1 - r.today.covered) * r.period.length), verdict: r.today.verdict,
+    ...(r.today.issue && { issue: r.today.issue }) };
   const sow = Object.values(r.windows || {}).map((w) => {
     const good = w.starts.filter((s) => s && s.level === "good").map((s) => r.period[s.t]);
     const best = w.starts.filter(Boolean).sort((a, b) => b.value - a.value)[0];

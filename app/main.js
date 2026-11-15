@@ -1,7 +1,7 @@
-import { fetchClimate } from "./climate.js?v=24";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=36";
-import { COPY } from "./copy.js?v=53";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
+import { fetchClimate } from "./climate.js?v=25";
+import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=37";
+import { COPY } from "./copy.js?v=54";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=23";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
@@ -164,6 +164,14 @@ function climate(pl) {
     return loadDemo(dk).then((d) => d.clim);
   });
   return (DATA.clim[k] ||= live().catch((e) => { delete DATA.clim[k]; throw e; }));
+}
+let prefetchTimer;
+function prefetchPlace(place) {
+  clearTimeout(prefetchTimer);
+  prefetchTimer = setTimeout(() => {
+    climate(place).catch(() => {});
+    terrain(place).catch(() => {});
+  }, 350);
 }
 // Plot data: elevation, slope and soil for any point; in the pilot zones our own soil and satellite water data.
 async function terrain(pl) {
@@ -451,7 +459,7 @@ function viewPlanear(stepArg) {
   const nextBtn = (label, okk, to) => h("button", { class: "btn dark big block", disabled: !okk, onclick: to }, label);
   let body;
   if (n === 1) {
-    const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); };
+    const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; prefetchPlace(pl); redo(); };
     state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
     const box = h("div", { class: "mapbox" });
     body = [title(c.whereQ, c.whereHelp), ...(d.place ? [] : searchBox(pick)), box, d.place ? placeCard(d, () => { d.place = null; d.lot = null; state.drawing = false; redo(); }) : h("p", { class: "small" }, c.tapMap), d.place ? lotTools(d, redo) : null, state.drawing ? null : gpsBtn(pick), h("div", { class: "spacer" }), nextBtn(c.next, !!d.place, () => go("planear/2"))];
@@ -470,7 +478,7 @@ function viewPlanear(stepArg) {
 // Computer: the map fills the screen; one floating panel with four sections, one open at a time.
 function planDesktop(d) {
   const c = C(), err = dateErr(d), redo = () => keepScroll(() => planDesktop(d));
-  const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); updateMap(pl, null); };
+  const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; prefetchPlace(pl); redo(); updateMap(pl, null); };
   state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
   put($("#map-overlay"), state.drawing ? null : h("div", { class: "map-hint" }, icon("i-pointer"), d.place ? c.lot.clickMore : c.clickMap));
   const done = { 1: !!d.place, 2: !err, 3: hasCrop(d.crops), 4: true };
@@ -517,7 +525,7 @@ const outcomeShort = (pl, n) => (n === 1 ? (pl.fail >= 0.5 ? C().wasLost : `${Ma
   : pl.fail >= 0.5 ? C().lostShortS(...fracParts(pl.fail)) : pl.fail <= 0.001 ? C().allYearsS(Math.round(pl.yld * 100)) : pl.fail < 0.1 ? C().almostS(Math.round(pl.yld * 100)) : C().someYearsS(...fracParts(1 - pl.fail), Math.round(pl.yld * 100)));
 const majority = (ls) => { const d = ls.filter((l) => l === "danger").length, c = ls.filter((l) => l === "care").length; return d * 2 >= ls.length ? "danger" : (d + c) * 2 >= ls.length ? "care" : "good"; };
 const plantingsOf = (f) => Object.values(f.byCrop).flatMap((b) => b.plantings.map((p) => ({ ...p, crop: b.crop }))).sort((a, b) => a.t0 - b.t0 || a.crop.localeCompare(b.crop));
-const verdictEl = (v) => h("span", { class: `verdict v-${v}` }, h("i", { class: `sw ${v}` }), C().verdict[v]);
+const verdictEl = (v, label = C().verdict[v]) => h("span", { class: `verdict v-${v}` }, h("i", { class: `sw ${v}` }), label);
 const level = (st) => (st.fail >= 0.5 ? "danger" : st.fail > 0.15 || st.yld < 0.6 ? "care" : "good");
 // Colour and drawing for each crop; bare soil is terracotta
 const CROP_LOOK = {
@@ -593,29 +601,44 @@ const resHead = (P) => h("div", { class: "res-head" }, h("div", { class: "grow" 
   h("a", { class: "btn", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; } }, C().change));
 async function withResults(draw) {
   const v = $("#view");
+  const requested = location.hash, input = state.plan;
+  const active = () => requested === location.hash && input === state.plan;
   put(v, loading(C().loading));
   let r;
-  try { r = await results(); } catch (e) { console.error(e); put(v, errorCard(C().climateError, () => withResults(draw))); return; }
-  if (!r.farm) { put(v, h("div", { class: "res", style: { flexDirection: "column" } }, resHead(state.plan), h("div", { class: "card" }, h("p", {}, C().noPlans), h("a", { class: "btn dark", href: "#/planear" }, C().changeData)))); return; }
+  try { r = await results(); } catch (e) { console.error(e); if (active()) put(v, errorCard(C().climateError, () => withResults(draw))); return; }
+  if (!active()) return;
+  if (!r.farm) { put(v, h("div", { class: "res", style: { flexDirection: "column" } }, resHead(input), h("div", { class: "card" }, h("p", {}, C().noClimatePeriod), h("a", { class: "btn dark", href: "#/planear" }, C().changeData)))); return; }
   await draw(r);
 }
 // Three named plans the farmer compares, plus what they do today. "Safest" is the new plan that loses a harvest in the fewest years.
-const NAMED_ICON = { safe: "i-shield", income: "i-income", soil: "i-straw", today: "i-plot" };
+const NAMED_ICON = { safe: "i-shield", income: "i-income", soil: "i-straw", today: "i-plot", scenario: "i-care" };
 async function namedPlans(P = state.plan, mode = state.mode) {
   const [rs, ri] = await Promise.all([results(P, mode, "soil"), results(P, mode, "income")]);
   const today = rs.today, tSig = today ? sig(today) : null;
-  const pool = [rs.farm, ri.farm, ...(rs.others || []), ...(ri.others || [])].filter((f) => f && sig(f) !== tSig && f.parcels.some((p) => p.d.steps.length));
+  const pool = [rs.farm, ri.farm, ...(rs.others || []), ...(ri.others || [])].filter((f) => f && !f.issue && sig(f) !== tSig && f.parcels.some((p) => p.d.steps.length));
   // A plan offered as new must be a rotation: at least two crops, and never the same crop twice in a row on a plot
   const rotates = (f) => new Set(f.parcels.flatMap((p) => p.d.steps.map((s) => s.crop))).size > 1 && f.parcels.every((p) => p.d.steps.every((s, i, a) => !i || s.crop !== a[i - 1].crop));
   const rot = pool.filter(rotates);
   const safe = [...(rot.length ? rot : pool)].sort((a, b) => a.anyLoss - b.anyLoss || b.harvest - a.harvest)[0];
   const out = [], seen = new Set();
-  for (const [key, f] of [["safe", safe], ["income", ri.farm], ["soil", rs.farm]]) { if (!f || seen.has(sig(f))) continue; seen.add(sig(f)); out.push({ key, f }); }
+  for (const [key, f] of [["safe", safe], ["income", ri.farm], ["soil", rs.farm]]) { if (!f || f.issue || seen.has(sig(f))) continue; seen.add(sig(f)); out.push({ key, f }); }
+  if (!out.length && rs.farm?.issue) out.push({ key: "scenario", f: rs.farm });
   if (today) out.push({ key: "today", f: today });
   return out;
 }
+const planName = (key) => key === "scenario" ? C().scenarioName : C().ds.names[key];
+const planVerdict = (f) => f.issue ? C().noViable : C().verdict[f.verdict];
+function scenarioNotice(f, r) {
+  if (!f.issue) return null;
+  const c = C();
+  const selected = f === r.today ? r.P.current || [] : r.P.crops;
+  const cycles = selected.map((id) => r.windows[id]?.L).filter(Number.isFinite);
+  const text = f.issue === "no_time" ? (cycles.length ? c.shortScenario(Math.min(...cycles)) : c.noPlans) : c.riskScenario;
+  return h("p", { class: "pv-honest", role: "status" }, icon("i-care"), h("span", {}, text));
+}
 const whyOf = (it, plans) => {
   const D = C().ds, today = plans.find((x) => x.key === "today");
+  if (it.key === "scenario") return C().noViable;
   return it.key === "safe" && today && today.f.anyLoss < it.f.anyLoss ? D.why.safeNew : D.why[it.key];
 };
 // Plots, largest first, named the same way everywhere on the screen
@@ -765,12 +788,12 @@ function planCard(it, r, plans, onPick, best, choose) {
   const lossYears = f.per.filter((x) => x.lostShare > 0).length, cov = coveredMonths(f, N).filter(Boolean).length;
   return h("button", { class: ["strat", best ? "best" : "", choose ? "choose" : ""].filter(Boolean).join(" "), ...(choose ? {} : { role: "radio", "aria-checked": String(it.key === state.pick) }), "data-id": it.key, onclick: () => onPick(it.key) },
     h("span", { class: "spec mono" }, whyOf(it, plans), choose ? null : h("span", { class: "radio" })),
-    h("span", { class: "pname" }, icon(NAMED_ICON[it.key]), D.names[it.key]),
+    h("span", { class: "pname" }, icon(NAMED_ICON[it.key]), planName(it.key)),
     h("span", { class: "cropline" }, ...order.slice(0, 4).map((c) => { const L = look(c); return h("span", { class: `cl-chip${c === "bare" ? " bare" : ""}` }, h("i", { style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, icon(L.icon)), cropLabel(c)); }),
       order.length > 4 ? h("span", { class: "cl-chip more", title: order.slice(4).map(cropLabel).join(", ") }, `+${order.length - 4}`) : null),
     plots.length > 1 ? h("span", { class: "cl-note" }, D.inPlots(plots.length)) : null,
-    h("span", { class: `badge ${f.verdict}` }, C().verdict[f.verdict]),
-    h("span", { class: "facts" }, r.samples.length > 1 ? h("span", {}, icon("i-care"), D.lossYears(lossYears)) : null, h("span", {}, icon("i-straw"), D.coverOf(cov, N))),
+    h("span", { class: `badge ${f.verdict}` }, planVerdict(f)),
+    h("span", { class: "facts" }, r.samples.length > 1 && f.issue !== "no_time" ? h("span", {}, icon("i-care"), D.lossYears(lossYears)) : null, h("span", {}, icon("i-straw"), D.coverOf(cov, N))),
     choose ? h("span", { class: "go" }, D.seePlan, icon("i-arrow-r")) : null);
 }
 
@@ -797,15 +820,17 @@ function sourceNote(r, f) {
 function viewPlan(arg) {
   return withResults(async (r) => {
     const c = C(), D = c.ds, P = state.plan, N = r.period.length, multi = r.samples.length > 1;
-    const [plans, ids] = await Promise.all([namedPlans(P), ideas(r), loadVecinos()]);
-    if (!plans.length) { put($("#view"), h("div", { class: "res" }, resHead(P), h("div", { class: "card" }, h("p", {}, c.noPlans), h("a", { class: "btn dark", href: "#/planear" }, c.changeData)))); return; }
+    const requested = location.hash;
+    const plans = await namedPlans(P);
+    if (location.hash !== requested || state.plan !== P) return;
     // When what the farmer does today loses a harvest in fewer years than any new plan, say so plainly
-    const today = plans.find((x) => x.key === "today"), newBest = plans.filter((x) => x.key !== "today").reduce((a, b) => (!a || b.f.anyLoss < a.f.anyLoss ? b : a), null);
+    const today = plans.find((x) => x.key === "today" && !x.f.issue), newBest = plans.filter((x) => x.key !== "today" && !x.f.issue).reduce((a, b) => (!a || b.f.anyLoss < a.f.anyLoss ? b : a), null);
     const lossN = (f) => f.per.filter((x) => x.lostShare > 0).length, covN = (f) => coveredMonths(f, N).filter(Boolean).length;
     const todayWins = multi && today && newBest && lossN(today.f) < lossN(newBest.f);
     const honest = todayWins ? h("p", { class: "pv-honest" }, icon("i-info"), h("span", {}, D.todaySafer(lossN(today.f), lossN(newBest.f), covN(newBest.f) > covN(today.f) ? [covN(newBest.f), covN(today.f), N] : null))) : null;
     // Rooti asks for "auto": the plan on screen, or the first one, opened directly
     if (arg === "auto") { arg = plans.some((x) => x.key === state.pick) ? state.pick : plans[0].key; history.replaceState(null, "", `#/plan/${arg}`); }
+    if (plans[0].key === "scenario" && !plans.some((x) => x.key === arg)) { arg = "scenario"; history.replaceState(null, "", "#/plan/scenario"); }
     if (!plans.some((x) => x.key === arg)) {
       const cards = h("div", { class: "strats", "data-rooti": "plans", style: { "--k": plans.length } }, ...plans.map((it) => planCard(it, r, plans, (key) => go(`plan/${key}`), todayWins && it.key === "today", true)));
       put($("#view"), h("div", { class: "res pv" }, resHead(P), linked() ? lotSyncEl() : null, tagged(ninoBanner(r), "nino"),
@@ -821,16 +846,21 @@ function viewPlan(arg) {
     const saveBtn = h("button", { class: "round", "aria-label": c.save, title: c.save, onclick: () => { state.saved = { plan: P, at: Date.now() }; store.set("saved3", state.saved); put(saveBtn, icon("i-check")); } }, icon(isSaved() ? "i-check" : "i-bookmark"));
     const show = (anim) => {
       const it = cur(), f = it.f, good = f.per.filter((x) => yearLv(x) === "g").length, cov = coveredMonths(f, N).filter(Boolean).length;
-      put(verdictBox, h("span", { class: `badge ${f.verdict}` }, c.verdict[f.verdict]));
+      put(verdictBox, h("span", { class: `badge ${f.verdict}` }, planVerdict(f)), scenarioNotice(f, r));
       put(routeBox, routeEl(r, f));
       // The risks the challenge asks for sit in view, not behind a button; the full reasoning opens on request
       const e = explain(f, r), rk = e.risks.length ? [c.riskTitle, e.risks, "bad"] : [c.whyTitle, e.why, "good"];
-      put(risks, h("b", {}, rk[0]), h("ul", { class: `bul ${rk[2]}` }, ...rk[1].slice(0, 3).map((x) => h("li", {}, x))));
-      if (multi) {
+      put(risks, rk[1].length ? [h("b", {}, rk[0]), h("ul", { class: `bul ${rk[2]}` }, ...rk[1].slice(0, 3).map((x) => h("li", {}, x)))] : null);
+      const fits = f.issue !== "no_time";
+      if (f.issue) put(stat);
+      if (!fits) put(dots);
+      legend.style.display = fits ? "" : "none";
+      pastLink.style.display = fits ? "" : "none";
+      if (multi && fits) {
         const [a, b, z] = D.goodYears(f.per.length), n = h("span", {}, String(good));
-        put(stat, h("div", { class: "statbox" }, h("div", { class: "stat" }, n), h("p", {}, a, h("b", {}, b), z)));
+        if (!f.issue) put(stat, h("div", { class: "statbox" }, h("div", { class: "stat" }, n), h("p", {}, a, h("b", {}, b), z)));
         yearDots(dots, r, f);
-        if (anim) countUp(n, good, 800);
+        if (anim && !f.issue) countUp(n, good, 800);
       }
       planCalendar(cal, r, f);
       if (anim) [verdictBox, routeBox, risks, stat, cal].forEach((x) => { x.classList.remove("swap"); void x.offsetWidth; x.classList.add("swap"); });
@@ -839,7 +869,7 @@ function viewPlan(arg) {
     // Switch plans in place: the address follows without a new history entry, so Back still returns to the choice
     // The plan's name is the title and the selector at once
     const sel = h("select", { class: "pv-select", "aria-label": D.planLabel, onchange: (e) => { state.pick = e.target.value; history.replaceState(null, "", `#/plan/${state.pick}`); show(true); } },
-      ...plans.map((it) => h("option", { value: it.key, selected: it.key === state.pick ? "" : null }, D.names[it.key])));
+      ...plans.map((it) => h("option", { value: it.key, selected: it.key === state.pick ? "" : null }, planName(it.key))));
     put(head, sel, verdictBox);
     head.setAttribute("data-rooti", "plans");
     // Opened from WhatsApp: choosing here tells Rooti in the chat
@@ -847,27 +877,29 @@ function viewPlan(arg) {
     const switcher = h("div", { class: "pv-switch" }, h("a", { class: "pv-back", href: "#/plan" }, icon("i-back"), D.allPlans));
     const legend = h("div", { class: "dots-legend" }, ...["g", "c", "x"].map((k) => h("span", {}, h("i", { class: k, style: { background: { g: "var(--good)", c: "var(--care)", x: "var(--danger)" }[k] } }), D.legend[k])),
       COAST(P.place) ? h("span", {}, h("i", { class: "n" }), D.legend.n) : null);
+    const pastLink = h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r"));
     put($("#view"), h("div", { class: "res pv" },
       resHead(P),
-      switcher,
+      plans[0].key === "scenario" ? null : switcher,
       linked() ? lotSyncEl() : null,
       tagged(ninoBanner(r), "nino"),
       h("section", { class: "pv-panel" },
         h("div", { class: "pv-body" },
           h("div", { class: "pv-left" },
             h("div", { class: "pv-a" }, head, h("div", { class: "pv-block" }, h("b", {}, D.whatWhen), routeBox), risks,
-              h("div", { class: "pv-acts" }, h("button", { class: "btn soft", onclick: () => explainSheet(D.names[cur().key], cur().f, r) }, D.whyAll), saveBtn,
-                h("button", { class: "round", "aria-label": c.listen, title: c.listen, onclick: () => speak(`${D.names[cur().key]}. ${routeWords(r, cur().f)}. ${c.verdict[cur().f.verdict]}.`) }, icon("i-volume")))),
+              h("div", { class: "pv-acts" }, h("button", { class: "btn soft", onclick: () => explainSheet(planName(cur().key), cur().f, r) }, D.whyAll), saveBtn,
+                h("button", { class: "round", "aria-label": c.listen, title: c.listen, onclick: () => speak(`${planName(cur().key)}. ${routeWords(r, cur().f)}. ${planVerdict(cur().f)}.`) }, icon("i-volume")))),
             h("div", { class: "pv-b" },
-              multi ? [stat, h("div", { class: "pv-block" }, dots, legend, h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r")))] : h("p", { class: "small" }, D.realOnly))),
+              multi ? [stat, h("div", { class: "pv-block" }, dots, legend, pastLink)] : h("p", { class: "small" }, D.realOnly))),
           // Rooti still marks "cover": the calendar is where bare and covered months show now
           h("div", { class: "pv-right", "data-rooti": "cover" }, cal)),
         bar,
         h("div", { class: "pv-foot" }, unknownChips(r, plans[0].f), sourceNote(r, plans[0].f))),
-      ids.length ? h("a", { class: "hint", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(ids.length)), icon("i-chev-r")) : null,
+      h("a", { class: "hint", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.tryPlan), icon("i-chev-r")),
       h("section", { class: "card" }, h("b", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot)),
       canHandoff() ? handoffCard(P) : null));
     show(false);
+    loadVecinos(P.place).then(() => { if (routeBox.isConnected) put(routeBox, routeEl(r, cur().f)); });
   });
 }
 
@@ -875,7 +907,8 @@ function viewPlan(arg) {
 function pickBar(r, cur) {
   const W = C().wa, box = h("div", { class: "wa-bar" });
   const draw = (status) => {
-    const it = cur(), name = C().ds.names[it.key];
+    const it = cur(), name = planName(it.key);
+    if (it.f.issue) return put(box);
     if (link.chosen?.key === it.key) return put(box, h("p", { class: "wa-done" }, icon("i-check"), h("span", {}, W.chosen(name))), hasWhatsApp() ? h("a", { class: "btn big block", href: waUrl() }, icon("i-chat"), W.back) : null);
     put(box, h("button", { class: "btn lime big block", disabled: status === "saving", onclick: async () => {
       draw("saving");
@@ -965,7 +998,7 @@ function ninoBanner(r) {
 function explain(f, r) {
   const c = C(), N = r.period.length, steps = f.parcels.flatMap((p) => p.d.steps), crops = [...new Set(steps.map((s) => s.crop))];
   const why = [], risks = [], unknown = [], ask = [];
-  if (f.anyLoss <= 0.1) why.push(c.whyFewLoss(r.samples.length > 1 ? r.samples.length : null));
+  if (!f.issue && f.anyLoss <= 0.1) why.push(c.whyFewLoss(r.samples.length > 1 ? r.samples.length : null));
   if (f.covered >= 0.8) why.push(c.whyCovered(Math.round(f.covered * N), N));
   if (crops.some((id) => DATA.crops[id]?.n_fixing)) why.push(c.whyLegume(andList(crops.filter((id) => DATA.crops[id]?.n_fixing).map((id) => cropName(id).toLowerCase()))));
   if (f.parcels.length > 1) why.push(c.whySpread);
@@ -990,7 +1023,7 @@ function explain(f, r) {
   unknown.push(c.unkVariety);
   if (crops.some((id) => DATA.crops[id]?.approximate)) unknown.push(c.approx);
   if (!nearPilot(state.plan.place)) unknown.push(c.unkPrices);
-  ask.unshift(c.askVariety(cropName(crops[0] || "maize").toLowerCase()));
+  if (crops.length) ask.unshift(c.askVariety(cropName(crops[0]).toLowerCase()));
   if (r.site.wl >= 0.5) ask.push(c.askDrain);
   if (d && (d.phClass === "acid" || d.phClass === "very_acid")) ask.push(c.askLime);
   return { why: why.slice(0, 4), risks: risks.slice(0, 4), unknown, ask: [...new Set(ask)].slice(0, 4) };
@@ -998,7 +1031,7 @@ function explain(f, r) {
 function explainSheet(title, f, r) {
   const e = explain(f, r), c = C();
   const list = (head, items, cls) => (items.length ? [h("b", { style: { marginTop: "6px" } }, head), h("ul", { class: `bul ${cls || ""}` }, ...items.map((x) => h("li", {}, x)))] : []);
-  sheet(h("h2", { class: "display" }, title), verdictEl(f.verdict), farmCalendar(r, f, { compact: true }),
+  sheet(h("h2", { class: "display" }, title), verdictEl(f.verdict, planVerdict(f)), scenarioNotice(f, r), farmCalendar(r, f, { compact: true }),
     ...list(c.whyTitle, e.why, "good"), ...list(c.riskTitle, e.risks, "bad"), ...list(c.unknownTitle, e.unknown), ...list(c.askTitle, e.ask));
 }
 // Short, practical advice from the plot, the climate and the plan.
@@ -1166,7 +1199,7 @@ async function ideas(r) {
   const P = state.plan, c = C(), f = r.farm, N = r.period.length, out = [];
   const effect = async (P2) => {
     try {
-      const v = await results(P2, state.mode), g = v.farm; if (!g) return null;
+      const v = await results(P2, state.mode), g = v.farm; if (!g || g.issue) return null;
       const parts = [], dh = g.harvest - f.harvest;
       if (dh > 0.03) parts.push(c.effMore(fmtArea(dh, P2)));
       if (g.anyLoss < f.anyLoss - 0.05) parts.push(c.effLess);
@@ -1206,6 +1239,7 @@ function viewProbar() {
     put($("#view"), h("div", { class: "res stack" },
       resHead(P),
       h("div", { class: "res-title" }, h("h1", { class: "display" }, c.tryTitle), h("p", {}, c.tryLead)),
+      scenarioNotice(r.farm, r),
       state.undo ? h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { setPlan(state.undo.plan); state.mode = state.undo.mode; state.undo = null; render(); } }, icon("i-undo"), " ", c.undo) : null,
       list.length ? h("div", { class: "ideas row-ideas" }, ...list.map((it) => h("div", { class: `idea${it.on ? " on" : ""}`, "data-rooti": `idea-${it.kind}` }, h("span", { class: "ic" }, icon(it.icon)), h("div", { class: "grow" }, h("b", {}, it.title), h("p", {}, it.why), h("em", {}, it.eff)),
         h("button", { class: "btn dark", onclick: it.apply }, it.on ? c.undo : c.tryBtn)))) : h("p", {}, c.noIdeas),
@@ -1229,7 +1263,7 @@ function money(f) {
 // The plan the farmer picked on the plan screen; compare and "what if" follow it
 async function chosen(r) {
   const plans = await namedPlans(), it = plans.find((x) => x.key === state.pick) || plans[0];
-  return it ? { f: it.f, name: C().ds.names[it.key] } : { f: r.farm, name: C().recommended };
+  return it ? { f: it.f, name: planName(it.key) } : { f: r.farm, name: C().recommended };
 }
 function viewComparar() {
   return withResults(async (r) => {
@@ -1274,20 +1308,20 @@ function viewComparar() {
     const why = score >= 0 ? "" : mine.anyLoss > rec.anyLoss + 0.1
       ? (es() ? `Su plan pierde cosecha ${frac(mine.anyLoss).toLowerCase()} años; el recomendado, ${frac(rec.anyLoss).toLowerCase()}.` : `Your plan loses a harvest ${frac(mine.anyLoss).toLowerCase()} years; the recommended one, ${frac(rec.anyLoss).toLowerCase()}.`)
       : rec.harvest > mine.harvest ? (es() ? `Con el recomendado llega a cosecha ${fmtArea(rec.harvest - mine.harvest)} más.` : `The recommended plan brings ${fmtArea(rec.harvest - mine.harvest)} more to harvest.`) : "";
-    const calCard = (title, f) => h("section", { class: "card" }, h("div", { class: "row between" }, h("b", {}, title), verdictEl(f.verdict)), f.parcels.some((p) => p.d.steps.length) ? farmCalendar(r, f, { compact: true }) : h("p", { class: "small" }, c.noPlans));
+    const calCard = (title, f) => h("section", { class: "card" }, h("div", { class: "row between" }, h("b", {}, title), verdictEl(f.verdict, planVerdict(f))), scenarioNotice(f, r), farmCalendar(r, f, { compact: true }));
     put($("#view"), h("div", { class: "res cmp" },
       resHead(P),
       h("div", { class: "col-left wide" },
         h("div", { class: "res-title" }, h("h1", { class: "display" }, c.build), h("p", {}, c.buildLead)),
         ...plots,
         h("div", { class: "row wrap", style: { gap: "14px" } },
-          h("button", { class: "btn", onclick: () => { K.push({ area: Math.max(0, +(P.area - used).toPrecision(8)), steps: [{ crop: fittingCrop(0), t0: 0 }] }); redo(); } }, c.addPlot),
+          h("button", { class: "btn", disabled: fittingCrop(0) ? null : "", onclick: () => { K.push({ area: Math.max(0, +(P.area - used).toPrecision(8)), steps: [{ crop: fittingCrop(0), t0: 0 }] }); redo(); } }, c.addPlot),
           h("button", { class: "link", onclick: () => { state.custom = customFrom(rec); state.customStraw = P.crops.includes("mulch"); redo(); } }, c.reset)),
         P.crops.includes("mulch") ? h("label", { class: "row", style: { gap: "8px", fontSize: "15px" } }, h("input", { type: "checkbox", checked: state.customStraw || null, onchange: (e) => { state.customStraw = e.target.checked; redo(); } }), c.keepStraw) : null,
         h("p", { class: exceedsArea ? "err" : "small" }, c.uses(fmtArea(used / P.area), fmtArea(1)))),
       h("div", { class: "col-right" },
         h("h2", { class: "display phone-only", style: { fontSize: "22px" } }, c.cmpTitle),
-        compareError ? [
+        rec.issue === "no_time" ? [calCard(recName, rec), h("p", { class: "small" }, c.noHarvestResults), hasPlanting && !compareError ? calCard(c.mine, mine) : null, compareError ? h("p", { class: "err", role: "status" }, compareError) : null] : compareError ? [
           h("p", { class: "err", role: "status" }, compareError),
           calCard(recName, rec),
         ] : [
@@ -1318,7 +1352,11 @@ function viewComparar() {
 /* ---------- what would have happened ---------- */
 function viewPasado() {
   return withResults(async (r) => {
-    const c = C(), per = (await chosen(r)).f.per;
+    const c = C(), { f } = await chosen(r), per = f.per;
+    if (f.issue === "no_time") {
+      put($("#view"), h("div", { class: "res stack" }, resHead(r.P), h("h1", { class: "display" }, c.pastTitle), scenarioNotice(f, r), h("p", {}, c.noHarvestResults)));
+      return;
+    }
     const lvl = (x) => (x.lostShare >= 0.5 ? "danger" : x.lostShare > 0 || x.loss > 2.5 ? "care" : "good");
     const sel = per.find((x) => x.base === state.pastBase) || per[0];
     const soil = sel.loss > 2.5 ? "high" : sel.loss > 1.2 ? "medium" : "low";
@@ -1326,6 +1364,7 @@ function viewPasado() {
       resHead(state.plan),
       h("div", { class: "res-title" }, h("h1", { class: "display" }, c.pastTitle), h("p", {}, per.length > 1 ? c.pastLead(per.length) : c.pastReal)),
       ninoBanner(r),
+      scenarioNotice(f, r),
       h("div", { class: "legend" }, ...[["good", c.lgGood], ["care", c.lgCare], ["danger", c.lgDanger]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l))),
       per.length > 1 ? h("div", { class: "years" }, ...per.map((x) => h("button", { class: lvl(x), "aria-pressed": String(x === sel), onclick: () => { state.pastBase = x.base; viewPasado(); } }, String(x.base)))) : null,
       h("section", { class: "card", style: { maxWidth: "720px" } },
@@ -1587,7 +1626,8 @@ async function rootiContext() {
     out.push(`Plan months: ${ym(res.period[0])} to ${ym(res.period[N - 1])}.`);
     for (const it of plans) {
       const f = it.f, good = f.per.filter((x) => yearLv(x) === "g").length, lost = f.per.filter((x) => yearLv(x) === "x").length;
-      out.push(`Plan "${C().ds.names[it.key]}"${it.key === state.pick ? " (the one on screen)" : ""}: ${routeWords(res, f)}. Of ${f.per.length} real runs of years it went well in ${good} and lost more than half the harvest in ${lost}. Soil covered ${coveredMonths(f, N).filter(Boolean).length} of ${N} months.`);
+      const outcome = f.issue === "no_time" ? "No chosen crop fits the calendar." : f.issue ? `Evaluated only, not viable. Lost more than half the harvest in ${lost} of ${f.per.length} runs.` : `Of ${f.per.length} real runs of years it went well in ${good} and lost more than half the harvest in ${lost}.`;
+      out.push(`Plan "${planName(it.key)}"${it.key === state.pick ? " (the one on screen)" : ""}: ${routeWords(res, f)}. ${outcome} Soil covered ${coveredMonths(f, N).filter(Boolean).length} of ${N} months.`);
     }
     const win = P.crops.filter((id) => res.windows[id]?.best).map((id) => `${cropName(id)}: ${ym(res.period[res.windows[id].best.t])}`);
     if (win.length) out.push(`Best month to sow each crop: ${win.join("; ")}.`);
