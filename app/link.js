@@ -1,5 +1,6 @@
-// The app and Rooti on WhatsApp, one lot. Opened from a WhatsApp button, the address carries a signed link (?t=) and
-// the lot lives in Rooti's database (bot/src/rooti_bot/web.py), so what the farmer marks here Rooti knows in the chat.
+// The app and Rooti on WhatsApp, one lot. Opened from a WhatsApp button, the address carries a signed link and the
+// page to open (#t=…&r=plan, in the fragment so it never reaches a server log). The lot lives in Rooti's database
+// (bot/src/rooti_bot/web.py), so what the farmer marks here Rooti knows in the chat.
 // Opened as the public website, a lot made here goes to WhatsApp as a short code the farmer sends to Rooti.
 // data/bot.json says where Rooti's API is ("" = this same server) and Rooti's number; without them nothing shows.
 const KEY = "rooti:link";
@@ -19,11 +20,11 @@ async function api(method, path, body) {
 
 // True when the page belongs to one farmer. Throws when the link expired or was edited.
 export async function initLink() {
-  const q = new URLSearchParams(location.search), fresh = q.get("t");
+  const f = new URLSearchParams(location.hash.startsWith("#t=") ? location.hash.slice(1) : ""), fresh = f.get("t");
   if (fresh) {
     try { sessionStorage.setItem(KEY, fresh); } catch { /* private mode: the token lives in memory */ }
-    q.delete("t"); // out of the address bar, so a screenshot or a shared address never carries it
-    history.replaceState(null, "", location.pathname + (q.toString() ? `?${q}` : "") + location.hash);
+    // out of the address bar, so a screenshot or a shared address never carries it
+    history.replaceState(null, "", location.pathname + location.search + (f.get("r") ? `#/${f.get("r")}` : ""));
   }
   link.token = fresh || remembered();
   try { cfg = { ...cfg, ...(await fetch("data/bot.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : {}))) }; } catch { /* no bot */ }

@@ -4,7 +4,7 @@ import { COPY } from "./copy.js?v=44";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
-import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=1";
+import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -1438,7 +1438,8 @@ async function start() {
     return;
   }
   if (state.plan) state.mode = defaultMode(state.plan);
-  addEventListener("hashchange", () => { state.drawing = false; document.body.classList.remove("drawing"); state.addCorner = null; render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
+  // A new signed link on an open page (another WhatsApp button, same tab) only changes the fragment: start over with it
+  addEventListener("hashchange", () => { if (location.hash.startsWith("#t=")) return location.reload(); state.drawing = false; document.body.classList.remove("drawing"); state.addCorner = null; render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
   let w = desktop(); addEventListener("resize", () => { if (desktop() !== w) { w = desktop(); if (viewer) { viewer.destroy(); viewer = null; lotEntity = null; pickBound = false; } render(); } });
   render();
 }

@@ -92,7 +92,7 @@ def http(method: str, url: str, body: dict | None = None, token: str = "") -> tu
 
 
 def token_of(url: str) -> str:
-    """The signed link in a button: ?t= on the app's pages, #t= on the call page."""
+    """The signed link in a button, in the fragment (#t=) of the app's pages and of the call page."""
     parts = urlsplit(url)
     return (parse_qs(parts.query).get("t") or parse_qs(parts.fragment).get("t"))[0]
 
@@ -284,10 +284,10 @@ def test_farmer_on_whatsapp(tmp_path):
         # 8. The pages: «Marcar mi lote» and «Ver mi plan», signed for this farmer.
         site = env["ROOTI_CALL_URL"]
         mark_btn = button_reply("¿cómo le mando mi lote?")
-        assert mark_btn["buttonText"] == "Marcar mi lote" and mark_btn["url"].startswith(f"{site}/app/?t=")
-        assert mark_btn["url"].endswith("#/planear/1")
+        assert mark_btn["buttonText"] == "Marcar mi lote" and mark_btn["url"].startswith(f"{site}/app/#t=")
+        assert mark_btn["url"].endswith("&r=planear/1"), "the signed link rides in the fragment, never in a log"
         plan_btn = button_reply("mándeme el plan")
-        assert plan_btn["buttonText"] == "Ver mi plan" and plan_btn["url"].endswith("#/plan")
+        assert plan_btn["buttonText"] == "Ver mi plan" and plan_btn["url"].endswith("&r=plan")
         page_token = token_of(plan_btn["url"])
         status, html = http("GET", f"{site}/app/")
         assert status == 200 and 'src="main.js' in html, "the page is the web app itself"
@@ -339,7 +339,7 @@ def test_farmer_on_whatsapp(tmp_path):
         assert [m["path"] for m in alert_msgs] == ["send-media", "send-url-button"], alert_msgs
         assert alert_msgs[0]["mediaType"] == "audio" and Path(alert_msgs[0]["filePath"]).stat().st_size > 1000
         assert "55 milímetros" in alert_msgs[1]["message"]
-        assert alert_msgs[1]["buttonText"] == "Ver el aviso" and alert_msgs[1]["url"].endswith("#/aviso")
+        assert alert_msgs[1]["buttonText"] == "Ver el aviso" and alert_msgs[1]["url"].endswith("&r=aviso")
         sim = [r for r in llm.requests if r.get("tools")][-1]
         assert "eligió «El más seguro»" in "\n".join(text_of(m) for m in sim["messages"]), \
             "the plan picked on the page is in the turn's context"

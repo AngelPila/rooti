@@ -84,8 +84,11 @@ def mount(api: FastAPI) -> None:
         return JSONResponse({"url": "", "whatsapp": config.whatsapp_number()}, headers={"Cache-Control": "no-store"})
 
     @api.get("/api/lot")
-    async def get_lot(x_rooti_token: str = Header("")):
+    async def get_lot(request: Request, x_rooti_token: str = Header("")):
         session = _session(x_rooti_token)
+        # Inside WhatsApp or in another browser: the user agent says it (WAiOS/… in WhatsApp's own webview on iPhone)
+        print(f"[páginas] {session['phone'][:6]}… abrió una página: {request.headers.get('user-agent', '?')[:200]}",
+              flush=True)
         farmer, alert = session["farmer"], session["alert"]
         if alert:  # the alert was seen: no reminder follows (alerts.run)
             store.mark_alert(alert["id"], "call_opened_at")
