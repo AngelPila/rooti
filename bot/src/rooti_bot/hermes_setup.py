@@ -22,7 +22,7 @@ BLOCKED = ["terminal", "file", "code_execution", "browser", "computer_use", "del
            "vision", "video", "image_gen", "video_gen", "todo", "connections", "homeassistant", "spotify",
            "x_search", "a2a", "web", "search", "memory", "session_search", "skills", "tts"]
 VOICE = {"tts": {"provider": "edge", "edge": {"voice": "es-EC-LuisNeural"}},
-         # A voice note gets a voice note back (Hermes' own auto-TTS for voice input); text gets text.
+         # Hermes' auto-TTS speaks every reply; the plugin narrows it to voice notes and farmers who ask for voice.
          "voice": {"auto_tts": True},
          # Groq's Whisper (free tier), not Hermes' default local one, which the image lacks.
          "stt": {"provider": "groq", "language": "es"}}
@@ -88,9 +88,11 @@ def managed_config(home: Path, bot: str) -> dict:
                                           "ROOTI_NODE": config.node_bin()},
                                   "timeout": 180, "tools": {"resources": False, "prompts": False}}},
         "gateway": {"message_timestamps": {"enabled": True}},
-        # Hermes' WhatsApp default posts a line per tool call, and its warnings are English and for an operator.
+        # Hermes' WhatsApp default posts a line per tool call and a «⏳ Working — N min» bubble every 3 minutes,
+        # and its warnings are English and for an operator.
         "display": {"suppress_warning_notifications": True, "busy_ack_enabled": False,
-                    "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
+                    "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False,
+                                               "long_running_notifications": False}}},
         "onboarding": {"profile_build": "off"},
         "whatsapp": {"reply_prefix": "", "unauthorized_dm_behavior": "ignore"},
         "plugins": {"enabled": [PLUGIN]},
