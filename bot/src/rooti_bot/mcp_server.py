@@ -35,7 +35,7 @@ def call(name: str, arguments: dict) -> dict:
     if farmer is None:
         return _text("No sé de qué agricultor es esta conversación: solo atiendo chats privados de WhatsApp.", True)
     try:
-        result = tools.call(name, farmer, arguments)
+        result = tools.call(name, farmer, arguments, chat=True)
     except tools.ToolError as exc:
         return _text(str(exc), error=True)
     except Exception as exc:  # one bad call never kills the server

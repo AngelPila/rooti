@@ -15,6 +15,8 @@ Rooti on WhatsApp, adapted from Vinci's vinci-whatsapp and vinci-botones plugins
 - «mi lote es RT-XXXX», the code the website's «Continuar en WhatsApp» writes, brings the lot made on the website
   into this chat (`rooti-bot canjear`) before the model reads the message.
 - Every turn starts with the farmer's lot (`rooti-bot contexto`), so the first answer needs no tool round trip.
+- A page button a tool asked for goes out right after Rooti's text (`rooti-bot botones`), so the farmer reads the
+  answer first and the link after it, as a person would send it; a tool runs before the turn's text exists.
 - How long each answer took, from the farmer's message to Rooti's first text and first voice note, goes to
   <ROOTI_DATA>/tiempos.jsonl (`rooti-bot tiempos` sums it up). The clock starts once the bubbles are joined, so
   the farmer also waits the 0.3–3 s of endpointing on top. The chat is kept only as a hash.
@@ -31,7 +33,8 @@ import time
 logger = logging.getLogger("rooti-whatsapp")
 
 BOT = "{{BOT}}"
-ENV = {"ROOTI_DATA": "{{DATA}}", "HOME": "{{HOME}}", "PATH": "/usr/local/bin:/usr/bin:/bin"}
+ENV = {"ROOTI_DATA": "{{DATA}}", "HOME": "{{HOME}}", "ROOTI_BRIDGE": "{{BRIDGE}}",
+       "PATH": "/usr/local/bin:/usr/bin:/bin"}
 MCP_TOOLS = ("mcp__rooti__", "mcp_rooti_")
 CHANNEL_ARG = "_canal"
 AUDIO = ("ptt", "audio")
@@ -141,6 +144,33 @@ def _turn_context(**_):
     except Exception as exc:  # the turn goes on without it
         logger.warning("contexto del turno: %s", exc)
         return None
+
+
+def _buttons_waiting(chat_id):
+    import sqlite3
+    try:
+        db = sqlite3.connect(f"file:{{DATA}}/rooti.db?mode=ro", uri=True, timeout=5)
+        try:
+            return db.execute("SELECT 1 FROM buttons WHERE phone = ? AND sent_at IS NULL LIMIT 1",
+                              (str(chat_id),)).fetchone() is not None
+        finally:
+            db.close()
+    except sqlite3.Error:  # no buttons table yet: nothing waits
+        return False
+
+
+async def _send_buttons(chat_id):
+    if not _buttons_waiting(chat_id):  # most texts carry no button: no process to start
+        return
+    try:
+        proc = await asyncio.create_subprocess_exec(BOT, "botones", "--chat", str(chat_id), env=ENV,
+                                                    stdout=asyncio.subprocess.DEVNULL,
+                                                    stderr=asyncio.subprocess.PIPE)
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+        if proc.returncode:
+            logger.warning("botones: %s", err.decode()[-300:])
+    except Exception as exc:  # the button's own timer still sends it
+        logger.warning("botones: %s", exc)
 
 
 def _wire(_native, adapter):
@@ -340,6 +370,7 @@ def _quiet(adapter):
             return await send(chat_id, APOLOGY, reply_to=reply_to, metadata=metadata, **kwargs)
         result = await send(chat_id, content, reply_to=reply_to, metadata=metadata, **kwargs)
         _note_reply(chat_id, "texto")
+        await _send_buttons(chat_id)
         return result
 
     adapter.send = quiet_send

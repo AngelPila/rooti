@@ -27,6 +27,11 @@ def context(chat: str) -> str:
     if lot["falta_saber"]:
         lines.append("Falta preguntarle: " + ", ".join(lot["falta_saber"]) + ".")
     lines.append("Plan calculado: sí (léelo con plan_recomendado)." if lot["plan_listo"] else "Plan calculado: todavía no.")
+    pages = store.sent_buttons(chat, time.time() - 86400)
+    if pages:
+        lines.append("Botones que ya le llegaron hoy: " + ", ".join(
+            f"«{b['label']}» (hace {max(1, round((time.time() - b['sent_at']) / 60))} min)" for b in pages)
+            + ". No se los mandes otra vez si no te los pide.")
     chosen = farmer.get("chosen")
     if chosen:
         lines.append(f"En la página «Ver mi plan» eligió «{chosen['name']}»: {chosen.get('route') or ''}")
@@ -93,6 +98,8 @@ def main(argv=None) -> int:
     rd = sub.add_parser("canjear", help="trae al chat el lote hecho en la web, con su código (lo pide el plugin)")
     rd.add_argument("--chat", required=True)
     rd.add_argument("--codigo", required=True)
+    bt = sub.add_parser("botones", help="manda los botones que esperan la respuesta de Rooti (lo pide el plugin)")
+    bt.add_argument("--chat", required=True)
     sub.add_parser("hermes-perfil", help="escribe el Hermes de Rooti (cada arranque)")
     link = sub.add_parser("whatsapp-vincular", help="vincula el número de Rooti con un código")
     link.add_argument("numero", nargs="?")
@@ -121,6 +128,10 @@ def main(argv=None) -> int:
             print(json.dumps(redeem(args.chat, args.codigo), ensure_ascii=False))
         except Exception as exc:
             print(json.dumps({"ok": False, "error": str(exc)}))
+        return 0
+    if args.cmd == "botones":
+        from rooti_bot import tools
+        print(json.dumps({"enviados": tools.send_queued(args.chat)}))
         return 0
     if args.cmd == "hermes-perfil":
         from rooti_bot import hermes_setup

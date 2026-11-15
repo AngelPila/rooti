@@ -22,12 +22,16 @@ def send_voice(chat: str, ogg_path: str) -> dict:
     return _post("send-media", {"chatId": chat, "filePath": ogg_path, "mediaType": "audio"}, timeout=60)
 
 
-def send_button(chat: str, text: str, button: str, url: str) -> dict:
+def send_button(chat: str, text: str, button: str, url: str, *, log: bool = True) -> dict:
     """A message with one button that opens a page (hermes/whatsapp/url_button.js); the bare link when the bridge
-    lacks that route."""
+    lacks that route. Logged, so the next turn knows which pages the farmer already has."""
     try:
-        return _post("send-url-button", {"chatId": chat, "text": text, "buttonText": button, "url": url})
+        sent = _post("send-url-button", {"chatId": chat, "text": text, "buttonText": button, "url": url})
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
             raise
-    return send_text(chat, f"{text}\n\n{button}: {url}")
+        sent = send_text(chat, f"{text}\n\n{button}: {url}")
+    if log:
+        from rooti_bot import store
+        store.queue_button(chat, button, text, url, sent=True)
+    return sent

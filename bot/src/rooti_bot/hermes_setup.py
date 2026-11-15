@@ -133,7 +133,8 @@ def run() -> int:
     changed |= _env_file(home / ".env", env)
 
     changed |= _write_if_changed(home / "SOUL.md", (config.TEMPLATES / "rooti" / "SOUL.md").read_text(encoding="utf-8"))
-    values = {"MARKER": MARKER, "BOT": bot, "DATA": str(config.data_dir()), "HOME": str(Path.home())}
+    values = {"MARKER": MARKER, "BOT": bot, "DATA": str(config.data_dir()), "HOME": str(Path.home()),
+              "BRIDGE": config.bridge_url()}
     for template in sorted((config.TEMPLATES / "plugins" / PLUGIN).glob("*.*")):
         text = template.read_text(encoding="utf-8")
         for key, value in values.items():

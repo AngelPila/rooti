@@ -44,9 +44,13 @@ rooti-llamada ── call/ page ── WebRTC (Pipecat) ── Groq Whisper → 
   | `boton_lote` | WhatsApp only: sends «Marcar mi lote», the app's map and crop questions |
   | `boton_plan` | WhatsApp only: sends «Ver mi plan», the app's plan page |
 
+  A button is a page that backs up the answer, never the answer: the model sends one when the farmer needs it
+  (SOUL.md, «Las páginas»), and it goes out right after Rooti's text, not before it. Each turn's context lists the
+  buttons the farmer already got today, so none is sent twice.
 - **The planner** is the web app's own code (`app/planner.js`, `climate.js`, `terrain.js`), run headless by
-  `engine/rooti.mjs`. The first plan for a plot takes up to a minute, mostly waiting on SoilGrids. After that it is
-  read from the database until the plot changes, so an answer never waits on NASA.
+  `engine/rooti.mjs`. The first plan for a plot takes up to a minute and a half (three at most), mostly waiting on SoilGrids, and on
+  WhatsApp the farmer is told Rooti is checking before that wait. After that it is read from the database until the
+  plot changes, so an answer never waits on NASA. The page and the chat asking for the same new plan compute it once.
 - **Voice.** Speech to text is Groq's Whisper. Rooti's voice is Edge TTS with Vinci's Ecuadorian voice. Hermes
   replies to a voice note with a voice note on its own (`voice.auto_tts`).
 - **Alerts** (`src/rooti_bot/alerts.py`) run without the model, every 30 minutes. They go only to farmers who said
