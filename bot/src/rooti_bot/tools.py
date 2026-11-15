@@ -122,23 +122,30 @@ def save_lot(farmer_id: str, args: dict) -> dict:
 
 
 def recommended_plan(farmer_id: str, _args: dict) -> dict:
+    f = _farmer(farmer_id)
     try:
-        r = _plan(_farmer(farmer_id))
+        r = _plan(f)
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
-    return {k: r.get(k) for k in ("from", "to", "tested_on", "why_these_years", "farm", "today", "soil", "limits")}
+    out = {k: r.get(k) for k in ("from", "to", "tested_on", "why_these_years", "plans", "soil", "limits")}
+    return {**out, "followed": (engine.followed(r, f) or {}).get("name")}
 
 
 def when_to_sow(farmer_id: str, args: dict) -> dict:
+    f = _farmer(farmer_id)
     try:
-        r = _plan(_farmer(farmer_id))
+        r = _plan(f)
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
     sow = r.get("sow") or []
     if args.get("cultivo"):
         name = CROPS.get(args["cultivo"], {}).get("name_es", args["cultivo"]).lower()
         sow = [s for s in sow if s["crop"] == name] or sow
-    return {"desde": r["from"], "hasta": r["to"], "probado_en": r["tested_on"], "cultivos": sow}
+    plan = engine.followed(r, f) or {}
+    sowings = [{"crop": p["crop"], "month": p["from"], "land": plot["land"]}
+               for plot in plan.get("plots", []) for p in plot["plantings"]]
+    return {"desde": r["from"], "hasta": r["to"], "probado_en": r["tested_on"], "cultivos": sow,
+            "followed": {"name": plan.get("name"), "sowings": sowings}}
 
 
 def try_change(farmer_id: str, args: dict) -> dict:
@@ -155,7 +162,8 @@ def try_change(farmer_id: str, args: dict) -> dict:
         base = _plan(_farmer(farmer_id))
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
-    return {"probado_en": trial["tested_on"], "con_el_cambio": trial.get("farm"), "plan_actual": base.get("farm")}
+    return {"probado_en": trial["tested_on"], "con_el_cambio": engine.followed(trial, f),
+            "plan_actual": engine.followed(base, f)}
 
 
 def this_year(farmer_id: str, _args: dict) -> dict:
@@ -241,9 +249,11 @@ TOOLS = [
          my_lot, {}),
     Tool("guardar_lote", "Guarda o corrige datos del lote (solo los que cambian). Con ubicación y cultivos calcula el "
                          "plan; la primera vez tarda hasta un minuto.", save_lot, LOT_PROPS),
-    Tool("plan_recomendado", "Qué sembrar, cuándo y en cuánta tierra para los próximos 12 meses, comparado con lo que "
-                             "hace hoy, probado en años reales.", recommended_plan, {}),
-    Tool("cuando_sembrar", "Los mejores meses para sembrar cada cultivo del lote.", when_to_sow,
+    Tool("plan_recomendado", "Los planes de la página «Ver mi plan», en el mismo orden, y lo que hace hoy: qué sembrar, "
+                             "cuándo y en cuánta tierra los próximos 12 meses, probado en años reales. «followed» es el "
+                             "que sigue el agricultor.", recommended_plan, {}),
+    Tool("cuando_sembrar", "Los mejores meses para sembrar cada cultivo del lote, y cuándo siembra cada uno en el plan "
+                           "que sigue.", when_to_sow,
          {"cultivo": {"type": "string", "description": "id de un cultivo, si pregunta por uno"}}),
     Tool("probar", "Qué pasaría con otros cultivos, con riego, o en años secos, lluviosos o de El Niño, sin cambiar "
                    "el plan guardado.", try_change,

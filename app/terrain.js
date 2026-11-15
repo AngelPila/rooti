@@ -53,6 +53,17 @@ export async function fetchTerrain(lat, lon, pilotSoil = null, { signal } = {}) 
   return t;
 }
 
+// Pilot zones: our own soil (data/<zone>.json) and Landsat surface water (data/surface_water.json) replace the open data.
+const PILOTS = { daule: [-1.86, -79.98], babahoyo: [-1.80, -79.53], quevedo: [-1.03, -79.46] };
+export const nearPilot = (pl) => Object.entries(PILOTS).find(([, [la, lo]]) => Math.hypot(la - pl.lat, lo - pl.lon) * 111 < 40)?.[0] || null;
+export function pilotSite(zoneData, surfaceWater, z) {
+  const so = zoneData?.soil;
+  return {
+    pilotSoil: so?.clay ? { clay: so.clay.value_0_30cm, sand: so.sand.value_0_30cm, phh2o: so.phh2o.value_0_30cm, soc: so.soc.value_0_30cm, nitrogen: so.nitrogen?.value_0_30cm } : null,
+    pilotWater: surfaceWater?.zones?.[z]?.waterlogging_index ?? null,
+  };
+}
+
 // Words and numbers the planner and the screen use.
 export function describeSoil(s) {
   if (!s) return null;
