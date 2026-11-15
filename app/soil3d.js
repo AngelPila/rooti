@@ -32,11 +32,12 @@ const inside = (x, z, poly) => { let o = false; for (let i = 0, j = poly.length 
 // Distance from a point to the polygon's edge, so roofs are not raised on the plot or right against it
 const nearEdge = (x, z, poly, d) => poly.some((a, i) => { const b = poly[(i + 1) % poly.length], vx = b[0] - a[0], vz = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * vx + (z - a[1]) * vz) / (vx * vx + vz * vz || 1))); return Math.hypot(x - a[0] - t * vx, z - a[1] - t * vz) < d; });
 
-async function loadArea(lat, lon, S, zImg, outPx, poly) {
+async function loadArea(lat, lon, S, zImg, outPx, poly, step) {
   const photo = document.createElement("canvas"); photo.width = photo.height = outPx;
   const pg = photo.getContext("2d", { willReadFrequently: true });
   const m = await mosaic(lat, lon, zImg, S, ESRI);
   pg.drawImage(m.c, m.sx, m.sy, m.sw, m.sw, 0, 0, outPx, outPx);
+  step("relief");
   // Low ground from SRTM: 0 = lowest, 1 = highest in the area; null without relief data
   const DG = 256; let low = null;
   try {
@@ -116,7 +117,9 @@ export async function mountSoil3d(stage, labelsEl, opts) {
   const span = Math.max(60, Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
   const dist = Math.max(500, span * 3.6), S = Math.max(3000, dist * 4.5), small = innerWidth < 700;
   const H = span * 0.26; // how far the plot stands up, drawn tall on purpose
-  const area = await loadArea(lat, lon, S, S > 3600 || small ? 16 : 17, small ? 2048 : 4096, poly);
+  const step = opts.onStep || (() => {});
+  const area = await loadArea(lat, lon, S, S > 3600 || small ? 16 : 17, small ? 2048 : 4096, poly, step);
+  step("build");
   if (!stage.isConnected) return null;
 
   const canvas = document.createElement("canvas"); stage.prepend(canvas);
