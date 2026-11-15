@@ -920,7 +920,7 @@ function terrariumTerrain(Cz) {
   } });
 }
 let viewer3d = null;
-function plot3d(r, f) {
+function plot3d(r, f, extras = []) {
   const P = state.plan, N = r.period.length, T = C().p3, D = C().ds, { pts, drawn } = lotOf(P);
   const plots = plotsOf(f).map((x) => ({ ...x, runs: runsOf(x.pc, N) }));
   // Water a month leaves on the plot: rain minus what evaporates minus what the plot drains (same rule as the planner)
@@ -961,13 +961,14 @@ function plot3d(r, f) {
   chart.addEventListener("keydown", (e) => { const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0; if (d) { e.preventDefault(); t = Math.max(0, Math.min(N - 1, t + d)); paint(); } });
   const unk = h("details", { class: "p3-unk" }, h("summary", {}, icon("i-info"), T.unkChip), h("p", {}, T.waterNote));
   const sec = h("section", { class: "p3" },
-    h("div", { class: "p3-stage" }, box, keys, wx, h("div", { class: "pm-cap" }, h("b", {}, T.title), h("span", {}, drawn ? T.drag : T.example))),
+    h("div", { class: "p3-stage" }, box, keys, wx, drawn ? null : h("div", { class: "p3-note" }, icon("i-info"), T.example)),
     terrainChips,
     h("div", { class: "p3-ctl" },
       h("div", { class: "row between wrap", style: { gap: "8px" } }, h("span", { class: "p3-month" }, icon("i-month"), monthLab), yrBox),
       chart,
       h("div", { class: "p3-legend" }, h("span", {}, h("i", { class: "sw rain" }), T.lgRain), h("span", {}, h("i", { class: "sw drain" }), T.lgDrain), h("span", {}, h("i", { class: "sw water" }), T.lgWater)),
-      h("div", { class: "row wrap", style: { gap: "8px", alignItems: "center" } }, h("span", { class: "small" }, T.scale(k)), unk)));
+      h("div", { class: "row wrap", style: { gap: "8px", alignItems: "center" } }, h("span", { class: "small" }, T.scale(k)), unk),
+      extras.length ? h("div", { class: "p3-more" }, ...extras.map(([ic, lab, make]) => h("button", { class: "chip", onclick: () => sheet(make()) }, icon(ic), lab))) : null));
   const W = 40, Hc = 110;
   const drawChart = (sample) => {
     const ms = sample.months, thr = ms.map((c) => (c?.et0 ?? 0) + drainCap), rain = ms.map((c) => c?.rain ?? 0);
@@ -1003,7 +1004,7 @@ function plot3d(r, f) {
     if (sd) {
       const soilCol = { clay: "#7A4A32", clay_loam: "#8B5E3C", loam: "#9C7448", sandy_loam: "#B88E5A", sand: "#CDAA72" }[sd.texture];
       ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: -0.6 * k, heightReference: rel, extrudedHeight: 0, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString(soilCol).withAlpha(0.95) } }));
-      const front = pts.reduce((a, q) => (q[1] < a[1] ? q : a));
+      const front = [lotCenter(pts)[0], Math.min(...pts.map((q) => q[1]))];
       ents.push(v.entities.add({ position: Cz.Cartesian3.fromDegrees(front[0], front[1], z0 - 0.3 * k), label: { text: `${c0.texture[sd.texture]} · ${T.holdsShort(sd.awc)}`, font: "500 13px Geist, sans-serif", fillColor: Cz.Color.fromCssColorString("#F3F0E5"), showBackground: true, backgroundColor: Cz.Color.fromCssColorString(soilCol).withAlpha(0.92), backgroundPadding: new Cz.Cartesian2(10, 6), pixelOffset: new Cz.Cartesian2(0, 18), disableDepthTestDistance: Number.POSITIVE_INFINITY } }));
     }
     for (const x of now) {
@@ -1059,30 +1060,29 @@ function viewTerreno() {
     const mx = Math.max(...months.map((x) => Math.max(x.rain, x.et0)), 1);
     const last = r.clim.last, lm = r.clim.months[last], lmNormal = normalRain(r.clim, +last.slice(5));
     const noaa = DATA.outlook?.official?.noaa, erfen = DATA.outlook?.official?.erfen;
-    put($("#view"), h("div", { class: "res terreno" },
-      resHead(P),
-      plot3d(r, picked),
-      h("div", { class: "col-left" },
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.yourPlot),
-          row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
-          row(c.slope, slopeW, slope != null ? `${num(slope)} %` : null),
-          row(c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null),
-          row(c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null),
-          row(c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null),
-          row(c.waterlog, wlW, wlWhy),
-          h("div", { class: "q", style: { marginTop: "4px" } }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); render(); })),
-          h("p", { class: "small" }, d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain))),
-      h("div", { class: "col-right" },
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.climate),
-          h("div", { class: "kpis" }, h("div", {}, h("b", {}, `${Math.round(annual).toLocaleString(state.lang)} mm`), h("small", {}, c.rainYear)), h("div", {}, h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`), h("small", {}, c.tempRange)), h("div", {}, h("b", {}, String(dry.length)), h("small", {}, c.dryMonths))),
-          h("div", { class: "clim-bars" }, ...months.map((x) => h("div", { class: "cb" }, h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1])))),
-          h("div", { class: "legend" }, h("span", {}, h("i", { class: "sw", style: { background: "var(--rain)" } }), c.lgRain), h("span", {}, h("i", { class: "sw", style: { background: "#C7CCD4" } }), c.lgNeed)),
-          h("p", { class: "small" }, wet.length ? c.wetMonths(andList(wet)) : "", " ", dry.length ? c.dryList(andList(dry)) : "")),
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.thisYear),
-          lm ? row(`${cap(S().monthsLong[+last.slice(5) - 1])} ${last.slice(0, 4)}`, `${Math.round(lm.rain)} mm`, c.vsNormal(Math.round(lmNormal))) : null,
-          noaa ? h("p", {}, c.ninoNow(noaa.chance_pct), h("br"), h("small", { class: "small" }, `NOAA · ${noaa.issued}`)) : null,
-          erfen && COAST(P.place) ? h("p", { class: "small" }, `ERFEN (${erfen.issued}): ${es() ? erfen.es : erfen.en}`) : null),
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r))))));
+    const card = (title, ...kids) => h("section", { class: "card sheet-card" }, h("h2", { class: "card-h" }, title), ...kids);
+    const extras = [
+      ["i-plot", c.yourPlot, () => card(c.yourPlot,
+        row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
+        row(c.slope, slopeW, slope != null ? `${num(slope)} %` : null),
+        row(c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null),
+        row(c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null),
+        row(c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null),
+        row(c.waterlog, wlW, wlWhy),
+        h("div", { class: "q", style: { marginTop: "4px" } }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { $("#sheet").close(); setPlan({ ...P }); memo.clear(); render(); })),
+        h("p", { class: "small" }, d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain))],
+      ["i-rain", c.climate, () => card(c.climate,
+        h("div", { class: "kpis" }, h("div", {}, h("b", {}, `${Math.round(annual).toLocaleString(state.lang)} mm`), h("small", {}, c.rainYear)), h("div", {}, h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`), h("small", {}, c.tempRange)), h("div", {}, h("b", {}, String(dry.length)), h("small", {}, c.dryMonths))),
+        h("div", { class: "clim-bars" }, ...months.map((x) => h("div", { class: "cb" }, h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1])))),
+        h("div", { class: "legend" }, h("span", {}, h("i", { class: "sw", style: { background: "var(--rain)" } }), c.lgRain), h("span", {}, h("i", { class: "sw", style: { background: "#C7CCD4" } }), c.lgNeed)),
+        h("p", { class: "small" }, wet.length ? c.wetMonths(andList(wet)) : "", " ", dry.length ? c.dryList(andList(dry)) : ""))],
+      ["i-nino", c.thisYear, () => card(c.thisYear,
+        lm ? row(`${cap(S().monthsLong[+last.slice(5) - 1])} ${last.slice(0, 4)}`, `${Math.round(lm.rain)} mm`, c.vsNormal(Math.round(lmNormal))) : null,
+        noaa ? h("p", {}, c.ninoNow(noaa.chance_pct), h("br"), h("small", { class: "small" }, `NOAA · ${noaa.issued}`)) : null,
+        erfen && COAST(P.place) ? h("p", { class: "small" }, `ERFEN (${erfen.issued}): ${es() ? erfen.es : erfen.en}`) : null)],
+      ["i-bulb", c.tipsTitle, () => card(c.tipsTitle, tipList(tipsFor(r)))],
+    ];
+    put($("#view"), h("div", { class: "res terreno full" }, resHead(P), plot3d(r, picked, extras)));
   });
 }
 

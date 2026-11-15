@@ -817,3 +817,45 @@ body.drawing .search, body.drawing .geo, body.drawing .gps, body.drawing .pf-nex
   .p3-stage .pm-keys { top: auto; left: 12px; bottom: 76px; max-width: 80%; }
   .p3-stage .pm-cap { max-width: none; left: 12px; bottom: 12px; }
 }
+
+/* ---------- Su terreno: the scene fills the screen, everything else floats on it ---------- */
+body.r-terreno { overflow: hidden; }
+body.r-terreno .res.terreno.full { position: fixed; inset: 0; z-index: 1; padding: 0; gap: 0; display: block; }
+.res.terreno.full .p3 { position: absolute; inset: 0; border: 0; border-radius: 0; background: #2C3A31; }
+.res.terreno.full .p3-stage { position: absolute; inset: 0; height: auto; min-height: 0; }
+.res.terreno.full .p3-stage::after { background: linear-gradient(180deg, rgba(17, 27, 23, .35), transparent 18%, transparent 75%, rgba(17, 27, 23, .45)); }
+.res.terreno.full .p3-ctl { position: absolute; z-index: 4; left: 24px; bottom: 24px; width: min(640px, calc(100% - 48px)); gap: 8px; padding: 14px 16px; border-radius: 22px; background: rgba(251, 250, 244, .94); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 20px 40px -20px rgba(0, 0, 0, .55); }
+.res.terreno.full .p3-chart svg { height: 84px; }
+.res.terreno.full .p3-month { font-size: 18px; }
+.res.terreno.full .p3-wx { right: 24px; bottom: 24px; max-width: calc(100% - 700px); }
+.res.terreno.full .p3-hud { top: 20px; right: 24px; }
+.res.terreno.full .pm-keys { top: 20px; left: 24px; }
+.p3-note { position: absolute; z-index: 3; left: 24px; top: 72px; display: flex; align-items: center; gap: 8px; max-width: 420px; padding: 8px 12px; border-radius: 12px; background: rgba(17, 27, 23, .72); color: var(--cream); font-size: 13px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); pointer-events: none; }
+.p3-note .icon { width: 16px; height: 16px; color: var(--lime); flex: none; }
+.p3-more { display: flex; flex-wrap: wrap; gap: 6px; }
+.p3-more .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 7px 11px; }
+.p3-more .chip .icon { width: 15px; height: 15px; }
+.sheet-card { box-shadow: none; border: 0; padding: 0; background: transparent; }
+@media (min-width: 1024px) { body.r-terreno .res.terreno.full { top: 72px; } body.r-terreno .res.terreno.full .res-head { display: none; } }
+@media (max-width: 1023px) {
+  .res.terreno.full .res-head { position: absolute; z-index: 5; left: 8px; right: 8px; top: calc(8px + env(safe-area-inset-top, 0px)); margin: 0; padding: 8px 8px 8px 14px; border-radius: 18px; background: rgba(243, 240, 229, .92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .res.terreno.full .p3-hud { position: absolute; top: calc(76px + env(safe-area-inset-top, 0px)); left: 0; right: 0; padding: 0 8px; flex-direction: row; overflow-x: auto; pointer-events: auto; }
+  .res.terreno.full .p3-hud .p3-chip { background: rgba(17, 27, 23, .78); }
+  .res.terreno.full .pm-keys { top: calc(134px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; bottom: auto; max-width: none; flex-direction: row; flex-wrap: wrap; }
+  .res.terreno.full .p3-note { left: 8px; right: 8px; top: calc(178px + env(safe-area-inset-top, 0px)); bottom: auto; max-width: none; font-size: 12px; }
+  .res.terreno.full .p3-wx { left: 8px; right: 8px; top: auto; bottom: calc(350px + env(safe-area-inset-bottom, 0px)); max-width: none; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; pointer-events: auto; }
+  .res.terreno.full .p3-wx .p3-chip { flex: none; }
+  .res.terreno.full .p3-ctl { left: 8px; right: 8px; width: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); padding: 10px 12px; gap: 6px; }
+  .res.terreno.full .p3-chart svg { height: 56px; }
+  .res.terreno.full .p3-ctl .small, .res.terreno.full .p3-legend { font-size: 11px; }
+  .res.terreno.full .p3-legend { gap: 2px 10px; }
+  .res.terreno.full .p3-more, .res.terreno.full .p3-legend, .res.terreno.full .p3-ctl > .row.wrap:has(.p3-unk) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+  .res.terreno.full .p3-more .chip { flex: none; padding: 6px 10px; }
+  .res.terreno.full .p3-unk summary { padding: 3px 8px; font-size: 11px; }
+  .res.terreno.full .p3-unk[open] p { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 8px); margin: 0; padding: 12px; border-radius: 14px; background: var(--paper); box-shadow: 0 10px 30px -10px rgba(0,0,0,.4); white-space: normal; }
+  .res.terreno.full .p3-yrs button { padding: 6px 10px; font-size: 12px; }
+  .res.terreno.full .p3-month { font-size: 16px; }
+}
+.p3-wx, .p3-hud { scrollbar-width: none; } .p3-wx::-webkit-scrollbar, .p3-hud::-webkit-scrollbar { display: none; }
+/* phone: the map's centre sits in the free band between the chips on top and the panel below */
+@media (max-width: 1023px) { .res.terreno.full .p3-map { bottom: 250px; } }
