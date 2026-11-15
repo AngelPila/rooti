@@ -1,10 +1,10 @@
 import { fetchClimate } from "./climate.js?v=23";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=56";
+import { COPY } from "./copy.js?v=57";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=24";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
-import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
+import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=3";
 import { createRooti } from "./rooti.js?v=5";
 import { createVoice } from "./voice.js?v=1";
 
@@ -1055,7 +1055,7 @@ async function viewAviso() {
     h("section", { class: "av-hero" }, h("span", { class: "pill-eyebrow glass mono" }, W.kind[A.kind] || W.crumb), h("h1", { class: "h2" }, alertTitle(A, days)), es() ? h("p", {}, A.text) : null),
     h("section", { class: "card" }, h("b", { class: "card-h" }, W.nextDays), days ? rainChart(days) : h("p", { class: "small" }, W.noForecast), h("p", { class: "small" }, W.forecastSrc)),
     h("section", { class: "card" }, h("b", { class: "card-h" }, W.todo), tipList(W.tips[A.kind] || [])),
-    h("div", { class: "av-acts" }, h("a", { class: "btn lime big block", href: link.call }, icon("i-mic"), W.call), h("a", { class: "btn big block", href: "#/plan" }, icon("i-month"), W.seePlan))));
+    h("div", { class: "av-acts" }, hasWhatsApp() ? h("a", { class: "btn lime big block", href: waUrl() }, icon("i-chat"), W.back) : null, h("a", { class: "btn big block", href: "#/plan" }, icon("i-month"), W.seePlan))));
 }
 
 /* ---------- why, risks, what we don't know, questions for the agronomist ---------- */

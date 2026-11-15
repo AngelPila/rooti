@@ -4,7 +4,7 @@ FROM nousresearch/hermes-agent:latest@sha256:9774f4f39a9bb8c2f68ce728ed5e99ddbad
 
 USER root
 
-# ffmpeg turns Edge TTS's mp3 into voice notes and call audio.
+# ffmpeg turns Edge TTS's mp3 into voice notes.
 RUN command -v ffmpeg >/dev/null || (apt-get -o Acquire::Retries=3 update && \
     apt-get -o Acquire::Retries=3 install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*)
 
@@ -15,24 +15,22 @@ RUN cd /opt/hermes/scripts/whatsapp-bridge && \
 
 COPY app /opt/rooti/app
 COPY bot /opt/rooti/bot
-# Two venvs: the gateway's tools (light) and the live call (Pipecat, aiortc). Edge TTS also goes into Hermes' venv,
+# One venv for Rooti's tools and its web server. Edge TTS also goes into Hermes' venv,
 # which speaks the voice notes (voice.auto_tts); Microsoft refuses edge-tts 7.2.7 (403).
 RUN python3 -m venv /tmp/uv && /tmp/uv/bin/pip install --no-cache-dir --disable-pip-version-check uv && \
     cd /opt/rooti/bot && \
     /tmp/uv/bin/uv venv --python /usr/local/bin/python3 .venv && \
     /tmp/uv/bin/uv pip install --no-cache --python .venv/bin/python -e . && \
-    /tmp/uv/bin/uv venv --python /usr/local/bin/python3 .venv-call && \
-    /tmp/uv/bin/uv pip install --no-cache --python .venv-call/bin/python -e ".[call]" && \
     /tmp/uv/bin/uv pip install --no-cache --python /opt/hermes/.venv/bin/python edge-tts==7.3.1 && \
     rm -rf /tmp/uv && \
     install -m 0755 /opt/rooti/bot/deploy/cont-init.sh /etc/cont-init.d/019-rooti && \
     install -m 0755 /opt/rooti/bot/deploy/as-hermes.sh /usr/local/bin/rooti-bot && \
-    for svc in rooti-avisos rooti-llamada; do \
+    for svc in rooti-avisos rooti-web; do \
       cp -r /opt/rooti/bot/deploy/s6/$svc /etc/s6-overlay/s6-rc.d/$svc && \
       touch /etc/s6-overlay/s6-rc.d/user/contents.d/$svc; \
     done
 
-# Set in Coolify: DEEPSEEK_API_KEY (the model), GROQ_API_KEY (voice notes and calls) and ROOTI_CALL_URL (the
+# Set in Coolify: DEEPSEEK_API_KEY (the model), GROQ_API_KEY (voice notes) and ROOTI_CALL_URL (the
 # public address of port 7860).
 ENV HERMES_HOME=/opt/data \
     ROOTI_DATA=/opt/data/rooti \

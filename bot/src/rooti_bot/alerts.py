@@ -1,7 +1,6 @@
 """Alerts Rooti sends first, without the model (Vinci's poll pattern): heavy rain ahead and the time to sow, each as
-a voice note plus the «Ver el aviso» button, a page with the coming days' rain and the call to Rooti. Only to farmers
-who said yes (alerts_ok), by day, at most MAX_PER_WEEK a week, and a short reminder when nobody opened the page or the
-call."""
+a voice note plus the «Ver el aviso» button, a page with the coming days' rain and what to do. Only to farmers who
+said yes (alerts_ok), by day, at most MAX_PER_WEEK a week, and a short reminder when nobody opened the page."""
 import asyncio
 import json
 import logging
@@ -66,7 +65,7 @@ def sow_window(farmer: dict, plan: dict | None, today=None) -> tuple[str, str] |
 def _send(phone: str, alert_id: int, text: str, at: float) -> None:
     ogg = asyncio.run(voice.synthesize(text))
     bridge.send_voice(phone, ogg)
-    bridge.send_button(phone, text + "\n\nToque el botón: ahí ve la lluvia de los próximos días y me puede llamar.",
+    bridge.send_button(phone, text + "\n\nToque el botón: ahí ve la lluvia de los próximos días y qué conviene hacer.",
                        "Ver el aviso", calls.page(phone, "aviso", alert_id))
     store.mark_alert(alert_id, "sent_at", at)
 
@@ -109,8 +108,9 @@ def run(*, dry_run: bool = False, now: datetime | None = None) -> list[dict]:
     if not dry_run:
         for alert in store.unopened_alerts(now.timestamp() - REMIND_AFTER_H * 3600):
             try:
-                bridge.send_button(alert["phone"], "¿Pudo escuchar mi aviso? Si quiere, conversamos un momento.",
-                                   "📞 Hablar con Rooti", calls.link(alert["phone"], alert["id"]))
+                bridge.send_button(alert["phone"], "¿Pudo ver mi aviso? Ahí está la lluvia de los próximos días. "
+                                   "Si tiene dudas, escríbame por aquí.", "Ver el aviso",
+                                   calls.page(alert["phone"], "aviso", alert["id"]))
                 store.mark_alert(alert["id"], "reminded_at", now.timestamp())
             except Exception as exc:
                 log.error("no pude recordar el aviso %s: %s", alert["id"], exc)

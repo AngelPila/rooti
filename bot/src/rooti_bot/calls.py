@@ -1,4 +1,4 @@
-"""The links Rooti sends as buttons: the live call and the app's pages (the lot, the plan, an alert). Signed, so a
+"""The links Rooti sends as buttons: the app's pages (the lot, the plan, an alert). Signed, so a
 page knows whose lot it is and which alert it answers, and nobody opens another farmer's lot by editing the address."""
 import base64
 import hashlib
@@ -22,13 +22,6 @@ def _unb64(text: str) -> bytes:
 def token(phone: str, alert_id: int | None = None, hours: int = LINK_HOURS) -> str:
     body = _b64(json.dumps({"p": phone, "a": alert_id, "e": int(time.time() + hours * 3600)}).encode())
     return f"{body}.{_b64(hmac.new(config.call_secret(), body.encode(), hashlib.sha256).digest())}"
-
-
-def link(phone: str, alert_id: int | None = None) -> str:
-    base = config.call_url()
-    if not base:
-        raise RuntimeError("Falta ROOTI_CALL_URL: la dirección pública de la página de llamada.")
-    return f"{base}/llamada#t={token(phone, alert_id)}"
 
 
 def page(phone: str, route: str, alert_id: int | None = None, hours: int = LINK_HOURS) -> str:

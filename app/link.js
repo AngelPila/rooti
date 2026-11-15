@@ -5,7 +5,7 @@
 // data/bot.json says where Rooti's API is ("" = this same server) and Rooti's number; without them nothing shows.
 const KEY = "rooti:link";
 let cfg = { url: null, whatsapp: "" };
-export const link = { token: null, plan: null, chosen: null, alert: null, call: null };
+export const link = { token: null, plan: null, chosen: null, alert: null };
 
 const remembered = () => { try { return sessionStorage.getItem(KEY); } catch { return null; } };
 async function api(method, path, body) {
@@ -30,7 +30,7 @@ export async function initLink() {
   try { cfg = { ...cfg, ...(await fetch("data/bot.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : {}))) }; } catch { /* no bot */ }
   if (!link.token) return false;
   const r = await api("GET", "/api/lot");
-  Object.assign(link, { plan: r.plan, chosen: r.chosen, alert: r.alert, call: r.call });
+  Object.assign(link, { plan: r.plan, chosen: r.chosen, alert: r.alert });
   if (r.whatsapp) cfg.whatsapp = r.whatsapp;
   return true;
 }

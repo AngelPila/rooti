@@ -17,7 +17,7 @@ from playwright.sync_api import expect, sync_playwright
 
 SERVER = Path(__file__).resolve().parents[2]
 BOT = SERVER.parent / "bot"
-BOT_PYTHON = os.environ.get("ROOTI_BOT_PYTHON", str(BOT / ".venv-call" / "bin" / "python"))
+BOT_PYTHON = os.environ.get("ROOTI_BOT_PYTHON", str(BOT / ".venv" / "bin" / "python"))
 
 
 def free_port() -> int:
@@ -83,9 +83,9 @@ def app_url(request, tmp_path_factory):
     else:
         if not Path(BOT_PYTHON).exists():
             model.shutdown()
-            pytest.skip("no bot call environment (ROOTI_BOT_PYTHON)")
+            pytest.skip("no bot environment (ROOTI_BOT_PYTHON)")
         env |= {"PYTHONPATH": str(BOT / "src"), "ROOTI_DATA": str(tmp_path_factory.mktemp("rooti-data"))}
-        proc = subprocess.Popen([BOT_PYTHON, "-c", "import sys, uvicorn; from rooti_bot.call_server import app; "
+        proc = subprocess.Popen([BOT_PYTHON, "-c", "import sys, uvicorn; from rooti_bot.server import app; "
                                  "uvicorn.run(app(), host='127.0.0.1', port=int(sys.argv[1]), log_level='warning')", str(port)],
                                 cwd=BOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     url = f"http://127.0.0.1:{port}"

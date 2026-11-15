@@ -109,9 +109,9 @@ def main(argv=None) -> int:
     av.add_argument("--cada", type=int, default=1800)
     tm = sub.add_parser("tiempos", help="cuánto tarda Rooti en responder (mediana y p90)")
     tm.add_argument("--dias", type=int, default=7)
-    call = sub.add_parser("llamada", help="la página y el servidor de la llamada en vivo")
-    call.add_argument("--host", default="0.0.0.0")
-    call.add_argument("--puerto", type=int, default=7860)
+    srv = sub.add_parser("web", help="la web de Rooti, las páginas de WhatsApp y su API")
+    srv.add_argument("--host", default="0.0.0.0")
+    srv.add_argument("--puerto", type=int, default=7860)
     args = parser.parse_args(argv)
 
     if args.cmd == "mcp":
@@ -148,9 +148,9 @@ def main(argv=None) -> int:
     if args.cmd == "tiempos":
         print(times(args.dias))
         return 0
-    if args.cmd == "llamada":
-        from rooti_bot import call_server
-        return call_server.serve(args.host, args.puerto)
+    if args.cmd == "web":
+        from rooti_bot import server
+        return server.serve(args.host, args.puerto)
     return 2
 
 
