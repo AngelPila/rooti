@@ -1090,7 +1090,7 @@ function viewTerreno() {
         segBtn(T.lift, st.lifted, () => { st.lifted = !st.lifted; scene?.lift(st.lifted); paint(false); }));
       put(strip, ...months.map((y, i) => h("button", { "aria-pressed": String(i === m), "aria-label": cap(S().monthsLong[i]), onclick: () => { st.m = i; paint(); } }, h("i", { class: y.rain >= y.et0 * 0.8 ? "wet" : y.rain >= 0.5 * y.et0 ? "mid" : "" }), mon(i + 1))));
       bars.querySelectorAll(".cb").forEach((b, i) => b.setAttribute("aria-pressed", String(i === m)));
-      if (rebuild) scene?.update({ month: m, ex: st.ex, mode: st.mode, water: st.water, wet: wetOf(m), flood: floodOf(m) });
+      if (rebuild) scene?.update({ month: m, ex: st.ex, mode: st.mode, water: st.water, lifted: st.lifted, wet: wetOf(m), flood: floodOf(m) });
     };
     put(bars, ...months.map((x, i) => h("button", { class: "cb", "aria-label": cap(S().monthsLong[i]), onclick: () => { st.m = i; paint(); stage.scrollIntoView({ behavior: "smooth", block: "nearest" }); } },
       h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1]))));

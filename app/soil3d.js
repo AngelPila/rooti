@@ -211,12 +211,16 @@ export async function mountSoil3d(stage, labelsEl, opts) {
   }
   controls.addEventListener("change", request);
   const resize = () => {
+    // the observer also fires when the view is swapped out: that is the moment to free the GPU
+    if (!stage.isConnected) return destroy();
     const w = stage.clientWidth, h = stage.clientHeight; if (!w || !h) return;
     renderer.setSize(w, h, false); camera.aspect = w / h; camera.fov = camera.aspect < 1 ? 50 : camera.aspect < 1.5 ? 42 : 36; camera.updateProjectionMatrix(); request();
   };
   const ro = new ResizeObserver(resize); ro.observe(stage);
+  let dead = false;
   function destroy() {
-    ro.disconnect(); controls.dispose();
+    if (dead) return; dead = true;
+    cancelAnimationFrame(raf); ro.disconnect(); controls.dispose();
     root.traverse((o) => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose(); });
     photoTex.dispose(); greenTex?.dispose(); renderer.dispose();
   }
