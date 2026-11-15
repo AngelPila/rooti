@@ -56,16 +56,12 @@ How the global planner works (`app/climate.js`, `app/planner.js`):
 - Wheat, barley, potato, sunflower and chickpea were added for use outside the tropics with approximate FAO-56 / ECOCROP values (flagged in the app).
 - Pilot zones (Daule, Babahoyo, Quevedo) keep the soil passport (MODIS fires) and Ecuador prices.
 
-## What the pilot version does
+## El Niño 2026–27: what changes on the coast
 
-
-
-- **My lot.** Three plans side by side: what the farmer does today, the recommended plan, and the best cash crop. Each month is shown as a traffic light (fine / caution / danger) with an icon for the risk: too dry, rain on bare soil, bare soil in the sun.
-- **Why.** Every recommendation is explained with counts of real years ("0 of 24 years with heavy soil damage"), a concrete action, and its data source.
-- **Real past.** The same plans replayed on each real year 2001–2024 (El Niño years included), so the farmer sees evidence instead of a forecast.
-- **Ask.** A WhatsApp entry point (voice or text). The conversation shown is an example.
-- **Soil passport.** A record of verified practices to share. The score and stamps are example data.
-- Spanish by default on phones (local words: *invierno*, *verano*, *cuadra*), English on desktop. A 🔊 button reads each screen aloud.
+- **Years like this one by default.** NOAA (12 Nov 2026) and ERFEN (6 Nov 2026) expect a strong to very strong El Niño. For a plot on the Pacific coast of Ecuador or northern Peru and a plan that starts before May 2027, Rooti tests the plan on the 7 rainy seasons that followed past strong El Niños (1982-83, 1986-87, 1991-92, 1997-98, 2009-10, 2015-16, 2023-24) and says so in a yellow note. One tap switches to all years.
+- **Floods.** A month floods a non-rice crop when its rain, minus what evaporates, exceeds what the plot can drain: about 500 mm on a well-drained plot, about 215 mm on a flat, heavy one. So the extreme months of 1983 and 1998 (500–700 mm) drown maize and soybean in Daule even though Landsat shows the area as rarely under water. Rice is grown flooded and is not penalised.
+- **1981–1983 are back.** NASA POWER has no solar radiation before 1984, so those months use Hargreaves ET0 (temperature only), scaled month by month to Penman-Monteith over the years that have both. This brings 1982-83, the closest match to this year, into every test.
+- In the Daule example this moves land towards rice and flags maize in the rainy season as risky (lost 2 of 7 El Niño seasons).
 
 ## How it works
 
@@ -118,6 +114,9 @@ docker run --rm -v "$PWD/../fieldshift-data:/src:ro" -v "$PWD:/proj" spaceapps-g
 - At 250 m, MODIS NDVI mixes fields with trees, so it cannot confirm what a single plot does. That would need Sentinel-2 at 10 m.
 - Prices, costs and yields are national or provincial averages, not the farmer's own. Rice and soybean costs are the weakest numbers.
 - Velvet bean and jack bean have no FAO water figures. A generic cover-crop coefficient (0.9) is assumed and stated as an assumption.
+- NASA POWER smooths extreme rain over a ~50 km cell (for example January 1983 shows only 40 mm in Daule), so El Niño flood losses are probably understated. River floods and dam releases (Daule-Peripa) are not modelled; the farmer's answer ("Does your plot get waterlogged?") overrides the estimate.
+- Money uses average yields, 2025 prices and 2024–2026 costs that include land rent, so totals often come out negative, as growers' unions report. Read the difference between plans, not the total.
+- The soil passport (pilot zones) is a prototype and is not linked from the plan.
 
 ## Use of AI
 

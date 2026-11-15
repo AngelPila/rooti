@@ -1,8 +1,8 @@
-import { fetchClimate } from "./climate.js?v=21";
-import { plan as runPlanner, cropMonths } from "./planner.js?v=21";
-import { COPY } from "./copy.js?v=21";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=21";
-import { STR } from "./i18n.js?v=21";
+import { fetchClimate } from "./climate.js?v=22";
+import { plan as runPlanner, cropMonths } from "./planner.js?v=22";
+import { COPY } from "./copy.js?v=22";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
+import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=2";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
@@ -40,7 +40,7 @@ const DEMOS = {
 };
 const demoKey = (pl) => Object.keys(DEMOS).find((k) => Math.abs(DEMOS[k].place.lat - pl.lat) < 0.01 && Math.abs(DEMOS[k].place.lon - pl.lon) < 0.01);
 const demoData = {};
-const loadDemo = (k) => (demoData[k] ||= fetch(`data/demo/${k}.json`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }));
+const loadDemo = (k) => (demoData[k] ||= fetch(`data/demo/${k}.json?v=2`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }));
 const demoPlan = (k) => { const s = firstNextMonth(), D = DEMOS[k]; return { place: D.place, start: iso(s), end: iso(addMonths(s, 12)), crops: D.crops, current: D.current, irrigation: false, area: D.area, unit: D.unit || "ha", waterlog: null }; };
 const EXAMPLE = () => ({ place: { name: "Daule", admin: "Guayas, Ecuador", lat: -1.86, lon: -79.98 }, start: iso(firstNextMonth()), end: iso(addMonths(firstNextMonth(), 12)), crops: ["maize", "soybean", "mulch"], irrigation: false, area: 5.2, unit: "ha" });
 // A plan can come in the link: ?lat=-1.86&lon=-79.98&place=Daule&from=2026-12-01&to=2027-11-30&crops=maize+soybean&area=5
@@ -185,7 +185,7 @@ function viewLanding() {
   const c = C();
   clearInterval(coverTimer);
   const start = () => { state.draft = null; go("planear"); };
-  const openDemo = (k) => { setPlan(demoPlan(k)); state.mode = "all"; memo.clear(); go("plan"); };
+  const openDemo = (k) => { setPlan(demoPlan(k)); state.mode = defaultMode(state.plan); memo.clear(); go("plan"); };
   const imgs = COVERS.map((cv, i) => h("img", { class: `cv-img${i === 0 ? " on" : ""}`, src: `img/sat/${cv.k}.jpg`, alt: c.demo[cv.k] }));
   const overlay = h("div", { class: "cv-cal" }), label = h("button", { class: "cv-label" });
   let i = 0;
@@ -289,7 +289,7 @@ const currentChips = (d, redo) => h("div", { class: "row wrap", style: { gap: "6
 const waterlogOpts = (d, redo) => h("div", { class: "opts" }, ...[["yes", C().yes], ["sometimes", C().sometimes], ["no", C().no], [null, C().dontKnow]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String((d.waterlog ?? null) === v), onclick: () => { d.waterlog = v; redo(); } }, l)));
 const irrigOpts = (d, redo) => h("div", { class: "opts" }, ...[[false, C().no], [true, C().yes]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String(d.irrigation === v), onclick: () => { d.irrigation = v; redo(); } }, l)));
 const prioOpts = (redo, short) => h("div", { class: "opts" }, ...[["soil", "i-sprout"], ["income", "i-coin"], ["water", "i-drops"]].map(([v, ic]) => h("button", { class: "opt", "aria-pressed": String(state.priority === v), onclick: () => { state.priority = v; store.set("priority", v); memo.clear(); redo(); } }, short ? null : icon(ic), C().prioShort[v])));
-const submitPlan = () => { setPlan({ ...state.draft, crops: [...state.draft.crops] }); state.draft = null; state.undo = null; state.mode = "all"; memo.clear(); go("plan"); };
+const submitPlan = () => { setPlan({ ...state.draft, crops: [...state.draft.crops] }); state.draft = null; state.undo = null; state.mode = defaultMode(state.plan); memo.clear(); go("plan"); };
 
 function viewPlanear(stepArg) {
   const d = draft();
@@ -469,7 +469,6 @@ function viewPlan() {
     const f = r.farm, P = state.plan, c = C(), ids = await ideas(r);
     const say = () => `${c.best}: ${headline(f)}. ${c.verdict[f.verdict]}.`;
     const isSaved = state.saved && JSON.stringify(state.saved.plan) === JSON.stringify(P);
-    const pilot = nearPilot(P.place);
     put($("#view"), h("div", { class: "res" },
       resHead(P),
       h("div", { class: "col-left" },
@@ -479,17 +478,17 @@ function viewPlan() {
           h("button", { class: "link", style: { alignSelf: "flex-start", fontSize: "15px" }, onclick: () => explainSheet(headline(f), f, r) }, c.whyThis),
           h("div", { class: "desk-only", style: { display: "flex", flexDirection: "column", gap: "10px" } }, h("b", { style: { fontSize: "15px" } }, c.landEach), landList(f)),
           h("div", { class: "desk-only", style: { display: "flex", flexDirection: "column", gap: "8px" } }, h("b", { style: { fontSize: "15px" } }, c.tipsTitle), tipList(tipsFor(r).slice(0, 1)), h("a", { class: "link", href: "#/terreno", style: { fontSize: "14px" } }, c.seePlot)),
-          pilot ? h("a", { class: "link desk-only", href: "#/pasaporte", style: { fontSize: "14px" } }, c.passport) : null,
           h("div", { class: "acts desk-only" },
             h("button", { class: "btn dark", onclick: () => { state.saved = { plan: P, at: Date.now() }; store.set("saved3", state.saved); render(); } }, icon(isSaved ? "i-check" : "i-bookmark"), isSaved ? c.saved : c.save),
             h("button", { class: "round", "aria-label": c.listen, title: c.listen, onclick: () => speak(say()) }, icon("i-volume"))))),
       h("div", { class: "col-right" },
+        ninoBanner(r),
         h("section", { class: "card farm-card" },
           h("div", { class: "row between wrap" }, h("b", { style: { fontSize: desktop() ? "18px" : "16px" } }, c.calendar),
             h("div", { class: "legend" }, ...[["good", c.lgGood], ["care", c.lgCare], ["danger", c.lgDanger], ["bare", c.lgBare]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l)))),
           farmCalendar(r, f, { rain: desktop() }),
           desktop() ? h("p", { class: "small" }, c.rainNote(P.place.name)) : null,
-          h("p", { class: "small", style: { marginTop: "auto", display: "flex", gap: "8px", alignItems: "flex-start" } }, icon("i-sat"), r.samples.length > 1 ? c.calNote : c.calNoteReal)),
+          h("p", { class: "small", style: { marginTop: "auto", display: "flex", gap: "8px", alignItems: "flex-start" } }, icon("i-sat"), r.samples.length > 1 ? (state.mode === "nino" ? c.calNoteNino(r.samples.length) : c.calNote) : c.calNoteReal)),
         h("section", { class: "strats-wrap" }, h("div", { class: "row between" }, h("b", { class: "sec-h" }, c.otherStrats), ids.length ? h("a", { class: "link desk-only", href: "#/probar", style: { fontSize: "14px" } }, c.ideasHint(ids.length)) : null),
           h("div", { class: "strats" }, ...strategies(r).map((s) => stratCard(s, r)))),
         h("section", { class: "card phone-only" }, h("b", {}, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot)),
@@ -500,6 +499,17 @@ function viewPlan() {
 
 /* ---------- why, risks, what we don't know, questions for the agronomist ---------- */
 const COAST = (pl) => pl.lat > -5 && pl.lat < 2 && pl.lon > -81.5 && pl.lon < -78.5;
+// A strong El Niño is under way (NOAA/ERFEN, data/outlook.json): on the Pacific coast, a plan for the coming rainy
+// season is tested by default on the seasons that followed past strong El Niños, not on all years alike.
+const ninoNow = (P) => !!P && DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place) && P.start.slice(0, 7) <= "2027-04";
+const defaultMode = (P) => (ninoNow(P) ? "nino" : "all");
+const seasonsOf = (r) => r.samples.filter((s) => s.base != null).map((s) => `${s.base}-${String(s.base + 1).slice(2)}`);
+function ninoBanner(r) {
+  const c = C(), P = state.plan;
+  if (state.mode === "nino") return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, h("b", {}, c.ninoOnTitle), " ", c.ninoOn(andList(seasonsOf(r)))), h("button", { class: "link", onclick: () => { state.mode = "all"; render(); } }, c.ninoSeeAll));
+  if (ninoNow(P)) return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, c.ninoOff), h("button", { class: "link", onclick: () => { state.mode = "nino"; render(); } }, c.ninoTest));
+  return null;
+}
 function explain(f, r) {
   const c = C(), N = r.period.length, steps = f.parcels.flatMap((p) => p.d.steps), crops = [...new Set(steps.map((s) => s.crop))];
   const why = [], risks = [], unknown = [], ask = [];
@@ -643,8 +653,10 @@ async function ideas(r) {
   }
   if (!P.crops.includes("mulch") && P.crops.some((id) => CEREALS.has(id)) && f.covered < 0.85) cand.push({ icon: "i-sprout", title: c.idStraw, why: c.idStrawWhy, P2: { ...P, crops: [...P.crops, "mulch"] } });
   for (const it of cand) { const eff = await effect(it.P2); if (eff) out.push({ ...it, eff, apply: () => { state.undo = { plan: P, mode: state.mode }; setPlan(it.P2); render(); } }); }
-  if (state.mode === "all") out.push({ icon: "i-cloud-sun", title: c.idDry, why: c.idDryWhy, eff: c.idDryEff, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "dry"; render(); } });
-  else out.unshift({ icon: "i-cloud-sun", title: c.idAll, why: c.idAllWhy, eff: c.yearsLike[state.mode], on: true, apply: () => { state.mode = "all"; state.undo = null; render(); } });
+  if (state.mode === "all") {
+    if (ninoNow(P)) out.unshift({ icon: "i-rain", title: c.idNino, why: c.idNinoWhy, eff: c.yearsLike.nino, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "nino"; render(); } });
+    out.push({ icon: "i-cloud-sun", title: c.idDry, why: c.idDryWhy, eff: c.idDryEff, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "dry"; render(); } });
+  } else out.unshift({ icon: "i-cloud-sun", title: c.idAll, why: c.idAllWhyBy[state.mode] || c.idAllWhy, eff: c.yearsLike[state.mode], on: true, apply: () => { state.mode = "all"; state.undo = null; render(); } });
   return out;
 }
 function viewProbar() {
@@ -744,7 +756,8 @@ function viewComparar() {
         h("section", { class: "card", style: { padding: "6px 20px" } }, h("table", { class: "cmp" },
           h("thead", {}, h("tr", {}, h("th", {}), h("th", { style: { textAlign: "right" } }, c.recommended), h("th", { style: { textAlign: "right" } }, c.mine))),
           h("tbody", {}, ...rows.map(([l, a, b, va, vb, up]) => { const w = better(va, vb, up); return h("tr", {}, h("th", { scope: "row" }, l), h("td", { class: w < 0 ? "win" : "" }, a), h("td", { class: w > 0 ? "win" : "" }, b)); })))),
-        h("div", { class: `conclusion ${score < 0 ? "bad" : score > 0 ? "good" : "even"}` }, icon(score < 0 ? "i-alert" : "i-check"), h("span", {}, [why, score < 0 ? c.recBetter : score > 0 ? c.mineBetter : c.tie].filter(Boolean).join(" "))))));
+        mR != null && mM != null ? h("p", { class: "small" }, c.moneyNote) : null,
+        h("div", { class: `conclusion ${score > 0 ? "good" : "even"}` }, icon(score < 0 ? "i-info" : "i-check"), h("span", {}, score < 0 ? (why || c.recBetter) : score > 0 ? c.mineBetter : c.tie)))));
   });
 }
 
@@ -758,6 +771,7 @@ function viewPasado() {
     put($("#view"), h("div", { class: "res", style: { flexDirection: "column" } },
       resHead(state.plan),
       h("div", { class: "res-title" }, h("h1", { class: "display" }, c.pastTitle), h("p", {}, per.length > 1 ? c.pastLead(per.length) : c.pastReal)),
+      ninoBanner(r),
       h("div", { class: "legend" }, ...[["good", c.lgGood], ["care", c.lgCare], ["danger", c.lgDanger]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l))),
       per.length > 1 ? h("div", { class: "years" }, ...per.map((x) => h("button", { class: lvl(x), "aria-pressed": String(x === sel), onclick: () => { state.pastBase = x.base; viewPasado(); } }, String(x.base)))) : null,
       h("section", { class: "card", style: { maxWidth: "720px" } },
@@ -839,7 +853,7 @@ function renderChrome(r) {
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sprout"], ["terreno", c.nav.plot, "i-pin"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["pasado", c.nav.past, "i-history"]];
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.bootcamp : c.planTitle}`)),
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "15px" } }, c.changeData) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, icon(ic), l)));
@@ -855,6 +869,7 @@ async function render() {
 async function start() {
   put($("#view"), loading());
   try { await loadBase(); } catch { put($("#view"), errorCard(C().climateError, start)); return; }
+  if (state.plan) state.mode = defaultMode(state.plan);
   addEventListener("hashchange", () => { render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
   let w = desktop(); addEventListener("resize", () => { if (desktop() !== w) { w = desktop(); if (viewer) { viewer.destroy(); viewer = null; lotEntity = null; pickBound = false; } render(); } });
   render();

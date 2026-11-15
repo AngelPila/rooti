@@ -69,7 +69,7 @@ export function waterlogFactor(t, answer, pilotIndex) {
   if (answer === "no") return 0.05;
   const d = describeSoil(t?.soil), clay = d ? d.clay : 30, slope = t?.slopePct ?? 2;
   const soilF = clay >= 40 ? 0.6 : clay >= 30 ? 0.45 : clay >= 20 ? 0.3 : 0.15;
-  const flatF = slope < 1.5 ? 1 : slope < 4 ? 0.7 : slope < 8 ? 0.4 : 0.2;
+  const flatF = slope < 2 ? 1 : slope < 4 ? 0.7 : slope < 8 ? 0.4 : 0.2;
   const est = soilF * flatF;
   return pilotIndex != null ? Math.max(est, Math.min(0.9, pilotIndex * 1.4)) : est;
 }

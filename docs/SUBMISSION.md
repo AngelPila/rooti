@@ -32,6 +32,7 @@ Rooti tells a farmer what to plant, in which months and on how much land, so the
 **How it works**
 - Climate: NASA POWER monthly (1981 to last year) and daily (this year) for the exact point, fetched live in the browser. Reference evapotranspiration is computed with FAO-56 Penman-Monteith.
 - Each possible planting (crop × sowing month) is simulated on every year sequence: water need from FAO-56 crop coefficients; rain plus the water left in the soil from earlier months (bucket sized by soil texture); loss when rain covers under 20 % of the need without irrigation, when nights are colder or days hotter than the crop's ECOCROP limits, or when a non-rice crop sits in standing water on a plot that holds it; harvest share from the FAO-33 yield response factor, lowered by soil pH outside the crop's range.
+- This year: a strong El Niño is under way (NOAA, ERFEN). On the Pacific coast, plans for the coming rainy season are tested by default on the 7 seasons that followed past strong El Niños (1982-83 … 2023-24); months whose rain exceeds what the plot can drain flood every crop but rice. NASA POWER has no radiation before 1984, so 1981–83 use Hargreaves ET0 calibrated to Penman-Monteith.
 - The best sequence of plantings is found by dynamic programming over the months, weighing harvest, water deficit, failures, months of bare soil (worse on slopes) and rotation rules (no crop back to back, legume after a cereal, not two cereals in a row), by the farmer's priority (soil, water or income).
 - Plot data: Copernicus DEM (elevation, slope), ISRIC SoilGrids (texture, pH, organic carbon). In the three pilot zones (Daule, Babahoyo, Quevedo): our own soil processing, waterlogging from 37 years of Landsat surface water, MODIS fire detections, and Ecuadorian yields, prices and costs.
 
@@ -99,4 +100,6 @@ The challenge choice, the problem framing for coastal Ecuador, the persona and f
 - Monthly time step; soil water is a simple bucket.
 - Wheat, barley, potato, sunflower and chickpea use approximate FAO values.
 - Prices and costs only for coastal Ecuador.
-- POWER rain looks low in some years on the coast; cross-checking with GPM IMERG needs an Earthdata login (next step).
+- POWER rain looks low in some years on the coast (January 1983: 40 mm in Daule), so El Niño flood losses are probably understated; cross-checking with GPM IMERG needs an Earthdata login (next step).
+- River floods and dam releases are not modelled; the farmer can mark the plot as waterlogged.
+- Money totals use costs that include land rent and often come out negative, as growers' unions report; compare the difference between plans.

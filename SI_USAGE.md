@@ -4,6 +4,8 @@
 |---|---|
 | 2026-11-14 10:03 | ya comencemos con todo (inicio del proyecto: estructura, pipeline de datos, motor de recomendaciones y app) |
 
+| 2026-11-14 22:00 | (Claude, Cowork session, outside Claude Code) Review of the app against the challenge and the farmer requirements; fixes: El Niño analog years by default on the coast, flood model by drainage capacity, 1981–83 climate with Hargreaves ET0, money note in Compare, landing and bootcamp header bugs, README/SUBMISSION updates |
+
 ## Requests made from outside the project folder (reconstructed)
 
 The automatic log only records requests made with Claude Code started inside this folder. Most of the work on 14 November was done from a session started in the home folder, so those requests were not logged automatically. Below is the work Claude Code did in that session, one line per change, taken from the git history (time of the commit, not of the request). Design mock-ups were also made with Claude in Pencil; they used stock photos, and no AI-generated image is used in the app.

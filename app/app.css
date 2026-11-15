@@ -406,6 +406,7 @@ body.results .bottom-nav { grid-template-columns: repeat(5, 1fr) !important; }
 .brand.light b { color: #fff; } .brand.light .logo { background: #fff; color: var(--ink); }
 .cover .pill { color: #fff; }
 .cover .l-links .btn.dark { background: #fff; color: var(--ink); border-color: #fff; }
+.cover .l-links .btn.light { background: transparent; color: #fff; border-color: rgba(255, 255, 255, 0.7); }
 .cv-bottom { position: relative; z-index: 2; padding: 0 20px 16px; display: flex; flex-direction: column; gap: 10px; }
 .cv-label { align-self: flex-start; display: inline-flex; align-items: center; gap: 10px; padding: 8px 12px; border: 0; border-radius: 999px; background: rgba(255,255,255,.94); color: var(--ink); text-align: left; }
 .cv-label b { font-size: 14px; } .cv-label small { display: none; color: var(--ink2); font-size: 12px; }
@@ -545,3 +546,9 @@ body.results .bottom-nav { grid-template-columns: repeat(5, 1fr) !important; }
 }
 .cal.plots .rain-row { margin-top: 22px; }
 .cal.plots .rain-col span { font-size: 11px; }
+
+/* El Niño season note on the plan and the past */
+.nino-note { background: #FFF4D6; border: 1px solid #EBCB7A; color: #5A3A00; align-items: center; }
+.nino-note .icon { color: #9A5B00; }
+.nino-note .link { white-space: nowrap; font-weight: 700; color: inherit; }
+@media (max-width: 760px) { .nino-note { flex-wrap: wrap; } .nino-note .grow { flex: 1 1 240px; } .nino-note .link { margin-left: 28px; } }

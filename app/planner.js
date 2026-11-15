@@ -11,8 +11,9 @@ const COLD_MARGIN = 5, HEAT_MARGIN = 3;
 const PLANTING_COST = 0.4;           // under 20 % of its water need, a rain-fed crop is lost (same rule as the pilot engine)
 const CEREALS = new Set(["rice", "maize", "sorghum", "wheat", "barley"]);
 const GREEN_MANURE = new Set(["velvet_bean", "jack_bean"]);
-// Years an El Niño of moderate to very strong size began (NOAA CPC ONI peak >= 1.5): 1982-83 ... 2023-24.
-const NINO_ONSET = [1982, 1987, 1991, 1997, 2009, 2015, 2023];
+// El Niño events of moderate to very strong size (NOAA CPC ONI peak >= 1.5), by the year whose December starts the
+// rainy season they hit on the Pacific coast: 1982-83, 1986-87, 1991-92, 1997-98, 2009-10, 2015-16, 2023-24.
+export const NINO_ONSET = [1982, 1986, 1991, 1997, 2009, 2015, 2023];
 export const PRIORITY_WEIGHTS = { soil: { water: 1, soil: 3, income: 1 }, water: { water: 3, soil: 1, income: 1 }, income: { water: 1, soil: 1, income: 3 } };
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -62,8 +63,11 @@ function planting(crop, id, t, sample, irrigation, site, store0) {
   const coldM = ms.findIndex((c) => c.tmin < tlo - COLD_MARGIN), hotM = ms.findIndex((c) => c.tmax > thi + HEAT_MARGIN);
   const tMean = mean(ms.map((c) => c.t));
   const fTol = lvl(crop.flood_tolerance), dTol = lvl(crop.drought_tolerance), ky = mid(crop.ky) ?? 1;
-  // Waterlogging: months whose rain far exceeds what evaporates, on a plot that holds water. Rice is grown flooded.
-  const wlSev = ms.map((c) => (id === "rice" ? 0 : clamp01((c.rain - c.et0 - 80) / 250) * (site?.wl ?? 0.25) * (1 - fTol)));
+  // Waterlogging: months whose rain far exceeds what evaporates and what the plot can drain. Rice is grown flooded.
+  // A plot that drains well (wl near 0) takes ~500 mm of surplus in a month; a flat, heavy one (wl ~0.5) about 215 mm.
+  // So an extreme month (El Niño 1983, 1998: 500-700 mm) floods a flat clay plot even where it "rarely" floods.
+  const drainCap = 60 + 440 * (1 - (site?.wl ?? 0.25)) ** 1.5;
+  const wlSev = ms.map((c) => (id === "rice" ? 0 : clamp01((c.rain - c.et0 - drainCap) / 200) * (1 - 0.7 * fTol)));
   const wlMax = Math.max(0, ...wlSev), drowned = wlSev.filter((x) => x >= 0.5).length >= 2 || wlMax >= 0.75;
   const waterFail = !irrigation && ratio < FAIL_RATIO, failed = waterFail || coldM >= 0 || hotM >= 0 || drowned;
   const tempF = tMean < olo - 3 || tMean > ohi + 3 ? 0.6 : tMean < olo || tMean > ohi ? 0.85 : 1;
