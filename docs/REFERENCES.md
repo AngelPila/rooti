@@ -44,3 +44,8 @@
 - Crop illustrations (maize, rice, soybean, straw mulch) generated with AI (OpenAI image generation through Codex). Each carries a visible "IMAGEN GENERADA CON IA" watermark. The app uses the same files on the landing page (`app/img/illu/`).
 - Icons and the vector logo mark were drawn by hand for this project.
 - Agent skills in `.claude/skills/` (learn-taste, mobile-native, break-ui, remove-animations, find-animation-opportunities, choreograph, prototype) copied from [emilkowalski/skills](https://github.com/emilkowalski/skills) (MIT), commit 0f2e23b. License in `.claude/skills/EMIL-SKILLS-LICENSE`.
+
+## Vecinos server (`server/`)
+- [node-postgres (`pg`)](https://github.com/brianc/node-postgres) 8.13.1, MIT, the Postgres client of the Vecinos API.
+- [Node.js](https://nodejs.org/) 22 and [PostgreSQL](https://www.postgresql.org/) 16 official Docker images (`node:22-alpine`, `postgres:16-alpine`).
+- The example posts in `app/data/vecinos.json` are illustrative, written for the demo; they are labelled "Ejemplo" in the app and are not real farmer reports.
