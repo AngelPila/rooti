@@ -365,7 +365,7 @@ function viewLanding() {
       h("div", { class: "l-stats" }, ...D.howStats.map(([n, t]) => h("div", { class: "l-stat" }, h("b", {}, n), h("span", {}, t)))),
       h("h2", { class: "h2 l-how-head", id: "how" }, D.howTitle),
       h("div", { class: "l-how" }, ...D.how.map(([art, t, d, alt], i) => h("article", { class: "how" },
-        h("div", { class: `how-img ${art}`, role: "img", "aria-label": alt }, HOW_ART[art]()),
+        h("div", { class: "how-img" }, h("img", { src: `img/how/${art}.webp`, alt, loading: "lazy" }), h("span", { class: "ai-mark mono" }, D.aiMark)),
         h("b", {}, h("i", {}, `${i + 1}.`), " ", t), h("p", {}, d)))),
       h("h2", { class: "h2" }, D.examplesTitle),
       h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.png`, alt: "", loading: "lazy" }),
@@ -375,37 +375,6 @@ function viewLanding() {
     h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"))))));
   tilt(document.querySelectorAll(".how"));
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => mountHero(art, title, start));
-}
-// "How it works" art: small diagrams drawn in SVG/HTML, so they stay sharp at any zoom
-const HOW_ART = {
-  plot: () => {
-    const g = svg("svg", { viewBox: "0 0 320 200", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true" },
-      svg("defs", {}, svg("pattern", { id: "how-dots", width: 14, height: 14, patternUnits: "userSpaceOnUse" }, svg("circle", { cx: 2, cy: 2, r: 1.1, class: "dot" }))),
-      svg("rect", { width: 320, height: 200, fill: "url(#how-dots)" }),
-      svg("path", { d: "M-10 150 L330 92", class: "road" }), svg("path", { d: "M128 -10 L96 210", class: "road" }),
-      ...[[30, 40, 52, 34], [150, 26, 60, 40], [228, 24, 66, 30], [20, 168, 60, 26], [210, 140, 70, 44], [36, 92, 44, 30]].map(([x, y, w, ht]) => svg("rect", { x, y, width: w, height: ht, rx: 6, class: "field" })),
-      svg("polygon", { points: "150,96 214,84 226,124 160,136", class: "lot" }));
-    return [g, h("span", { class: "how-chip" }, icon("i-pin"), C().ds.howArt.lot)];
-  },
-  climate: () => {
-    const A = C().ds.howArt, chart = h("div", { class: "how-rain" });
-    fetch("data/daule.json").then(ok).then((z) => chart.append(rainArea(z.climatology_1991_2020.rain_mm))).catch(() => {});
-    return [chart, h("ol", { class: "how-cover" }, ...A.cover.map((c) => h("li", { class: c === "bare" ? "off" : "on" })))];
-  },
-  plans: () => h("ul", { class: "how-plans" }, ...C().ds.howArt.plans.map(([k, steps, n]) => h("li", { class: k === "today" ? "today" : "" },
-    h("span", { class: "crops" }, ...steps.map(([id]) => tile(id))),
-    h("span", { class: "bar" }, h("i", { style: { width: `${(n / 44) * 100}%` } })), h("b", {}, n)))),
-  agent: () => {
-    const A = C().ds.howArt;
-    return [h("p", { class: "msg me voice" }, icon("i-play"), h("span", { class: "wave" }, ..."3586472958463".split("").map((v) => h("i", { style: { height: `${v * 2 + 4}px` } }))), "0:12"),
-      h("div", { class: "msg rooti" }, ...[["rice", 12, 4], ["soybean", 5, 8]].map(([id]) => h("span", { class: "blk", style: { "--c": look(id).color } }, tile(id), cropName(id))))];
-  },
-};
-function rainArea(mm) {
-  const W = 320, H = 110, max = Math.max(...mm) * 1.1, x = (i) => 6 + i * ((W - 12) / 11), y = (v) => 8 + (H - 8) * (1 - v / max);
-  const line = smooth(mm.map((v, i) => [x(i), y(v)]));
-  return svg("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", "aria-hidden": "true" },
-    svg("path", { d: `${line}L${x(11)},${H}L${x(0)},${H}Z`, class: "ra" }), svg("path", { d: line, class: "rl", "vector-effect": "non-scaling-stroke" }));
 }
 // Cards lean toward the pointer on desktop; CSS eases the vars so each move stays short.
 function tilt(cards) {
