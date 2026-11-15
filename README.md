@@ -59,6 +59,8 @@ How the global planner works (`app/climate.js`, `app/planner.js`):
 
 The web views and WhatsApp planner share the same climate loader and planting simulation. Sowing and harvest are still presented by month. No machine learning model was fitted for crop planning. The input series describe weather, not field-level sowing dates, management, measured yield or losses. The water balance and rotation scoring keep those assumptions inspectable. Crop coefficients and risk thresholds would need field records for local calibration and validation. The separate experimental rainy-season classifier remains outside the crop planner.
 
+An optional [risk calibration pipeline](docs/RISK_CALIBRATION.md) can fit a regularized logistic regression for rice and maize in the pilot areas using observed planting outcomes. Rooti enables it only for crop and area pairs that pass held-out validation. The bundled status is untrained.
+
 ## El Niño 2026–27: what changes on the coast
 
 - **Years like this one by default.** NOAA (12 Nov 2026) and ERFEN (6 Nov 2026) expect a strong to very strong El Niño. For a plot on the Pacific coast of Ecuador or northern Peru and a plan that starts before May 2027, Rooti tests the plan on the 7 rainy seasons that followed past strong El Niños (1982-83, 1986-87, 1991-92, 1997-98, 2009-10, 2015-16, 2023-24) and says so in a yellow note. One tap switches to all years.

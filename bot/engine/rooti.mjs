@@ -4,6 +4,7 @@
 //   {"cmd":"year","lot":{lat,lon}}
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
 import { imergCatalog } from "../../app/earthdata.mjs";
+import { validatedRiskModel } from "../../app/risk-model.mjs";
 
 const CACHE = process.env.ROOTI_ENGINE_CACHE;
 if (CACHE) {
@@ -23,6 +24,8 @@ const bundledCatalog = JSON.parse(readFileSync(new URL("../../app/data/earthdata
 const climateAt = (lot) => fetchClimate(lot.lat, lot.lon, { catalog: () => imergCatalog().catch(() => bundledCatalog) });
 
 const CROPS = JSON.parse(readFileSync(new URL("../../app/data/crops.json", import.meta.url))).crops;
+let riskModel = null;
+try { riskModel = validatedRiskModel(JSON.parse(readFileSync(new URL("../../app/data/risk-model.json", import.meta.url)))); } catch { /* simulator fallback */ }
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const UNIT_HA = { ha: 1, cuadra: 0.7056, m2: 0.0001, acre: 0.4047 };
 const UNIT_NAME = { ha: "hectáreas", cuadra: "cuadras", m2: "m²", acre: "acres" };
@@ -65,7 +68,7 @@ async function planCmd(lot, mode = "auto") {
   const used = mode === "auto" ? (ninoByDefault(lot, start) ? "nino" : "all") : mode;
   const [clim, terrain] = await Promise.all([climateAt(lot), terrainOf(lot)]);
   const site = siteOf(terrain, lot);
-  const r = plan(clim, CROPS, picked, { start, end, irrigation: !!lot.irrigation, priority: lot.priority || "soil", mode: used, site, current: lot.current || [] });
+  const r = plan(clim, CROPS, picked, { start, end, irrigation: !!lot.irrigation, priority: lot.priority || "soil", mode: used, site, current: lot.current || [], riskModel });
   const n = r.samples.length, area = Number(lot.area) || 0, unit = UNIT_HA[lot.unit] ? lot.unit : "ha";
   const land = (share) => (area ? `${round(share * area)} ${UNIT_NAME[unit]}` : `${Math.round(share * 100)} % del lote`);
   const farm = r.farm && {

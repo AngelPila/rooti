@@ -2,6 +2,7 @@
 // Each candidate plan is replayed month by month on real climate: months that already happened use
 // what really happened; future months are tried against every real sequence of years since 1981.
 import { mkey, FIRST_YEAR } from "./climate.js";
+import { predictRisk, riskFeatures, riskZone } from "./risk-model.mjs";
 
 const FAIL_RATIO = 0.2;
 // ECOCROP describes growth ranges, so a brief crossing of a limit is not a crop failure.
@@ -170,7 +171,21 @@ function planting(crop, id, t, sample, irrigation, site, store0) {
     if (drowned && cell.kind === 'waterlogged') cell.sev = 1;
     if (waterFail && ['ok', 'water_shortage'].includes(cell.kind)) { cell.kind = 'water_shortage'; cell.sev = 1; }
   }
-  return { failed, yieldShare, ratio, rain, need, tMean: temperature / totalDays, cold, hot, waterFail, drowned, phF, cells };
+  return { failed, yieldShare, ratio, rain, need, tMean: temperature / totalDays, cold, hot, waterFail, drowned, phF,
+    ponding: wlMax, temperatureLoss: 1 - tempFactor / totalDays, cells };
+}
+
+// Training uses observed weather only, with the same monthly planting alignment as the planner.
+export function observedPlanting(clim, crop, id, { start, irrigation, site }) {
+  const [year, month] = start.split("-").map(Number);
+  const period = Array.from({ length: cropMonths(crop) }, (_, i) => {
+    const date = new Date(Date.UTC(year, month - 1 + i, 1));
+    return { y: date.getUTCFullYear(), m: date.getUTCMonth() + 1 };
+  });
+  const [sample] = samples(clim, period);
+  if (!sample || sample.base !== null || !sample.months.every((m) => m.days?.length)) return null;
+  const water = sample.initial.reduce((store, m) => residualWater(store, m, site?.awc ?? 90), 0);
+  return planting(crop, id, 0, sample, irrigation, site, water);
 }
 
 const bareCell = (c) => (c.rain >= 40 || c.rainPeak >= 20
@@ -182,11 +197,11 @@ const levelOf = (k, sev) => (k === "ok" || k === "covered" ? "good" : sev >= 0.8
 // Outcomes depend on weather, dates, irrigation and soil, independently of the rotation objective.
 // Keep only the last two tables per location so switching priority or crops can reuse the daily runs.
 const plantingCache = new WeakMap();
-function plantingTable(clim, crops, { start, end, irrigation, mode, ninoOffset, site }) {
+function plantingTable(clim, crops, { start, end, irrigation, mode, ninoOffset, site, riskModel }) {
   const key = JSON.stringify([start, end, irrigation, mode, ninoOffset, site]);
   let cache = plantingCache.get(clim);
-  if (cache?.crops !== crops) {
-    cache = { crops, tables: new Map() };
+  if (cache?.crops !== crops || cache?.riskModel !== riskModel) {
+    cache = { crops, riskModel, tables: new Map() };
     plantingCache.set(clim, cache);
   }
   if (cache.tables.has(key)) return cache.tables.get(key);
@@ -205,12 +220,17 @@ function plantingTable(clim, crops, { start, end, irrigation, mode, ninoOffset, 
   });
   const tab = {};
   const all = Object.keys(crops).filter((id) => crops[id].cycle_days);
+  const zone = riskModel && Number.isFinite(site?.ph) && riskZone(clim.lat, clim.lon);
   for (const id of all) {
     const L = cropMonths(crops[id]);
     tab[id] = [];
     for (let t = 0; t + L <= N; t++) {
       const runs = S.map((s, si) => planting(crops[id], id, t, s, irrigation, site, storeAt[si][t]));
-      tab[id][t] = { L, runs, fail: mean(runs.map((r) => (r.failed ? 1 : 0))), yld: mean(runs.map((r) => r.yieldShare)), deficit: mean(runs.map((r) => clamp01(1 - r.ratio))) };
+      const calibrated = zone && riskModel.cohorts.includes(`${zone}:${id}`) && S.length
+        && S.every((s) => s.months.slice(t, t + L).every((m) => m.days?.length));
+      const severeRisk = calibrated ? mean(runs.map((run) => predictRisk(riskModel, riskFeatures(run, id, period[t].m, zone, irrigation), run.failed))) : null;
+      tab[id][t] = { L, runs, severeRisk, simulatedSevereRisk: riskModel ? mean(runs.map((r) => +(r.yieldShare <= 0.5))) : null,
+        fail: mean(runs.map((r) => (r.failed ? 1 : 0))), yld: mean(runs.map((r) => r.yieldShare)), deficit: mean(runs.map((r) => clamp01(1 - r.ratio))) };
     }
   }
   const slopeF = 1 + Math.min(1, (site?.slope ?? 0) / 12);
@@ -221,12 +241,13 @@ function plantingTable(clim, crops, { start, end, irrigation, mode, ninoOffset, 
   return table;
 }
 
-export function plan(clim, crops, picked, { start, end, irrigation = false, priority = "soil", mode = "all", ninoOffset = 0, site = null, current = null }) {
-  const { period, S, tab, all, bareSev } = plantingTable(clim, crops, { start, end, irrigation, mode, ninoOffset, site });
+export function plan(clim, crops, picked, { start, end, irrigation = false, priority = "soil", mode = "all", ninoOffset = 0, site = null, current = null, riskModel = null }) {
+  const { period, S, tab, all, bareSev } = plantingTable(clim, crops, { start, end, irrigation, mode, ninoOffset, site, riskModel });
   const N = period.length;
   if (!S.length) return { period, samples: S, plans: [] };
   const W = PRIORITY_WEIGHTS[priority], Wsum = W.water + W.soil + W.income;
   const useMulch = picked.includes("mulch"), ids = picked.filter((id) => id !== "mulch" && crops[id]);
+  const useSevereRisk = [...ids, ...(current || [])].some((id) => tab[id]?.some((row) => row.severeRisk != null));
 
   // Best sequence by dynamic programming over (month, previous crop, straw on the ground).
   function best(allowed, firstForced) {
@@ -248,7 +269,9 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
         const soil = (c.n_fixing ? 0.3 : 0) + (c.n_fixing && CEREALS.has(prev) ? 0.25 : 0) - (id === prev ? 1.0 : 0) - (CEREALS.has(id) && CEREALS.has(prev) ? 0.15 : 0) + 0.15 * lvl(c.soil_cover);
         let bareIfLost = 0;
         for (let u = t; u < t + row.L; u++) bareIfLost += 0.6 * W.soil * bareSev[u];
-        const gain = (W.income * income * row.yld + W.soil * soil * (1 - row.fail) - W.water * row.deficit - row.fail * bareIfLost - W.income * PLANTING_COST) / Wsum - 2.5 * row.fail;
+        // Compare the same severe-loss event for every candidate when calibration is in use.
+        const risk = useSevereRisk ? row.severeRisk ?? row.simulatedSevereRisk : row.fail;
+        const gain = (W.income * income * row.yld + W.soil * soil * (1 - row.fail) - W.water * row.deficit - row.fail * bareIfLost - W.income * PLANTING_COST) / Wsum - 2.5 * risk;
         const rest = go(t + row.L, id, useMulch && CEREALS.has(id), true);
         if (gain + rest.v > bestR.v) bestR = { v: gain + rest.v, steps: [{ crop: id, t0: t, t1: t + row.L }, ...rest.steps] };
       }
@@ -323,6 +346,12 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
     const anyLoss = mean(per.map((x) => (x.lostShare > 0 ? 1 : 0))), bigLoss = mean(per.map((x) => (x.lostShare >= 0.5 ? 1 : 0)));
     const harvest = mean(per.map((x) => x.harvest)), loss = mean(per.map((x) => x.loss));
     const planted = parcels.reduce((area, pc) => area + pc.share * pc.d.steps.length, 0);
+    let riskArea = 0, riskTotal = 0;
+    for (const pc of parcels) for (const st of pc.d.steps) if (st.severeRisk != null) {
+      riskArea += pc.share;
+      riskTotal += pc.share * st.severeRisk;
+    }
+    const adjustedRisk = riskArea > 0 ? { probability: riskTotal / riskArea, coverage: Math.min(1, riskArea / planted) } : null;
     const verdict = !planted || harvest / planted < 0.35 || bigLoss >= 0.3 ? "danger" : anyLoss >= 0.3 || loss > 2.5 ? "care" : "good";
     // Month by month, which crop is on how much of the land, for the farm calendar.
     const grid = period.map((pp, t) => {
@@ -335,7 +364,7 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
       }
       return here;
     });
-    return { parcels, per, byCrop, covered, anyLoss, bigLoss, harvest, loss, verdict, grid, errors: parcels.flatMap((pc) => pc.errors) };
+    return { parcels, per, byCrop, covered, anyLoss, bigLoss, harvest, loss, verdict, grid, adjustedRisk, errors: parcels.flatMap((pc) => pc.errors) };
   }
   // Recommended farm: one plot per crop that holds up, each plot led by that crop and rotated with the others;
   // more land to the plots that yield more, at least 15 % each so no crop carries the whole farm.
@@ -395,7 +424,7 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
     const steps = r.steps.map((st) => {
       const row = tab[st.crop][st.t0], rs = row.runs;
       return { ...st, from: period[st.t0], to: period[st.t1 - 1], fail: row.fail, yld: row.yld, n: rs.length, obs: rs[0].cells.every((c) => c.obs),
-               lost: rs.filter((x) => x.failed).length, cold: rs.filter((x) => x.cold).length, hot: rs.filter((x) => x.hot).length,
+               severeRisk: row.severeRisk, lost: rs.filter((x) => x.failed).length, cold: rs.filter((x) => x.cold).length, hot: rs.filter((x) => x.hot).length,
                dry: rs.filter((x) => x.waterFail).length, drowned: rs.filter((x) => x.drowned).length, phF: rs[0].phF, ratio: mean(rs.map((x) => x.ratio)), rain: mean(rs.map((x) => x.rain)), need: mean(rs.map((x) => x.need)) };
     });
     const bare = months.filter((m) => !m.crop).length, covered = months.filter((m) => m.crop).length;

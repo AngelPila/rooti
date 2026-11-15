@@ -1,6 +1,7 @@
 import { fetchClimate } from "./climate.js?v=25";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=37";
-import { COPY } from "./copy.js?v=54";
+import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=38";
+import { validatedRiskModel } from "./risk-model.mjs";
+import { COPY } from "./copy.js?v=55";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=23";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -50,7 +51,7 @@ const demoData = {};
 const loadDemo = (k) => (demoData[k] ||= fetch(`data/demo/${k}.json?v=2`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }));
 const demoPlan = (k) => { const s = firstNextMonth(), D = DEMOS[k]; return { place: D.place, start: iso(s), end: iso(addMonths(s, 12)), crops: D.crops, current: D.current, irrigation: false, area: D.area, unit: D.unit || "ha", waterlog: null, ...(D.lot ? { lot: D.lot } : {}) }; };
 const EXAMPLE = () => ({ place: { name: "Daule", admin: "Guayas, Ecuador", lat: -1.86, lon: -79.98 }, start: iso(firstNextMonth()), end: iso(addMonths(firstNextMonth(), 12)), crops: ["maize", "soybean", "mulch"], irrigation: false, area: 5.2, unit: "ha" });
-const DATA = { crops: null, econ: null, outlook: null, fires: {}, clim: {}, terrain: {}, zone: {} };
+const DATA = { crops: null, econ: null, outlook: null, riskModel: null, fires: {}, clim: {}, terrain: {}, zone: {} };
 const desktop = () => matchMedia("(min-width: 1024px)").matches;
 const C = () => COPY[state.lang];
 const S = () => STR[state.lang];
@@ -154,8 +155,9 @@ function readSharedPlan() {
 
 /* ---------------- data ---------------- */
 async function loadBase() {
-  const [crops, econ, outlook] = await Promise.all([fetch("data/crops.json?v=21").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null)]);
+  const [crops, econ, outlook, risk] = await Promise.all([fetch("data/crops.json?v=21").then(ok), fetch("data/economics.json").then(ok).catch(() => null), fetch("data/outlook.json").then(ok).catch(() => null), remoteJSON("data/risk-model.json", 1500).catch(() => null)]);
   DATA.crops = crops.crops; DATA.econ = econ; DATA.outlook = outlook;
+  DATA.riskModel = validatedRiskModel(risk);
 }
 function climate(pl) {
   const k = `${pl.lat.toFixed(2)},${pl.lon.toFixed(2)}`, dk = demoKey(pl);
@@ -200,7 +202,7 @@ async function results(P = state.plan, mode = state.mode, priority = "soil") {
     const site = siteOf(tr, P);
     const start = P.start.slice(0, 7), end = P.end.slice(0, 7);
     const ninoOffset = ninoNow(P) ? CURRENT_NINO_ONSET - Number(start.slice(0, 4)) : 0;
-    memo.set(key, { clim: c, P, terrain: tr, site, ninoOffset, ...runPlanner(c, DATA.crops, P.crops, { start, end, irrigation: P.irrigation, priority, mode, ninoOffset, site, current: P.current || [] }) });
+    memo.set(key, { clim: c, P, terrain: tr, site, ninoOffset, ...runPlanner(c, DATA.crops, P.crops, { start, end, irrigation: P.irrigation, priority, mode, ninoOffset, site, current: P.current || [], riskModel: DATA.riskModel }) });
   }
   return memo.get(key);
 }
@@ -586,6 +588,7 @@ function stepSheet(r, pc, st) {
   sheet(h("h2", { class: "display" }, `${cap(cropName(st.crop))} · ${fmtArea(pc.share)}`), h("p", { class: "small" }, span(r.period[st.t0], r.period[st.t1 - 1])),
     h("p", { style: { fontSize: "18px" } }, cap(outcome(st, r.samples.length))),
     h("p", { class: "small" }, C().rainVsNeed(Math.round(st.rain), Math.round(st.need))),
+    st.severeRisk == null ? null : h("p", { class: "small" }, C().adjustedPlantingRisk(Math.round(st.severeRisk * 100))),
     h("p", { class: "small" }, C().checkLocal));
 }
 function barSheet(r, f, k, s, pl) {
@@ -1031,7 +1034,9 @@ function explain(f, r) {
 function explainSheet(title, f, r) {
   const e = explain(f, r), c = C();
   const list = (head, items, cls) => (items.length ? [h("b", { style: { marginTop: "6px" } }, head), h("ul", { class: `bul ${cls || ""}` }, ...items.map((x) => h("li", {}, x)))] : []);
-  sheet(h("h2", { class: "display" }, title), verdictEl(f.verdict, planVerdict(f)), scenarioNotice(f, r), farmCalendar(r, f, { compact: true }),
+  const risk = f.adjustedRisk;
+  const riskNote = risk ? c.adjustedPlanRisk(Math.round(risk.probability * 100), Math.round(risk.coverage * 100)) : c.riskSimulator;
+  sheet(h("h2", { class: "display" }, title), verdictEl(f.verdict, planVerdict(f)), scenarioNotice(f, r), h("p", { class: "small" }, riskNote), farmCalendar(r, f, { compact: true }),
     ...list(c.whyTitle, e.why, "good"), ...list(c.riskTitle, e.risks, "bad"), ...list(c.unknownTitle, e.unknown), ...list(c.askTitle, e.ask));
 }
 // Short, practical advice from the plot, the climate and the plan.
@@ -1308,7 +1313,12 @@ function viewComparar() {
     const why = score >= 0 ? "" : mine.anyLoss > rec.anyLoss + 0.1
       ? (es() ? `Su plan pierde cosecha ${frac(mine.anyLoss).toLowerCase()} años; el recomendado, ${frac(rec.anyLoss).toLowerCase()}.` : `Your plan loses a harvest ${frac(mine.anyLoss).toLowerCase()} years; the recommended one, ${frac(rec.anyLoss).toLowerCase()}.`)
       : rec.harvest > mine.harvest ? (es() ? `Con el recomendado llega a cosecha ${fmtArea(rec.harvest - mine.harvest)} más.` : `The recommended plan brings ${fmtArea(rec.harvest - mine.harvest)} more to harvest.`) : "";
-    const calCard = (title, f) => h("section", { class: "card" }, h("div", { class: "row between" }, h("b", {}, title), verdictEl(f.verdict, planVerdict(f))), scenarioNotice(f, r), farmCalendar(r, f, { compact: true }));
+    const calCard = (title, f) => {
+      const risk = f.adjustedRisk;
+      return h("section", { class: "card" }, h("div", { class: "row between" }, h("b", {}, title), verdictEl(f.verdict, planVerdict(f))),
+        scenarioNotice(f, r), risk ? h("p", { class: "small" }, c.adjustedPlanRisk(Math.round(risk.probability * 100), Math.round(risk.coverage * 100))) : null,
+        farmCalendar(r, f, { compact: true }));
+    };
     put($("#view"), h("div", { class: "res cmp" },
       resHead(P),
       h("div", { class: "col-left wide" },

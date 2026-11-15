@@ -11,6 +11,7 @@ from rooti_bot import config, store
 
 ENGINE = config.BOT_DIR / "engine" / "rooti.mjs"
 PLAN_VERSION = 3  # Invalidate saved plans when the calculation changes.
+MODEL_FILE = config.REPO / "app" / "data" / "risk-model.json"
 
 
 class EngineError(Exception):
@@ -42,7 +43,12 @@ def cold(farmer: dict) -> bool:
 
 def _plan_inputs(farmer: dict) -> dict:
     month = datetime.now(timezone.utc).strftime("%Y-%m")
-    return {**store.lot_inputs(farmer), "mode": "auto", "plan_version": PLAN_VERSION, "climate_month": month}
+    try:
+        model_version = MODEL_FILE.stat().st_mtime_ns
+    except OSError:
+        model_version = None
+    return {**store.lot_inputs(farmer), "mode": "auto", "plan_version": PLAN_VERSION, "climate_month": month,
+            "risk_model_version": model_version}
 
 
 @contextmanager
