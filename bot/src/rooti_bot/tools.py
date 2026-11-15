@@ -148,15 +148,30 @@ def explain(_farmer_id: str, args: dict) -> dict:
     return {"explicacion": hit} if hit else {"explicacion": None, "conocidos": sorted(GLOSSARY)}
 
 
-def call_button(farmer_id: str, args: dict) -> dict:
+def _button(farmer_id: str, text: str, label: str, url_of) -> dict:
     from rooti_bot import bridge
     try:
-        url = calls.link(farmer_id)
-        bridge.send_button(farmer_id, args.get("texto") or "Toca el botón y conversamos en vivo, como una llamada.",
-                           "📞 Hablar con Rooti", url)
+        bridge.send_button(farmer_id, text, label, url_of())
     except Exception as exc:
         raise ToolError(f"No pude mandar el botón: {exc}") from None
     return {"enviado": True, "nota": "El botón ya está en el chat: no repitas el enlace."}
+
+
+def call_button(farmer_id: str, args: dict) -> dict:
+    return _button(farmer_id, args.get("texto") or "Toque el botón y conversamos en vivo, como una llamada.",
+                   "📞 Hablar con Rooti", lambda: calls.link(farmer_id))
+
+
+def lot_button(farmer_id: str, args: dict) -> dict:
+    return _button(farmer_id, args.get("texto") or "Toque el botón, marque su lote en el mapa y dígame qué siembra.",
+                   "Marcar mi lote", lambda: calls.page(farmer_id, "planear/1"))
+
+
+def plan_button(farmer_id: str, args: dict) -> dict:
+    if not store.saved_plan(farmer_id):
+        raise ToolError("Todavía no hay plan: primero guarda la ubicación y los cultivos del lote.")
+    return _button(farmer_id, args.get("texto") or "Aquí tiene su plan, con los tres caminos para comparar.",
+                   "Ver mi plan", lambda: calls.page(farmer_id, "plan"))
 
 
 LOT_PROPS = {
@@ -197,8 +212,14 @@ TOOLS = [
     Tool("boton_llamada", "Manda al chat el botón «📞 Hablar con Rooti» para conversar en vivo, como una llamada. "
                           "Úsalo cuando la pregunta es larga o el agricultor prefiere hablar.", call_button,
          {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
+    Tool("boton_lote", "Manda al chat el botón «Marcar mi lote»: abre una página donde el agricultor marca su lote "
+                       "en el mapa y elige sus cultivos. Úsalo al empezar, en vez de preguntar todo por chat.",
+         lot_button, {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
+    Tool("boton_plan", "Manda al chat el botón «Ver mi plan»: abre su plan con los tres caminos, el calendario y los "
+                       "años en que habría ido bien o mal. Úsalo cuando el plan ya está listo.", plan_button,
+         {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
 ]
-CHAT_ONLY = {"boton_llamada"}  # the live call has no chat to put a button in
+CHAT_ONLY = {"boton_llamada", "boton_lote", "boton_plan"}  # the live call has no chat to put a button in
 BY_NAME = {t.name: t for t in TOOLS}
 
 

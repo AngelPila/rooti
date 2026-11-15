@@ -11,6 +11,13 @@ are stand-ins (fakes.py). One farmer in Daule:
 6. agrees to alerts; a 55 mm day in the forecast sends a voice note and the call button;
 7. opening that call (a WebRTC offer, as the page sends: call_probe.py) is answered and marks the alert opened,
    so no reminder follows.
+
+The pages farmers open from those buttons (the web app at /app/, bot/src/rooti_bot/web.py), as the app calls them:
+8. «Marcar mi lote» and «Ver mi plan» arrive as buttons signed for this farmer; the page reads the lot, saves the plot
+   drawn on the map, and Rooti confirms in the chat with the plan button; picking a plan reaches the chat and the
+   next turn's context;
+9. the alert's «Ver el aviso» page reads the alert and counts as opened;
+10. a lot made on the public website comes to WhatsApp as a code: a new farmer sends it and Rooti already knows the lot.
 """
 import contextlib
 import json
@@ -21,9 +28,10 @@ import signal
 import sqlite3
 import subprocess
 import time
+import urllib.request
 from datetime import date, timedelta
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import yaml
@@ -34,6 +42,7 @@ BOT_DIR = Path(__file__).resolve().parents[2]
 BIN = BOT_DIR / ".venv" / "bin" / "rooti-bot"
 CALL_BIN = BOT_DIR / ".venv-call" / "bin"
 FARMER = "593981234567@s.whatsapp.net"
+NEWCOMER = "593987654321@s.whatsapp.net"
 DAULE = (-1.86, -79.98)
 # The plot's soil and slope as SoilGrids and Open-Meteo gave them: SoilGrids takes up to a minute, NASA POWER is live.
 TERRAIN = {"elevation": 1, "slopePct": 1.5, "soil": {"clay": 33.4, "sand": 45.2, "phh2o": 6.2, "soc": 32.5,
@@ -70,6 +79,24 @@ def tool_payload(text: str) -> dict:
     return json.loads(inner) if isinstance(inner, str) else inner
 
 
+def http(method: str, url: str, body: dict | None = None, token: str = "") -> tuple[int, dict | str]:
+    """What the app's link.js sends: JSON, with the signed link in X-Rooti-Token."""
+    req = urllib.request.Request(url, method=method, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"Content-Type": "application/json", **({"X-Rooti-Token": token} if token else {})})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as res:
+            raw = res.read().decode()
+            return res.status, json.loads(raw) if "json" in res.headers.get("Content-Type", "") else raw
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode()
+
+
+def token_of(url: str) -> str:
+    """The signed link in a button: ?t= on the app's pages, #t= on the call page."""
+    parts = urlsplit(url)
+    return (parse_qs(parts.query).get("t") or parse_qs(parts.fragment).get("t"))[0]
+
+
 def script(req: dict) -> dict:
     """The model, scripted: it answers what the farmer last said, or reads the tool result it just got."""
     messages = req["messages"]
@@ -80,11 +107,18 @@ def script(req: dict) -> dict:
             rice = next(c for c in result["cultivos"] if c["crop"] == "arroz")
             return {"content": f"Para el arroz, el mejor mes para sembrar es {rice['best_month']}."}
         if result.get("enviado") is True:
-            return {"content": "Le mandé el botón para que conversemos."}
+            return {"content": "Le mandé el botón."}
         if result.get("plan") == "listo":
             return {"content": "Listo, ya revisé su lote con los datos de la NASA."}
         return {"content": "Anotado."}
     said = text_of(last)
+    if "Nota de Rooti" in said:  # the plugin's note under a website code
+        return {"content": "¡Buenas, veci! Ya tengo su lote de la página." if "ya quedó guardado" in said
+                else "Ese código no me sirve, marque su lote otra vez."}
+    if "cómo le mando" in said:
+        return {"tool_calls": [(tool(req, "boton_lote"), {})]}
+    if "mándeme el plan" in said:
+        return {"tool_calls": [(tool(req, "boton_plan"), {})]}
     if "[Location:" in said:
         lat, lon = map(float, re.search(r"(-?\d+\.\d+),(-?\d+\.\d+)", said).groups())
         return {"tool_calls": [(tool(req, "guardar_lote"), {"lat": lat, "lon": lon, "place": "Daule"})]}
@@ -192,12 +226,21 @@ def test_farmer_on_whatsapp(tmp_path):
                                 env=env, stdout=call_log, stderr=subprocess.STDOUT, start_new_session=True)
         stack.callback(lambda: os.killpg(call.pid, signal.SIGTERM))
 
-        def reply(text_or_action, timeout=120):
+        def reply(text_or_action, timeout=120, chat=FARMER):
             mark = wa.mark()
             text_or_action()
-            got = wa.wait_for(lambda: [m for m in wa.messages_to(FARMER, mark) if m["path"] != "send-media"], timeout)
+            got = wa.wait_for(lambda: [m for m in wa.messages_to(chat, mark) if m["path"] != "send-media"], timeout)
             assert got, f"Rooti no respondió.\n{(tmp_path / 'gateway.log').read_text()[-4000:]}"
             return got
+
+        def button_reply(text):
+            """The button a tool sends, once the model's closing text is in too, so it never spills into the next step."""
+            mark = wa.mark()
+            wa.say(FARMER, text)
+            done = lambda ms: ms if any(m["path"] == "send-url-button" for m in ms) and ms[-1]["path"] == "send" else None
+            got = wa.wait_for(lambda: done(wa.messages_to(FARMER, mark)), 120)
+            assert got, f"no button.\n{(tmp_path / 'gateway.log').read_text()[-3000:]}"
+            return next(m for m in got if m["path"] == "send-url-button")
 
         # 1. A new farmer: the turn starts with what Rooti knows, and it asks for the plot's location.
         first = reply(lambda: wa.say(FARMER, "hola"), timeout=180)
@@ -235,9 +278,44 @@ def test_farmer_on_whatsapp(tmp_path):
             "el modelo nunca ve de qué chat es el lote"
 
         # 4. The call button, with a link signed for this farmer.
-        talk = reply(lambda: wa.say(FARMER, "mejor quiero hablar con usted"))
-        button = next(m for m in talk if m["path"] == "send-url-button")
+        button = button_reply("mejor quiero hablar con usted")
         assert button["buttonText"] == "📞 Hablar con Rooti" and button["url"].startswith(env["ROOTI_CALL_URL"] + "/#t=")
+
+        # 8. The pages: «Marcar mi lote» and «Ver mi plan», signed for this farmer.
+        site = env["ROOTI_CALL_URL"]
+        mark_btn = button_reply("¿cómo le mando mi lote?")
+        assert mark_btn["buttonText"] == "Marcar mi lote" and mark_btn["url"].startswith(f"{site}/app/?t=")
+        assert mark_btn["url"].endswith("#/planear/1")
+        plan_btn = button_reply("mándeme el plan")
+        assert plan_btn["buttonText"] == "Ver mi plan" and plan_btn["url"].endswith("#/plan")
+        page_token = token_of(plan_btn["url"])
+        status, html = http("GET", f"{site}/app/")
+        assert status == 200 and 'src="main.js' in html, "the page is the web app itself"
+        assert http("GET", f"{site}/app/data/bot.json")[1] == {"url": "", "whatsapp": FakeWhatsApp.BOT.split("@")[0]}
+        assert http("GET", f"{site}/api/lot", token=page_token[:-2] + "xx")[0] == 403, "an edited link opens nothing"
+        status, page = http("GET", f"{site}/api/lot", token=page_token)
+        assert status == 200 and page["plan"]["place"]["lat"] == DAULE[0] and page["plan"]["crops"] == ["rice", "maize", "soybean"]
+        assert page["plan"]["unit"] == "cuadra" and page["plan"]["waterlog"] == "no" and page["alert"] is None
+
+        # The farmer draws the plot on the map and corrects the size: saved, and Rooti confirms in the chat.
+        corners = [[-79.9805, -1.8595], [-79.9790, -1.8595], [-79.9790, -1.8610], [-79.9805, -1.8610]]
+        drawn = {**page["plan"], "area": 4, "lot": corners}
+        mark = wa.mark()
+        assert http("PUT", f"{site}/api/lot", drawn, token=page_token)[0] == 200
+        confirmed = wa.wait_for(lambda: [m for m in wa.messages_to(FARMER, mark) if m["path"] == "send-url-button"], 120)
+        assert confirmed, wa.messages_to(FARMER, mark)
+        assert "recibí su lote: 4 cuadras en Daule, con arroz, maíz duro amarillo y soya" in confirmed[0]["message"], confirmed
+        assert confirmed[0]["buttonText"] == "Ver mi plan"
+        lot = db.execute("SELECT area, plot FROM farmers WHERE phone = ?", (FARMER,)).fetchone()
+        assert lot[0] == 4 and json.loads(lot[1]) == corners
+
+        # The farmer picks a plan on the page: the chat confirms it and asks about alerts; the model hears it.
+        mark = wa.mark()
+        assert http("POST", f"{site}/api/choice", {"key": "safe", "name": "El más seguro",
+                                                  "route": "Maíz, diciembre a marzo"}, token=page_token)[0] == 200
+        picked = wa.wait_for(lambda: wa.messages_to(FARMER, mark), 30)
+        assert picked and picked[0]["message"].startswith("Anotado: eligió «El más seguro». Maíz, diciembre a marzo.")
+        assert "¿Quiere que le avise" in picked[0]["message"]
 
         # 5. A group is not one farmer's lot: no answer.
         mark = wa.mark()
@@ -261,11 +339,23 @@ def test_farmer_on_whatsapp(tmp_path):
         assert [m["path"] for m in alert_msgs] == ["send-media", "send-url-button"], alert_msgs
         assert alert_msgs[0]["mediaType"] == "audio" and Path(alert_msgs[0]["filePath"]).stat().st_size > 1000
         assert "55 milímetros" in alert_msgs[1]["message"]
+        assert alert_msgs[1]["buttonText"] == "Ver el aviso" and alert_msgs[1]["url"].endswith("#/aviso")
+        sim = [r for r in llm.requests if r.get("tools")][-1]
+        assert "eligió «El más seguro»" in "\n".join(text_of(m) for m in sim["messages"]), \
+            "the plan picked on the page is in the turn's context"
         again = subprocess.run([str(BIN), "avisos"], env=env, capture_output=True, text=True, timeout=120)
         assert json.loads(again.stdout) == [], "el mismo aviso no sale dos veces"
 
+        # 9. The alert's page: it reads the alert, and opening it counts as heard.
+        token = token_of(alert_msgs[1]["url"])
+        status, page = http("GET", f"{site}/api/lot", token=token)
+        assert status == 200 and page["alert"]["kind"] == "heavy_rain" and page["alert"]["key"] == rain_day
+        assert page["call"].startswith(f"{site}/#t=")
+        assert db.execute("SELECT call_opened_at FROM alerts WHERE phone = ?", (FARMER,)).fetchone()[0] is not None
+        db.execute("UPDATE alerts SET call_opened_at = NULL")  # so the call below is what marks it again
+        db.commit()
+
         # 7. Opening the alert's call: the page's offer is answered and the alert counts as heard.
-        token = unquote(alert_msgs[1]["url"].split("#t=", 1)[1])
         probe = subprocess.run([str(CALL_BIN / "python"), str(Path(__file__).parent / "call_probe.py"),
                                 env["ROOTI_CALL_URL"], token, str(wav)], env=env, capture_output=True, text=True,
                                timeout=90)
@@ -278,3 +368,17 @@ def test_farmer_on_whatsapp(tmp_path):
         mark = wa.mark()
         subprocess.run([str(BIN), "avisos"], env=later, capture_output=True, text=True, timeout=120, check=True)
         assert not wa.messages_to(FARMER, mark), "quien ya abrió la llamada no recibe recordatorio"
+
+        # 10. The public website hands a lot to WhatsApp: a code the newcomer sends, and Rooti already has the lot.
+        website = {"place": {"name": "Daule", "lat": DAULE[0], "lon": DAULE[1]}, "crops": ["maize", "soybean"],
+                   "current": ["maize"], "area": 2, "unit": "ha", "irrigation": False, "waterlog": "sometimes",
+                   "lot": corners}
+        status, handed = http("POST", f"{site}/api/handoff", website)
+        assert status == 200 and re.fullmatch(r"RT-[A-HJ-NP-Z2-9]{4}", handed["code"]), handed
+        welcome = reply(lambda: wa.say(NEWCOMER, f"Hola Rooti, mi lote es {handed['code']}"), chat=NEWCOMER)
+        assert welcome[-1]["message"] == "¡Buenas, veci! Ya tengo su lote de la página.", welcome
+        lot = db.execute("SELECT lat, crops, area, unit, waterlog, plot FROM farmers WHERE phone = ?", (NEWCOMER,)).fetchone()
+        assert lot == (DAULE[0], '["maize", "soybean"]', 2.0, "ha", 1, json.dumps(corners)), lot
+        stranger = "593980000001@s.whatsapp.net"
+        again = reply(lambda: wa.say(stranger, f"mi lote es {handed['code']}"), chat=stranger)
+        assert again[-1]["message"] == "Ese código no me sirve, marque su lote otra vez.", "a code brings a lot only once"

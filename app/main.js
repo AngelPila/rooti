@@ -1,9 +1,10 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
-import { COPY } from "./copy.js?v=43";
+import { COPY } from "./copy.js?v=44";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
+import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=1";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -346,7 +347,20 @@ const currentChips = (d, redo) => h("div", { class: "row wrap", style: { gap: "6
 }));
 const waterlogOpts = (d, redo) => h("div", { class: "opts" }, ...[["yes", C().yes], ["sometimes", C().sometimes], ["no", C().no], [null, C().dontKnow]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String((d.waterlog ?? null) === v), onclick: () => { d.waterlog = v; redo(); } }, l)));
 const irrigOpts = (d, redo) => h("div", { class: "opts" }, ...[[false, C().no], [true, C().yes]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String(d.irrigation === v), onclick: () => { d.irrigation = v; redo(); } }, l)));
-const submitPlan = () => { setPlan({ ...state.draft, crops: [...state.draft.crops] }); state.draft = null; state.undo = null; state.mode = defaultMode(state.plan); memo.clear(); go("plan"); };
+const submitPlan = () => { setPlan({ ...state.draft, crops: [...state.draft.crops] }); state.draft = null; state.undo = null; state.mode = defaultMode(state.plan); memo.clear(); syncLot(); go("plan"); };
+// Opened from WhatsApp: the lot marked here goes to Rooti, which confirms it in the chat
+function syncLot() {
+  if (!linked()) return;
+  state.lotSync = "saving";
+  saveLot(state.plan).then(() => { state.lotSync = "saved"; }, () => { state.lotSync = "error"; }).finally(() => $("#lotSync")?.replaceWith(lotSyncEl()));
+}
+function lotSyncEl() {
+  const W = C().wa, s = state.lotSync;
+  if (!s) return h("div", { id: "lotSync", hidden: true });
+  return h("div", { id: "lotSync", class: `wa-sync ${s}`, role: "status" }, icon(s === "error" ? "i-wifi-off" : s === "saved" ? "i-check" : "i-chat"),
+    h("span", { class: "grow" }, s === "saving" ? W.saving : s === "saved" ? W.lotSaved : W.lotError),
+    s === "error" ? h("button", { class: "link", onclick: syncLot }, W.retry) : null);
+}
 
 function viewPlanear(stepArg) {
   const d = draft();
@@ -728,6 +742,7 @@ function viewPlan() {
       coverSquares(squares, r, f);
       planCalendar(cal, r, f);
       if (anim) [head, routeBox, stat, cal].forEach((x) => { x.classList.remove("swap"); void x.offsetWidth; x.classList.add("swap"); });
+      bar?.redraw();
     };
     const cards = h("div", { class: "strats", role: "radiogroup", "aria-label": D.names.safe, style: { "--k": plans.length } });
     const pickPlan = (key) => {
@@ -742,10 +757,12 @@ function viewPlan() {
       }
     };
     put(cards, ...plans.map((it) => planCard(it, r, plans, pickPlan)));
+    const bar = linked() ? pickBar(r, cur) : null;
     const legend = h("div", { class: "dots-legend" }, ...["g", "c", "x"].map((k) => h("span", {}, h("i", { class: k, style: { background: { g: "var(--good)", c: "var(--care)", x: "var(--danger)" }[k] } }), D.legend[k])),
       COAST(P.place) ? h("span", {}, h("i", { class: "n" }), D.legend.n) : null);
     put($("#view"), h("div", { class: "res pv" },
       resHead(P),
+      linked() ? lotSyncEl() : null,
       ninoBanner(r),
       h("section", { class: "pv-panel" },
         h("div", { class: "pv-body" },
@@ -757,14 +774,86 @@ function viewPlan() {
               multi ? [stat, h("div", { class: "pv-block" }, dots, legend, h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r")))] : h("p", { class: "small" }, D.realOnly),
               h("div", { class: "pv-block" }, coverLab, squares))),
           h("div", { class: "pv-right" }, cal)),
-        h("div", { class: "pv-block pv-cards" }, h("b", {}, D.plansTitle(plans.filter((x) => x.key !== "today").length, plans.some((x) => x.key === "today"))), cards),
+        h("div", { class: "pv-block pv-cards" }, h("b", {}, D.plansTitle(plans.filter((x) => x.key !== "today").length, plans.some((x) => x.key === "today"))), cards, bar),
         h("div", { class: "pv-foot" }, unknownChips(r, plans[0].f), sourceNote(r, plans[0].f))),
       ids.length ? h("a", { class: "hint", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(ids.length)), icon("i-chev-r")) : null,
-      h("section", { class: "card" }, h("b", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot))));
+      h("section", { class: "card" }, h("b", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot)),
+      canHandoff() ? handoffCard(P) : null));
     show(false);
   });
 }
 
+// Opened from WhatsApp: the farmer picks a plan here and Rooti hears about it in the chat
+function pickBar(r, cur) {
+  const W = C().wa, box = h("div", { class: "wa-bar" });
+  const draw = (status) => {
+    const it = cur(), name = C().ds.names[it.key];
+    if (link.chosen?.key === it.key) return put(box, h("p", { class: "wa-done" }, icon("i-check"), h("span", {}, W.chosen(name))), hasWhatsApp() ? h("a", { class: "btn big block", href: waUrl() }, icon("i-chat"), W.back) : null);
+    put(box, h("button", { class: "btn lime big block", disabled: status === "saving", onclick: async () => {
+      draw("saving");
+      try { await choosePlan({ key: it.key, name, route: routeWords(r, it.f) }); draw(); } catch { draw("error"); }
+    } }, status === "saving" ? W.saving : W.choose(name)), h("p", { class: status === "error" ? "err" : "small" }, status === "error" ? W.chooseError : W.chooseHelp));
+  };
+  box.redraw = () => draw();
+  draw();
+  return box;
+}
+// The public website: the plan goes on to Rooti on WhatsApp as a short code the farmer sends
+function handoffCard(P) {
+  const W = C().wa, msg = h("p", { class: "small" }, W.goText);
+  return h("section", { class: "card wa-go" }, h("b", { class: "card-h" }, W.goTitle), msg,
+    h("button", { class: "btn dark big", onclick: async (e) => {
+      const b = e.currentTarget; b.disabled = true;
+      try { location.href = waUrl(W.goMsg(await handoff(P))); } catch { msg.textContent = W.goError; msg.className = "err"; b.disabled = false; }
+    } }, icon("i-chat"), W.go));
+}
+
+/* ================= Aviso: the page behind an alert's «Ver el aviso» ================= */
+const HEAVY_MM = 40; // the same threshold as bot/src/rooti_bot/alerts.py
+async function forecastDays(pl) {
+  const q = new URLSearchParams({ latitude: pl.lat, longitude: pl.lon, daily: "precipitation_sum", timezone: "America/Guayaquil", forecast_days: 7 });
+  const d = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`).then(ok);
+  return d.daily.time.map((day, i) => ({ day, mm: d.daily.precipitation_sum[i] || 0 }));
+}
+const weekday = (day, style = "long") => new Date(day + "T12:00:00").toLocaleDateString(state.lang, { weekday: style });
+function rainChart(days) {
+  const W = C().wa, wd = 340, ht = 180, top = 28, bot = 40, max = Math.max(HEAVY_MM * 1.3, ...days.map((d) => d.mm));
+  const x = (i) => (i + 0.5) * (wd / days.length), y = (v) => top + (ht - top - bot) * (1 - v / max);
+  const line = days.map((d, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(d.mm).toFixed(1)}`).join("");
+  return svg("svg", { viewBox: `0 0 ${wd} ${ht}`, class: "rain-chart", role: "img", "aria-label": days.map((d) => `${weekday(d.day)} ${Math.round(d.mm)} ${W.mm}`).join(", ") },
+    svg("path", { d: `${line}L${x(days.length - 1)},${y(0)}L${x(0)},${y(0)}Z`, class: "ra" }),
+    svg("line", { x1: 0, x2: wd, y1: y(HEAVY_MM), y2: y(HEAVY_MM), class: "rh" }),
+    svg("text", { x: wd - 2, y: y(HEAVY_MM) - 6, "text-anchor": "end", class: "rht" }, `${W.heavy} · ${HEAVY_MM} ${W.mm}`),
+    svg("path", { d: line, class: "rl" }),
+    ...days.flatMap((d, i) => [
+      svg("circle", { cx: x(i), cy: y(d.mm), r: d.mm >= HEAVY_MM ? 5 : 3.5, class: d.mm >= HEAVY_MM ? "rp heavy" : "rp" }),
+      svg("text", { x: x(i), y: y(d.mm) - 10, "text-anchor": "middle", class: d.mm >= HEAVY_MM ? "rv heavy" : "rv" }, String(Math.round(d.mm))),
+      svg("text", { x: x(i), y: ht - 20, "text-anchor": "middle", class: "rd" }, cap(weekday(d.day, "short").replace(".", ""))),
+      svg("text", { x: x(i), y: ht - 6, "text-anchor": "middle", class: "rdn" }, String(+d.day.slice(8))),
+    ]));
+}
+function alertTitle(A, days) {
+  const W = C().wa;
+  if (A.kind === "heavy_rain") {
+    // The millimetres Rooti said in the voice note, so the page never contradicts it; the forecast may have moved since
+    const said = A.text.match(/unos (\d+) mil/)?.[1], mm = said ? +said : days?.find((d) => d.day === A.key)?.mm ?? 0;
+    return W.rainTitle(weekday(A.key), Math.round(mm));
+  }
+  const [crop, month = ""] = A.key.split("@"), [mName, year] = month.split(" ");
+  const id = Object.keys(DATA.crops).find((k) => DATA.crops[k].name_es.split(" / ")[0].toLowerCase() === crop);
+  const m = STR.es.monthsLong.indexOf(mName);
+  return W.sowTitle(id ? cropName(id).toLowerCase() : crop, m >= 0 ? `${monL(m + 1)} ${year}` : month);
+}
+async function viewAviso() {
+  const W = C().wa, A = link.alert, P = state.plan;
+  put($("#view"), loading());
+  const days = await forecastDays(P.place).catch(() => null);
+  put($("#view"), h("div", { class: "res aviso" },
+    h("section", { class: "av-hero" }, h("span", { class: "pill-eyebrow glass mono" }, W.kind[A.kind] || W.crumb), h("h1", { class: "h2" }, alertTitle(A, days)), es() ? h("p", {}, A.text) : null),
+    h("section", { class: "card" }, h("b", { class: "card-h" }, W.nextDays), days ? rainChart(days) : h("p", { class: "small" }, W.noForecast), h("p", { class: "small" }, W.forecastSrc)),
+    h("section", { class: "card" }, h("b", { class: "card-h" }, W.todo), tipList(W.tips[A.kind] || [])),
+    h("div", { class: "av-acts" }, h("a", { class: "btn lime big block", href: link.call }, icon("i-mic"), W.call), h("a", { class: "btn big block", href: "#/plan" }, icon("i-month"), W.seePlan))));
+}
 
 /* ---------- why, risks, what we don't know, questions for the agronomist ---------- */
 const COAST = (pl) => pl.lat > -5 && pl.lat < 2 && pl.lon > -81.5 && pl.lon < -78.5;
@@ -902,7 +991,7 @@ function viewTerreno() {
           row(c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null),
           row(c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null),
           row(c.waterlog, wlW, wlWhy),
-          h("div", { class: "q", style: { marginTop: "4px" } }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); render(); })),
+          h("div", { class: "q", style: { marginTop: "4px" } }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); syncLot(); render(); })),
           h("p", { class: "small" }, d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain))),
       h("div", { class: "col-right" },
         h("section", { class: "card" }, h("h2", { class: "card-h" }, c.climate),
@@ -1304,7 +1393,8 @@ function route() {
   const [r = "", arg] = location.hash.replace(/^#\/?/, "").split("/");
   if (RESULTS.includes(r) && !state.plan) return { r: "planear" };
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
-  return { r: ["", "planear", "bootcamp", ...RESULTS].includes(r) ? r : "", arg };
+  if (r === "aviso" && !(link.alert && state.plan)) return { r: state.plan ? "plan" : "planear" };
+  return { r: ["", "planear", "bootcamp", "aviso", ...RESULTS].includes(r) ? r : "", arg };
 }
 function renderChrome(r) {
   const c = C(), P = state.plan, isRes = RESULTS.includes(r);
@@ -1312,10 +1402,11 @@ function renderChrome(r) {
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
   // Off the results there are no tabs, so the bar carries a way back: to the plan when there is one, else home
-  const back = isRes ? null : h("a", { class: "round", href: r === "planear" && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : c.planTitle}`)),
+  const back = isRes ? null : h("a", { class: "round", href: (r === "planear" || r === "aviso") && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
-    h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null, langBtn()));
+    h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null,
+      linked() && hasWhatsApp() ? h("a", { class: "round", href: waUrl(), "aria-label": c.wa.back, title: c.wa.back }, icon("i-chat")) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, icon(ic), l)));
   if (r !== "planear") put($("#map-overlay"));
 }
@@ -1323,7 +1414,7 @@ async function render() {
   const { r, arg } = route();
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg) };
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
   try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
@@ -1332,6 +1423,20 @@ async function start() {
   document.addEventListener("click", () => document.querySelectorAll('.source[aria-expanded="true"]').forEach((b) => b.setAttribute("aria-expanded", "false")));
   put($("#view"), loading());
   try { await loadBase(); } catch { put($("#view"), errorCard(C().climateError, start)); return; }
+  try {
+    if (await initLink()) {
+      // A farmer from WhatsApp: their lot from Rooti, in Spanish unless they switched, on the page the button named
+      if (store.get("lang", null) == null) state.lang = "es";
+      state.plan = link.plan; state.custom = null; state.draft = null;
+      if (!location.hash.replace(/^#\/?/, "")) history.replaceState(null, "", "#/" + (link.alert && link.plan ? "aviso" : link.plan ? "plan" : "planear/1"));
+    }
+  } catch (e) {
+    const W = C().wa;
+    put($("#view"), e.status === 403
+      ? h("div", { class: "res" }, brand(), h("section", { class: "card" }, h("b", { class: "card-h" }, W.expiredTitle), h("p", {}, W.expiredText), hasWhatsApp() ? h("a", { class: "btn dark big", href: waUrl() }, icon("i-chat"), W.back) : null))
+      : errorCard(C().climateError, start));
+    return;
+  }
   if (state.plan) state.mode = defaultMode(state.plan);
   addEventListener("hashchange", () => { state.drawing = false; document.body.classList.remove("drawing"); state.addCorner = null; render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
   let w = desktop(); addEventListener("resize", () => { if (desktop() !== w) { w = desktop(); if (viewer) { viewer.destroy(); viewer = null; lotEntity = null; pickBound = false; } render(); } });

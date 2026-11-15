@@ -41,6 +41,8 @@ rooti-llamada ── call/ page ── WebRTC (Pipecat) ── Groq Whisper → 
   | `como_va_este_anio` | Recent rain against the normal for those months |
   | `explicar` | Explains a term in plain words |
   | `boton_llamada` | WhatsApp only: sends the call button |
+  | `boton_lote` | WhatsApp only: sends «Marcar mi lote», the app's map and crop questions |
+  | `boton_plan` | WhatsApp only: sends «Ver mi plan», the app's plan page |
 
 - **The planner** is the web app's own code (`app/planner.js`, `climate.js`, `terrain.js`), run headless by
   `engine/rooti.mjs`. The first plan for a plot takes up to a minute, mostly waiting on SoilGrids. After that it is
@@ -54,6 +56,12 @@ rooti-llamada ── call/ page ── WebRTC (Pipecat) ── Groq Whisper → 
 
   Each alert is a voice note followed by the call button. If nobody opens the call within 4 hours, a short reminder
   follows.
+- **The pages** (`src/rooti_bot/web.py`): the buttons open the web app itself, served at `/app/` next to the call
+  page, signed in as that farmer by the same kind of signed link. There is one lot, in `rooti.db`: what the farmer
+  marks on the map, Rooti knows in the chat and confirms there; the plan they pick on the page reaches the chat and
+  the model's context. An alert's «Ver el aviso» opens the coming days' rain and the call button. The other way
+  round, the public website's «Continuar en WhatsApp» turns a plan into a code (`RT-XXXX`) that the farmer sends to
+  Rooti, and the plugin brings that lot into the chat before the model reads the message.
 - **The call** (`call/`, `src/rooti_bot/call_server.py`): the button's link carries a signed token (48 h), so the
   page knows whose plot it is and which alert it answers. The page sends the microphone over WebRTC to Pipecat's
   SmallWebRTC, peer to peer. Rooti speaks first about the alert and the farmer can interrupt it.
@@ -70,6 +78,7 @@ repo root). Set these variables:
 | `ROOTI_CALL_SECRET` | Optional: signs the call links. Without it, Rooti makes one in the volume on first use |
 | `ROOTI_CALL_URL` | The public HTTPS address of port 7860 (the call page; browsers allow the microphone only on HTTPS) |
 | `ROOTI_OPERATOR` | Optional: your number, for Hermes' own deliveries |
+| `ROOTI_WHATSAPP` | Optional: Rooti's number for the pages' WhatsApp buttons; by default the number the bridge is linked to |
 | `ROOTI_ICE_SERVERS` | Optional: STUN/TURN servers as JSON (see the limits below) |
 
 Rooti needs its own number, not Vinci's: a prepaid SIM is enough. Link it once, with the gateway stopped, from the
@@ -97,6 +106,9 @@ the last week), in the container's terminal:
 rooti-bot tiempos [--dias 7]
 ```
 
+For the public website (`server/server.mjs`) to show «Continuar en WhatsApp», set `ROOTI_BOT_URL` (the address
+above) and `ROOTI_WHATSAPP` on that app too.
+
 ## Known limits
 
 - **The bridge is an unofficial WhatsApp client**, as with Vinci, and WhatsApp may ban a number that uses it. Alerts
@@ -108,6 +120,8 @@ rooti-bot tiempos [--dias 7]
 - **Call audio is UDP between the phone and the server.** On a server behind Docker's bridge network, or for a
   phone behind a carrier's CGNAT, it needs a TURN relay (coturn, or a hosted one) in `ROOTI_ICE_SERVERS`, or the
   container on host networking.
+- **«Marcar mi lote» loads the web app's 3D map (Cesium)** on the farmer's phone: a few MB of mobile data the first
+  time.
 - **No pest alerts:** Rooti has no pest data yet.
 - **The E2E skips voice notes:** voice in and voice out depend on Groq and Hermes' own voice reply, which a test
   with fake keys cannot run. A voice note to the real number is the check.

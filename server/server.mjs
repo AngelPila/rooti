@@ -1,5 +1,6 @@
 // Rooti web: serves the static app and a small API for Vecinos, backed by Postgres.
-// Env: DATABASE_URL (Postgres), PORT (default 3000), APP_DIR (default ../app), TRUST_PROXY=1 behind Coolify's proxy.
+// Env: DATABASE_URL (Postgres), PORT (default 3000), APP_DIR (default ../app), TRUST_PROXY=1 behind Coolify's proxy,
+// ROOTI_BOT_URL and ROOTI_WHATSAPP (Rooti on WhatsApp: its public address and number) for «Continuar en WhatsApp».
 // Without DATABASE_URL the API answers 503 and the app falls back to its example posts and this phone's storage.
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
@@ -153,6 +154,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === "/healthz") return send(res, 200, { ok: true, db: !!db });
     if (url.pathname.startsWith("/api/vecinos")) return await api(req, res, url);
+    if (url.pathname === "/data/bot.json" && process.env.ROOTI_BOT_URL) return send(res, 200, { url: process.env.ROOTI_BOT_URL, whatsapp: (process.env.ROOTI_WHATSAPP || "").replace(/\D/g, "") });
     if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); return res.end(); }
     return await serveStatic(req, res, url);
   } catch (e) {
