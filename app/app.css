@@ -820,7 +820,7 @@ body.drawing .search, body.drawing .geo, body.drawing .gps, body.drawing .pf-nex
 
 /* ---------- Su terreno: the scene fills the screen, everything else floats on it ---------- */
 body.r-terreno { overflow: hidden; }
-body.r-terreno .res.terreno.full { position: fixed; inset: 0; z-index: 1; padding: 0; gap: 0; display: block; }
+body.r-terreno .res.terreno.full { position: fixed; inset: 0; z-index: 1; padding: 0; gap: 0; display: block; max-width: none; width: auto; margin: 0; }
 .res.terreno.full .p3 { position: absolute; inset: 0; border: 0; border-radius: 0; background: #2C3A31; }
 .res.terreno.full .p3-stage { position: absolute; inset: 0; height: auto; min-height: 0; }
 .res.terreno.full .p3-stage::after { background: linear-gradient(180deg, rgba(17, 27, 23, .35), transparent 18%, transparent 75%, rgba(17, 27, 23, .45)); }
