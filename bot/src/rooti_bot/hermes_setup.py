@@ -88,6 +88,9 @@ def managed_config(home: Path, bot: str) -> dict:
                                           "ROOTI_NODE": config.node_bin()},
                                   "timeout": 180, "tools": {"resources": False, "prompts": False}}},
         "gateway": {"message_timestamps": {"enabled": True}},
+        # Hermes pings the home channel (the operator's number) with «♻️ Gateway en línea» on every boot, so each
+        # redeploy texted that person; its other operator notices are already off (suppress_warning_notifications).
+        "platforms": {"whatsapp": {"gateway_restart_notification": False}},
         # Hermes' WhatsApp default posts a line per tool call, and its warnings are English and for an operator.
         "display": {"suppress_warning_notifications": True, "busy_ack_enabled": False,
                     "platforms": {"whatsapp": {"tool_progress": "off", "busy_ack_detail": False}}},
