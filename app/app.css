@@ -160,6 +160,13 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 .bottom-nav a { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 7px; border-radius: 16px; text-decoration: none; color: rgba(243, 240, 229, .65); font: 500 10px/1 var(--f-mono); letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
 .bottom-nav a .icon { width: 22px; height: 22px; }
 .bottom-nav a[aria-current="page"] { background: rgba(243, 240, 229, .1); color: var(--lime); }
+.tabs, .seg { position: relative; }
+.tabs a, .bottom-nav a, .seg button { position: relative; z-index: 1; }
+.tab-ghost { position: absolute; z-index: 0; border-radius: 16px; background: rgba(243, 240, 229, .1); pointer-events: none; }
+.tabs .tab-ghost, .seg .tab-ghost { border-radius: 12px; background: var(--forest); }
+.tabs a.sliding[aria-current="page"], .bottom-nav a.sliding[aria-current="page"], .seg button.sliding[aria-pressed="true"] { background: transparent; }
+.tabs a.dim[aria-current="page"], .seg button.dim[aria-pressed="true"] { color: var(--lichen); }
+.bottom-nav a.dim[aria-current="page"] { color: rgba(243, 240, 229, .65); }
 
 /* ---------- landing ---------- */
 .landing { display: flex; flex-direction: column; background: var(--cream); }
@@ -187,6 +194,30 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 @keyframes lead { from { opacity: 0; transform: translateY(18px); } }
 @keyframes support { from { opacity: 0; transform: translateY(8px); } }
 @keyframes fade { from { opacity: 0; } }
+/* The landing answers the scroll: the hero falls behind the rising sheet, photos open out of a smaller window and headings darken
+   as they arrive. Nothing turns see-through mid-way; individual translate/scale leave `transform` free for press feedback. */
+@supports (animation-timeline: view()) {
+  .motion .hero-img { animation: hero-drift linear both; animation-timeline: scroll(root); animation-range: 0 100svh; }
+  .motion .hero-copy, .motion .hero-art { animation: hero-behind linear both; animation-timeline: scroll(root); animation-range: 0 90svh; }
+  .motion .l-sheet { animation: sheet-flat linear both; animation-timeline: scroll(root); animation-range: 0 70svh; }
+  .motion .l-sheet .h2 { animation: ink linear both; animation-timeline: view(); animation-range: entry 20% cover 40%; }
+  .motion .how { animation: lift linear both; animation-timeline: view(); animation-range: entry 0% entry 100%; }
+  .motion .how:nth-child(2) { animation-name: lift-2; }
+  .motion .how:nth-child(3) { animation-name: lift-3; }
+  .motion .demo-card { animation: open-out linear both; animation-timeline: view(); animation-range: entry 0% entry 100%; }
+  .motion .demo-card img { animation: img-settle linear both; animation-timeline: view(); animation-range: entry 0% cover 50%; }
+  .motion .l-foot .lockup { animation: from-below linear both; animation-timeline: view(); animation-range: entry 0% entry 100%; }
+}
+@keyframes hero-drift { to { translate: 0 22%; } }
+@keyframes hero-behind { 60% { opacity: 1; } to { opacity: .35; translate: 0 18vh; scale: .96; } }
+@keyframes sheet-flat { from { border-radius: 140px 140px 0 0; } }
+@keyframes ink { from { color: var(--parchment-2); } }
+@keyframes lift { from { translate: 0 48px; } }
+@keyframes lift-2 { from { translate: 0 80px; } }
+@keyframes lift-3 { from { translate: 0 112px; } }
+@keyframes open-out { from { clip-path: inset(14% 10% 0 10% round 96px); } to { clip-path: inset(0 round var(--r-card-l)); } }
+@keyframes img-settle { from { scale: 1.2; } }
+@keyframes from-below { from { translate: 0 70%; } }
 .l-sheet { position: relative; z-index: 3; margin-top: -48px; background: var(--cream); border-radius: 48px 48px 0 0; padding: 48px 0 0; }
 .l-wrap { max-width: 1280px; margin: 0 auto; padding: 0 var(--side); display: flex; flex-direction: column; gap: 28px; }
 .l-how { display: grid; grid-template-columns: 1fr; gap: 10px; }
