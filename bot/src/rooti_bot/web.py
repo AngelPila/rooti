@@ -130,6 +130,8 @@ def mount(api: FastAPI) -> None:
             raise HTTPException(400, str(exc)) from None
         before = store.get(session["phone"]) or {}
         farmer = store.update(session["phone"], **fields)
+        if (before.get("lat"), before.get("lon")) != (farmer.get("lat"), farmer.get("lon")):
+            engine.warm(farmer["lat"], farmer["lon"])  # the chat may ask before the confirmation's plan below
         if fields.get("crops") and any(before.get(k) != farmer.get(k) for k in LOT_KEYS):
             _later(session["phone"], _confirm_lot)
         return {"saved": sorted(fields)}
@@ -159,6 +161,7 @@ def mount(api: FastAPI) -> None:
         except (lots.LotError, ValueError) as exc:
             raise HTTPException(400, str(exc)) from None
         number = config.whatsapp_number()
+        engine.warm(fields["lat"], fields["lon"])  # while the farmer opens WhatsApp and sends the code
         return {"code": store.add_handoff(fields), "whatsapp": number}
 
     # Links sent before the website moved to the root still open
