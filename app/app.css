@@ -160,12 +160,12 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 .bottom-nav a { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 7px; border-radius: 16px; text-decoration: none; color: rgba(243, 240, 229, .65); font: 500 10px/1 var(--f-mono); letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
 .bottom-nav a .icon { width: 22px; height: 22px; }
 .bottom-nav a[aria-current="page"] { background: rgba(243, 240, 229, .1); color: var(--lime); }
-.tabs { position: relative; }
-.tabs a, .bottom-nav a { position: relative; z-index: 1; }
+.tabs, .seg { position: relative; }
+.tabs a, .bottom-nav a, .seg button { position: relative; z-index: 1; }
 .tab-ghost { position: absolute; z-index: 0; border-radius: 16px; background: rgba(243, 240, 229, .1); pointer-events: none; }
-.tabs .tab-ghost { border-radius: 12px; background: var(--forest); }
-.tabs a.sliding[aria-current="page"], .bottom-nav a.sliding[aria-current="page"] { background: transparent; }
-.tabs a.dim[aria-current="page"] { color: var(--lichen); }
+.tabs .tab-ghost, .seg .tab-ghost { border-radius: 12px; background: var(--forest); }
+.tabs a.sliding[aria-current="page"], .bottom-nav a.sliding[aria-current="page"], .seg button.sliding[aria-pressed="true"] { background: transparent; }
+.tabs a.dim[aria-current="page"], .seg button.dim[aria-pressed="true"] { color: var(--lichen); }
 .bottom-nav a.dim[aria-current="page"] { color: rgba(243, 240, 229, .65); }
 
 /* ---------- landing ---------- */
@@ -194,6 +194,26 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 @keyframes lead { from { opacity: 0; transform: translateY(18px); } }
 @keyframes support { from { opacity: 0; transform: translateY(8px); } }
 @keyframes fade { from { opacity: 0; } }
+/* The landing answers the scroll: the hero drifts away under the rising sheet and each section settles in as it enters.
+   Individual translate/scale leave `transform` free for press feedback; browsers without scroll timelines show it all still. */
+@supports (animation-timeline: view()) {
+  .motion .hero-img { animation: hero-drift linear both; animation-timeline: scroll(root); animation-range: 0 100svh; }
+  .motion .hero-copy, .motion .hero-art, .motion .hero-source { animation: hero-away linear both; animation-timeline: scroll(root); animation-range: 0 65svh; }
+  .motion .l-sheet { animation: sheet-flat linear both; animation-timeline: scroll(root); animation-range: 0 60svh; }
+  .motion .l-sheet .h2 { animation: ink linear both; animation-timeline: view(); animation-range: entry 0% cover 30%; }
+  .motion .how, .motion .demo-card, .motion .l-boot { animation: settle linear both; animation-timeline: view(); animation-range: entry 0% cover 28%; }
+  .motion .how:nth-child(2), .motion .demo-card:nth-child(2) { animation-range: entry 8% cover 36%; }
+  .motion .how:nth-child(3), .motion .demo-card:nth-child(3) { animation-range: entry 16% cover 44%; }
+  .motion .demo-card img { animation: img-settle linear both; animation-timeline: view(); animation-range: entry 0% cover 60%; }
+  .motion .l-foot .lockup { animation: rise-big linear both; animation-timeline: view(); animation-range: entry 0% entry 100%; }
+}
+@keyframes hero-drift { to { translate: 0 16%; scale: 1.08; } }
+@keyframes hero-away { to { opacity: 0; translate: 0 -64px; } }
+@keyframes sheet-flat { from { border-radius: 120px 120px 0 0; } }
+@keyframes ink { from { opacity: .15; translate: 0 24px; } }
+@keyframes settle { from { opacity: 0; translate: 0 72px; scale: .94; } }
+@keyframes img-settle { from { scale: 1.18; } }
+@keyframes rise-big { from { opacity: 0; translate: 0 50%; } }
 .l-sheet { position: relative; z-index: 3; margin-top: -48px; background: var(--cream); border-radius: 48px 48px 0 0; padding: 48px 0 0; }
 .l-wrap { max-width: 1280px; margin: 0 auto; padding: 0 var(--side); display: flex; flex-direction: column; gap: 28px; }
 .l-how { display: grid; grid-template-columns: 1fr; gap: 10px; }

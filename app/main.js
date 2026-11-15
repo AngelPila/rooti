@@ -1042,9 +1042,12 @@ function viewComparar() {
         h("h2", { class: "display phone-only", style: { fontSize: "22px" } }, c.cmpTitle),
         // Swaps only the calendar so the pressed button keeps keyboard focus.
         h("div", { class: "seg cmp-seg" }, ...[["rec", recName], ["mine", c.mine]].map(([k, l]) => h("button", { "aria-pressed": String((state.cmpView || "rec") === k), onclick: (e) => {
+          const seg = e.currentTarget.parentElement, from = activeRect(seg, '[aria-pressed="true"]'), d = k === "rec" ? -1 : 1;
           state.cmpView = k;
-          for (const bt of e.currentTarget.parentElement.children) bt.setAttribute("aria-pressed", String(bt === e.currentTarget));
+          for (const bt of seg.querySelectorAll("button")) bt.setAttribute("aria-pressed", String(bt === e.currentTarget));
+          slidePill(seg, from, '[aria-pressed="true"]');
           put($("#cmpCal"), k === "rec" ? calCard(recName, rec) : calCard(c.mine, mine));
+          if (MOTION()) $("#cmpCal").animate([{ opacity: 0, transform: `translateX(${d * 12}px)` }, { opacity: 1, transform: "none" }], { duration: 200, easing: EASE_OUT });
         } }, l))),
         h("div", { id: "cmpCal" }, (state.cmpView || "rec") === "rec" ? calCard(recName, rec) : calCard(c.mine, mine)),
         h("section", { class: "card cmp-bars" }, h("div", { class: "cmp-key" }, h("span", {}, h("i", { class: "a" }), recName), h("span", {}, h("i", { class: "b" }), c.mine)),
@@ -1308,9 +1311,11 @@ function route() {
 }
 const TAB_ORDER = ["plan", "terreno", "probar", "comparar", "vecinos"];
 const tabIx = (r) => TAB_ORDER.indexOf(r === "pasado" ? "plan" : r);
-// The active tab's background travels from the previous tab instead of jumping; the nav itself is rebuilt on every route.
-function slideTab(nav, from) {
-  const to = nav?.querySelector('[aria-current="page"]');
+const EASE_OUT = "cubic-bezier(.16, 1, .3, 1)";
+const activeRect = (box, sel) => box?.querySelector(sel)?.getBoundingClientRect();
+// The active background travels from the previous choice instead of jumping; navs are rebuilt on every route.
+function slidePill(nav, from, sel = '[aria-current="page"]') {
+  const to = nav?.querySelector(sel);
   if (!from || !to || !MOTION()) return;
   const n = nav.getBoundingClientRect(), b = to.getBoundingClientRect();
   if (Math.abs(from.left - b.left) < 1) return;
@@ -1319,14 +1324,13 @@ function slideTab(nav, from) {
   to.classList.add("sliding", "dim");
   // The label turns active halfway, when the pill is under it, so it never sits light-on-light
   setTimeout(() => to.classList.remove("dim"), 140);
-  ghost.animate([{ transform: `translateX(${from.left - b.left}px)`, width: `${from.width}px` }, { transform: "none", width: `${b.width}px` }], { duration: 320, easing: "cubic-bezier(.16, 1, .3, 1)" })
+  ghost.animate([{ transform: `translateX(${from.left - b.left}px)`, width: `${from.width}px` }, { transform: "none", width: `${b.width}px` }], { duration: 320, easing: EASE_OUT })
     // The ghost leaves only after the tab's own background has faded back in under it
     .finished.then(() => { to.classList.remove("sliding"); setTimeout(() => ghost.remove(), 200); });
 }
 function renderChrome(r) {
   const c = C(), P = state.plan, isRes = RESULTS.includes(r);
-  const was = (sel) => document.querySelector(`${sel} [aria-current="page"]`)?.getBoundingClientRect();
-  const fromTop = was("#topbar .tabs"), fromBottom = was("#bottom-nav");
+  const fromTop = activeRect($("#topbar .tabs"), '[aria-current="page"]'), fromBottom = activeRect($("#bottom-nav"), '[aria-current="page"]');
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
@@ -1336,17 +1340,23 @@ function renderChrome(r) {
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, icon(ic), l)));
-  slideTab($("#topbar .tabs"), fromTop);
-  slideTab($("#bottom-nav"), fromBottom);
+  slidePill($("#topbar .tabs"), fromTop);
+  slidePill($("#bottom-nav"), fromBottom);
   if (r !== "planear") put($("#map-overlay"));
 }
 let shownRoute = null;
 // Between tabs the new screen enters from the side of the tab that was pressed; the year-by-year view rises from the plan.
 function enterView(prev, r) {
+  if (MOTION() && (prev === "planear" || prev === "") && r === "plan") return revealPlan();
   if (!MOTION() || prev === r || !RESULTS.includes(prev) || !RESULTS.includes(r) || tabIx(prev) < 0 || tabIx(r) < 0) return;
   const d = Math.sign(tabIx(r) - tabIx(prev)), v = $("#view");
   v.getAnimations().forEach((a) => a.cancel());
-  v.animate([{ opacity: 0, transform: d ? `translateX(${d * 28}px)` : "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 280, easing: "cubic-bezier(.16, 1, .3, 1)" });
+  v.animate([{ opacity: 0, transform: d ? `translateX(${d * 28}px)` : "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 280, easing: EASE_OUT });
+}
+// Arriving at a new plan is rare and is what the farmer came for: its parts come in one after another.
+function revealPlan() {
+  const parts = document.querySelectorAll("#view .res-head, #view .nino-note, #view .pv-a, #view .pv-right, #view .pv-b, #view .pv-cards .strat, #view .pv-foot, #view .res.pv > .hint, #view .res.pv > .card");
+  parts.forEach((el, i) => el.animate([{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 480, delay: Math.min(i, 8) * 55, easing: EASE_OUT, fill: "backwards" }));
 }
 async function render() {
   const { r, arg } = route();
