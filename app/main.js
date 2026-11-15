@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=53";
+import { COPY } from "./copy.js?v=54";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -288,7 +288,14 @@ function viewLanding() {
         h("div", { class: "hero-actions" }, h("button", { class: "btn lime big", onclick: start }, c.cta, dot()), h("button", { class: "btn glass big", onclick: () => openDemo("daule") }, D.example, dot()))),
       h("p", { class: "hero-source mono" }, D.source)),
     h("section", { class: "l-sheet" }, h("div", { class: "l-wrap" },
-      h("div", { class: "l-how", id: "how" }, ...D.how.map(([ic, t, d]) => h("div", { class: "how" }, h("span", { class: "tile-i dark" }, icon(ic)), h("b", {}, t), h("p", {}, d)))),
+      h("div", { class: "l-stats" }, ...D.howStats.map(([n, t]) => h("div", { class: "l-stat" }, h("b", {}, n), h("span", {}, t)))),
+      h("div", { class: "l-how-head", id: "how" }, h("span", { class: "eyebrow lime-tag" }, D.howEyebrow), h("h2", { class: "h2" }, D.howTitle)),
+      h("div", { class: "l-how" }, ...D.how.map(([img, t, d, alt], i, all) => {
+        const agent = i === all.length - 1;
+        return h("article", { class: agent ? "how agent" : "how" }, h("img", { src: `img/how/${img}.png`, alt, loading: "lazy" }),
+          agent ? h("span", { class: "eyebrow lime-tag" }, D.howAgent) : null,
+          h("b", {}, h("i", {}, `${i + 1}.`), " ", t), h("p", {}, d));
+      })),
       h("h2", { class: "h2" }, D.examplesTitle),
       h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.png`, alt: "", loading: "lazy" }),
         h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),

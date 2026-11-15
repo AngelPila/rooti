@@ -220,12 +220,22 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 @keyframes from-below { from { translate: 0 70%; } }
 .l-sheet { position: relative; z-index: 3; margin-top: -48px; background: var(--cream); border-radius: 48px 48px 0 0; padding: 48px 0 0; }
 .l-wrap { max-width: 1920px; margin: 0 auto; padding: 0 var(--side); display: flex; flex-direction: column; gap: 28px; }
-.l-how { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.how { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 14px; row-gap: 4px; padding: 18px; border-radius: var(--r-card); background: var(--paper); border: 1px solid var(--line); }
-.how .tile-i { grid-row: span 2; width: 44px; height: 44px; border-radius: 13px; }
-.how .tile-i .icon { width: 24px; height: 24px; }
-.how b { font-weight: 500; font-size: 18px; letter-spacing: -.01em; }
-.how p { color: var(--lichen); font-size: 15px; }
+.l-stats { display: grid; grid-template-columns: 1fr; gap: 20px; text-align: center; }
+.l-stat { padding: 0 20px; }
+.l-stat b { display: block; font: 450 44px/1 var(--f-display); letter-spacing: -.045em; color: var(--forest); }
+.l-stat span { display: block; margin-top: 8px; font-size: 15px; color: var(--lichen); }
+.l-how-head { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; margin-top: 24px; }
+.lime-tag { background: var(--lime); color: var(--forest); padding: 7px 10px; border-radius: 8px; }
+.l-how-head .h2 { font-size: 36px; }
+.l-how { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.how { display: flex; flex-direction: column; gap: 18px; padding: 12px 12px 24px; border-radius: var(--r-card-l); background: var(--paper); border: 1px solid var(--line-2); }
+.how img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 22px; background: var(--parchment); }
+.how b { padding: 0 12px; font-weight: 500; font-size: 22px; letter-spacing: -.03em; }
+.how b i { font-style: normal; font-weight: 400; color: var(--lichen); }
+.how p { padding: 0 12px; color: var(--lichen); font-size: 16px; max-width: 46ch; }
+.how.agent { background: var(--forest); border-color: var(--forest); color: var(--cream); }
+.how.agent b i, .how.agent p { color: var(--moss); }
+.how .lime-tag { align-self: flex-start; margin: 0 12px -8px; }
 .l-demos { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .demo-card { position: relative; display: block; border: 0; padding: 0; border-radius: var(--r-card-l); overflow: hidden; color: var(--cream); aspect-ratio: 4 / 4.4; text-align: left; background: var(--forest); }
 .demo-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
@@ -250,9 +260,15 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
   .l-nav { margin-top: 16px; max-width: calc(1920px - 2 * var(--side)); width: calc(100% - 2 * var(--side)); align-self: center; padding-left: 22px; background: rgba(233, 229, 213, .14); }
   .l-links .btn { font-size: 13px; }
   .l-sheet { margin-top: -96px; border-radius: 96px 96px 0 0; padding-top: 88px; }
-  .l-how { grid-template-columns: repeat(3, 1fr); }
-  .how { grid-template-columns: 1fr; padding: 24px; row-gap: 10px; }
-  .how .tile-i { grid-row: auto; margin-bottom: 18px; }
+  .l-stats { grid-template-columns: repeat(3, 1fr); max-width: 900px; width: 100%; margin: 0 auto 32px; gap: 0; }
+  .l-stat + .l-stat { border-left: 1px solid var(--line-2); }
+  .l-stat b { font-size: 52px; }
+  .l-how-head { margin-top: 24px; }
+  .l-how-head .h2 { font-size: 52px; }
+  .l-how { grid-template-columns: repeat(2, 1fr); gap: 20px; max-width: 1200px; width: 100%; margin: 0 auto 48px; }
+  .how { padding: 14px 14px 28px; gap: 22px; }
+  .how b { font-size: 26px; padding: 0 14px; }
+  .how p { padding: 0 14px; }
   .l-demos { grid-template-columns: repeat(3, 1fr); }
   .l-foot .lockup { font-size: 200px; }
 }
