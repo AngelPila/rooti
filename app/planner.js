@@ -227,9 +227,12 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
   }
   // Recommended farm: one plot per crop that holds up, each plot led by that crop and rotated with the others;
   // more land to the plots that yield more, at least 15 % each so no crop carries the whole farm.
+// At most three plots: with many crops picked, one plot each split a small farm into slivers nobody would farm.
+  const MAX_PLOTS = 3;
   const viable = ids.filter((id) => (windows[id].best?.value ?? 0) >= 0.35);
   const leads = (viable.length ? viable : ids).map((id) => best(ids, id)).filter((r) => r.steps.length);
-  const seenL = new Set(), uniqL = leads.filter((r) => { const k = r.steps.map((x) => `${x.crop}@${x.t0}`).join(","); if (seenL.has(k)) return false; seenL.add(k); return true; });
+  const seenL = new Set(), uniqL = leads.filter((r) => { const k = r.steps.map((x) => `${x.crop}@${x.t0}`).join(","); if (seenL.has(k)) return false; seenL.add(k); return true; })
+    .sort((a, b) => b.v - a.v).slice(0, MAX_PLOTS);
   let farm = null;
   if (uniqL.length) {
     const w = uniqL.map((r) => Math.exp(1.5 * r.v)), ws = w.reduce((a, b) => a + b, 0);
