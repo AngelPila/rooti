@@ -6,13 +6,12 @@ const SG = "https://rest.isric.org/soilgrids/v2.0/properties/query";
 const PROPS = ["clay", "sand", "phh2o", "soc", "nitrogen"];
 const SCALE = { clay: 10, sand: 10, phh2o: 10, soc: 10, nitrogen: 100 }; // mapped units -> %, %, pH, g/kg, g/kg
 
-const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
-const getJSON = async (url, ms = 15000) => { const r = await withTimeout(fetch(url), ms); if (!r.ok) throw new Error(r.status); return r.json(); };
+const getJSON = async (url, ms, signal = AbortSignal.timeout(ms)) => { const r = await fetch(url, { signal }); if (!r.ok) throw new Error(r.status); return r.json(); };
 
-async function elevationAndSlope(lat, lon) {
+async function elevationAndSlope(lat, lon, signal) {
   const d = 0.0027; // ~300 m
   const la = [lat, lat + d, lat - d, lat, lat], lo = [lon, lon, lon, lon + d, lon - d];
-  const r = await getJSON(`${ELEV}?latitude=${la.join(",")}&longitude=${lo.join(",")}`, 10000);
+  const r = await getJSON(`${ELEV}?latitude=${la.join(",")}&longitude=${lo.join(",")}`, 10000, signal);
   const [z0, zn, zs, ze, zw] = r.elevation, dy = 2 * d * 111320, dx = 2 * d * 111320 * Math.cos((lat * Math.PI) / 180);
   const slope = Math.hypot((zn - zs) / dy, (ze - zw) / dx) * 100;
   return { elevation: Math.round(z0), slopePct: +slope.toFixed(1) };
@@ -29,12 +28,13 @@ function parseSoil(j) {
   }
   return Object.keys(out).length ? out : null;
 }
-async function soilAt(lat, lon) {
+async function soilAt(lat, lon, signal) {
   // SoilGrids takes 6-9 s a query and answers parallel ones in a queue (four take ~35 s): 15 s cut most of them off.
-  const q = (la, lo) => getJSON(`${SG}?lon=${lo.toFixed(4)}&lat=${la.toFixed(4)}&${PROPS.map((p) => "property=" + p).join("&")}&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean`, 30000).then(parseSoil).catch(() => null);
+  const q = (la, lo) => getJSON(`${SG}?lon=${lo.toFixed(4)}&lat=${la.toFixed(4)}&${PROPS.map((p) => "property=" + p).join("&")}&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean`, 30000, signal).then(parseSoil).catch(() => null);
   const first = await q(lat, lon);
   if (first) return { ...first, offsetKm: 0 };
   for (const km of [3, 6]) {
+    if (signal?.aborted) break;
     const d = km / 111;
     const ring = await Promise.all([[d, 0], [-d, 0], [0, d], [0, -d]].map(([a, b]) => q(lat + a, lon + b)));
     const ok = ring.filter(Boolean);
@@ -43,10 +43,10 @@ async function soilAt(lat, lon) {
   return null;
 }
 
-export async function fetchTerrain(lat, lon, pilotSoil = null) {
+export async function fetchTerrain(lat, lon, pilotSoil = null, { signal } = {}) {
   const key = `rooti:terrain:v2:${lat.toFixed(3)},${lon.toFixed(3)}`;
   try { const c = JSON.parse(localStorage.getItem(key)); if (c) return c; } catch { /* no cache */ }
-  const [topo, soil] = await Promise.all([elevationAndSlope(lat, lon).catch(() => null), pilotSoil ? Promise.resolve({ ...pilotSoil, offsetKm: 0, source: "pilot" }) : soilAt(lat, lon)]);
+  const [topo, soil] = await Promise.all([elevationAndSlope(lat, lon, signal).catch(() => null), pilotSoil ? Promise.resolve({ ...pilotSoil, offsetKm: 0, source: "pilot" }) : soilAt(lat, lon, signal)]);
   const t = { ...(topo || {}), soil };
   // Kept only with its soil: a soil query that timed out once would otherwise stay missing for good.
   if (soil) try { localStorage.setItem(key, JSON.stringify(t)); } catch { /* quota */ }

@@ -1,7 +1,7 @@
-import { fetchClimate } from "./climate.js?v=22";
+import { fetchClimate } from "./climate.js?v=23";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
 import { COPY } from "./copy.js?v=56";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=23";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=24";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
@@ -159,23 +159,47 @@ async function loadBase() {
 }
 function climate(pl) {
   const k = `${pl.lat.toFixed(2)},${pl.lon.toFixed(2)}`, dk = demoKey(pl);
-  return (DATA.clim[k] ||= (dk ? loadDemo(dk).then((d) => d.clim) : fetchClimate(pl.lat, pl.lon)).catch((e) => { delete DATA.clim[k]; throw e; }));
+  return (DATA.clim[k] ||= (dk ? loadDemo(dk).then((d) => d.clim) : fetchClimate(pl.lat, pl.lon, { signal: AbortSignal.timeout(8500) })).catch((e) => { delete DATA.clim[k]; throw e; }));
+}
+let prefetchTimer;
+function prefetchPlace(place) {
+  clearTimeout(prefetchTimer);
+  prefetchTimer = setTimeout(() => {
+    climate(place).catch(() => {});
+    terrain(place, true).catch(() => {});
+  }, 350);
 }
 // Plot data: elevation, slope and soil for any point; in the pilot zones our own soil and satellite water data.
-async function terrain(pl) {
+function terrain(pl, preload = false) {
   const k = `${pl.lat.toFixed(3)},${pl.lon.toFixed(3)}`, z = nearPilot(pl);
-  if (!DATA.terrain[k]) DATA.terrain[k] = (async () => {
-    let pilotSoil = null, pilotWater = null;
-    if (z) {
-      const [zd, sw] = await Promise.all([fetch(`data/${z}.json`).then(ok).catch(() => null), fetch("data/surface_water.json").then(ok).catch(() => null)]);
-      const so = zd?.soil; if (so?.clay) pilotSoil = { clay: so.clay.value_0_30cm, sand: so.sand.value_0_30cm, phh2o: so.phh2o.value_0_30cm, soc: so.soc.value_0_30cm, nitrogen: so.nitrogen?.value_0_30cm };
-      pilotWater = sw?.zones?.[z]?.waterlogging_index ?? null;
-    }
-    const dk = demoKey(pl);
-    const t = dk ? await loadDemo(dk).then((d) => d.terrain) : await fetchTerrain(pl.lat, pl.lon, pilotSoil).catch(() => ({ soil: null }));
-    return { ...t, pilotWater, zone: z };
-  })();
-  return DATA.terrain[k];
+  if (!DATA.terrain[k]) {
+    const controller = new AbortController(), { signal } = controller;
+    let deadline = setTimeout(() => controller.abort(), 20000);
+    let waiting = false, done = false;
+    const promise = (async () => {
+      let pilotSoil = null, pilotWater = null;
+      const dk = demoKey(pl);
+      const bundled = dk ? loadDemo(dk).then((d) => d.terrain).catch(() => ({ soil: null })) : null;
+      if (z) {
+        const pilotData = (url) => fetch(url, { signal }).then(ok).catch(() => null);
+        const [zd, sw] = await Promise.all([pilotData(`data/${z}.json`), pilotData("data/surface_water.json")]);
+        const so = zd?.soil; if (so?.clay) pilotSoil = { clay: so.clay.value_0_30cm, sand: so.sand.value_0_30cm, phh2o: so.phh2o.value_0_30cm, soc: so.soc.value_0_30cm, nitrogen: so.nitrogen?.value_0_30cm };
+        pilotWater = sw?.zones?.[z]?.waterlogging_index ?? null;
+      }
+      const t = await (bundled ?? fetchTerrain(pl.lat, pl.lon, pilotSoil, { signal })).catch(() => ({ soil: null }));
+      return { ...t, pilotWater, zone: z };
+    })().finally(() => { done = true; clearTimeout(deadline); });
+    DATA.terrain[k] = { promise, limitWait() {
+      // Fetch early, but limit the time terrain can hold the results screen.
+      if (done || waiting) return;
+      waiting = true;
+      clearTimeout(deadline);
+      deadline = setTimeout(() => controller.abort(), 5000);
+    } };
+  }
+  const request = DATA.terrain[k];
+  if (!preload) request.limitWait();
+  return request.promise;
 }
 function siteOf(t, P) {
   const d = describeSoil(t?.soil);
@@ -514,7 +538,7 @@ function viewPlanear(stepArg) {
   const nextBtn = (label, okk, to) => h("button", { class: "btn dark big block", disabled: !okk, onclick: to }, label);
   let body;
   if (n === 1) {
-    const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); };
+    const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; prefetchPlace(pl); redo(); };
     state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
     const box = h("div", { class: "mapbox" });
     body = [title(c.whereQ, c.whereHelp), ...(d.place ? [] : searchBox(pick)), box, d.place ? placeCard(d, () => { d.place = null; d.lot = null; state.drawing = false; redo(); }) : h("p", { class: "small" }, c.tapMap), d.place ? lotTools(d, redo) : null, state.drawing ? null : gpsBtn(pick), h("div", { class: "spacer" }), nextBtn(c.next, !!d.place, () => go("planear/2"))];
@@ -533,7 +557,7 @@ function viewPlanear(stepArg) {
 // Computer: the map fills the screen; one floating panel with four sections, one open at a time.
 function planDesktop(d) {
   const c = C(), err = dateErr(d), redo = () => keepScroll(() => planDesktop(d));
-  const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); updateMap(pl, null); };
+  const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; prefetchPlace(pl); redo(); updateMap(pl, null); };
   state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
   put($("#map-overlay"), state.drawing ? null : h("div", { class: "map-hint" }, icon("i-pointer"), d.place ? c.lot.clickMore : c.clickMap));
   const done = { 1: !!d.place, 2: !err, 3: hasCrop(d.crops), 4: true };
@@ -860,7 +884,7 @@ function sourceNote(r, f) {
 function viewPlan(arg) {
   return withResults(async (r) => {
     const c = C(), D = c.ds, P = state.plan, N = r.period.length, multi = r.samples.length > 1;
-    const [plans, ids] = await Promise.all([namedPlans(P), ideas(r), loadVecinos()]);
+    const plans = await namedPlans(P);
     if (!plans.length) { put($("#view"), h("div", { class: "res" }, resHead(P), h("div", { class: "card" }, h("p", {}, c.noPlans), h("a", { class: "btn dark", href: "#/planear" }, c.changeData)))); return; }
     // When what the farmer does today loses a harvest in fewer years than any new plan, say so plainly
     const today = plans.find((x) => x.key === "today"), newBest = plans.filter((x) => x.key !== "today").reduce((a, b) => (!a || b.f.anyLoss < a.f.anyLoss ? b : a), null);
@@ -910,6 +934,7 @@ function viewPlan(arg) {
     const switcher = h("div", { class: "pv-switch" }, h("a", { class: "pv-back", href: "#/plan" }, icon("i-back"), D.allPlans));
     const legend = h("div", { class: "dots-legend" }, ...["g", "c", "x"].map((k) => h("span", {}, h("i", { class: k, style: { background: { g: "var(--good)", c: "var(--care)", x: "var(--danger)" }[k] } }), D.legend[k])),
       COAST(P.place) ? h("span", {}, h("i", { class: "n" }), D.legend.n) : null);
+    const tips = h("section", { class: "card" }, h("b", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot));
     put($("#view"), h("div", { class: "res pv" },
       resHead(P),
       switcher,
@@ -927,10 +952,17 @@ function viewPlan(arg) {
           h("div", { class: "pv-right", "data-rooti": "cover" }, cal)),
         bar,
         h("div", { class: "pv-foot" }, unknownChips(r, plans[0].f), sourceNote(r, plans[0].f))),
-      ids.length ? h("a", { class: "hint", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(ids.length)), icon("i-chev-r")) : null,
-      h("section", { class: "card" }, h("b", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot)),
+      tips,
       canHandoff() ? handoffCard(P) : null));
     show(false);
+    loadVecinos(P.place).then(() => { if (routeBox.isConnected && state.plan === P) put(routeBox, routeEl(r, cur().f)); });
+    requestAnimationFrame(() => setTimeout(async () => {
+      if (!tips.isConnected || state.plan !== P) return;
+      const suggestions = await ideas(r).catch(() => []);
+      if (suggestions.length && tips.isConnected && state.plan === P) {
+        tips.before(h("a", { class: "hint", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(suggestions.length)), icon("i-chev-r")));
+      }
+    }, 0));
   });
 }
 

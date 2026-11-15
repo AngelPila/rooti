@@ -49,24 +49,38 @@ export function et0Day({ t, tmax, tmin, rh, ws, rs }, lat, elev, m) {
   return Math.max(0, et0);
 }
 
-async function getJSON(url) {
-  const r = await fetch(url, { signal: AbortSignal.timeout(30000) });
+async function getJSON(url, signal = AbortSignal.timeout(30000)) {
+  const r = await fetch(url, { signal });
   if (!r.ok) throw new Error(`POWER ${r.status}`);
   return r.json();
 }
 
-export async function fetchClimate(lat, lon) {
+export async function fetchClimate(lat, lon, { signal } = {}) {
   const la = +lat.toFixed(2), lo = +lon.toFixed(2);
   const cacheKey = `rooti:clim:v2:${(Math.round(la * 4) / 4).toFixed(2)},${(Math.round(lo * 4) / 4).toFixed(2)}`;
-  try { const c = JSON.parse(localStorage.getItem(cacheKey)); if (c && Date.now() - c.at < 7 * 864e5) return c.data; } catch { /* no cache */ }
+  let cached;
+  try { cached = JSON.parse(localStorage.getItem(cacheKey)); if (cached && Date.now() - cached.at < (cached.ttl ?? 7 * 864e5)) return cached.data; } catch { /* no cache */ }
 
   const now = new Date(), y = now.getUTCFullYear();
   const yest = new Date(now - 864e5), ymd = `${yest.getUTCFullYear()}${pad(yest.getUTCMonth() + 1)}${pad(yest.getUTCDate())}`;
   const q = `community=AG&longitude=${lo}&latitude=${la}&format=JSON`;
-  let monthly, lastFull = y - 1;
-  try { monthly = await getJSON(`${API}/monthly/point?parameters=${MONTHLY}&${q}&start=${FIRST_YEAR}&end=${lastFull}`); }
-  catch { lastFull = y - 2; monthly = await getJSON(`${API}/monthly/point?parameters=${MONTHLY}&${q}&start=${FIRST_YEAR}&end=${lastFull}`); }
-  const daily = await getJSON(`${API}/daily/point?parameters=${DAILY}&${q}&start=${lastFull + 1}0101&end=${ymd}`).catch(() => null);
+  const getMonthly = (year) => getJSON(`${API}/monthly/point?parameters=${MONTHLY}&${q}&start=${FIRST_YEAR}&end=${year}`, signal);
+  const getDaily = (start, end) => start <= end ? getJSON(`${API}/daily/point?parameters=${DAILY}&${q}&start=${start}&end=${end}`, signal).catch(() => null) : Promise.resolve(null);
+  let lastFull = y - 1;
+  const currentDaily = getDaily(`${y}0101`, ymd);
+  let precedingDaily = Promise.resolve(null);
+  let monthly;
+  try {
+    monthly = await getMonthly(lastFull).catch(() => {
+      lastFull--;
+      precedingDaily = getDaily(`${lastFull + 1}0101`, `${lastFull + 1}1231`);
+      return getMonthly(lastFull);
+    });
+  } catch (err) {
+    if (cached?.data?.last) return cached.data;
+    throw err;
+  }
+  const daily = (await Promise.all([precedingDaily, currentDaily])).filter(Boolean);
 
   const elev = monthly.geometry?.coordinates?.[2] ?? 0, months = {};
   const P = monthly.properties.parameter, ok = (v) => v != null && v > -900;
@@ -80,8 +94,8 @@ export async function fetchClimate(lat, lon) {
     months[mkey(yy, mm)] = { rain: P.PRECTOTCORR[k] * d, et0: e == null ? null : e * d, hg: hg == null ? null : hg * d, t, tmax: c.tmax, tmin: c.tmin };
   }
   // Recent months from daily data: a month counts only when it is (nearly) complete.
-  if (daily) {
-    const D = daily.properties.parameter, byM = {};
+  for (const batch of daily) {
+    const D = batch.properties.parameter, byM = {};
     for (const k of Object.keys(D.T2M)) {
       const vals = { rain: D.PRECTOTCORR[k], t: D.T2M[k], tmax: D.T2M_MAX[k], tmin: D.T2M_MIN[k], rh: D.RH2M[k], ws: D.WS2M[k], rs: D.ALLSKY_SFC_SW_DWN[k] };
       if (!Object.values(vals).every(ok)) continue;
@@ -99,6 +113,7 @@ export async function fetchClimate(lat, lon) {
   fillMissingEt0(months, la);
   const keys = Object.keys(months).sort();
   const data = { lat: la, lon: lo, elev, months, first: keys[0], last: keys[keys.length - 1], lastFullYear: lastFull };
-  try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data })); } catch { /* quota */ }
+  const ttl = daily.length === (ymd < `${y}0101` ? 0 : 1) + (lastFull === y - 2 ? 1 : 0) ? 7 * 864e5 : 15 * 60e3;
+  try { localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data, ttl })); } catch { /* quota */ }
   return data;
 }
