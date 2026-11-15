@@ -53,6 +53,9 @@ Rules learned from design reviews. Each one comes from a correction the product 
 Applied from the `remove-animations`, `choreograph` and `mobile-native` skills at the owner's request ("instala esos y aplicalos").
 - **Nothing fades in on scroll, numbers count only when their value changes, and no loop runs on a persistent element (the loader is the exception).**
 - **UI transitions stay under 300ms (`--t-fast` 150ms, `--t-base` 250ms); only drawings that explain something (the rain curve, the hero lines) take longer, once.**
+- **On a computer the hero is a scroll stage: it stays pinned while the scroll draws the data sources into "your rotation plan" and out to the four plans, then the sheet rises over it. Labels open with a clip, never a fade-in, and everything runs backwards with the scroll. Phones and reduced motion keep the plain hero.**
+  Why: the owner wanted the Overstory-style "connect every signal" animation on the hero itself ("la idea era de que esto sea para esto").
+  <!-- 2026-11-15 -->
 - **Hover styles live inside `@media (hover: hover) and (pointer: fine)`; every tappable element has an `:active` state instead.**
 
 ## Layout

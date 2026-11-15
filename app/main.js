@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=54";
+import { COPY } from "./copy.js?v=55";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -253,7 +253,7 @@ function smooth(pts) {
   return d;
 }
 // Curves that converge on the headline. Decoration: drawn once, inner lines first, with uneven gaps.
-function heroLines(svg, title) {
+function heroLines(svg, title, animate = true) {
   const art = svg.parentElement;
   if (!art?.isConnected || getComputedStyle(art).display === "none") return;
   const a = art.getBoundingClientRect(), t = title.getBoundingClientRect(), H = a.height, k = H / 860;
@@ -264,13 +264,87 @@ function heroLines(svg, title) {
   const all = [...L, ...L.map(([p, q]) => [[1440 - p[0], p[1]], [1440 - q[0], q[1]]])];
   svg.innerHTML = all.map((l) => `<path d="${curve(l)}"/><circle cx="${l[0][0]}" cy="${l[0][1]}" r="3.5"/><circle cx="${l[1][0]}" cy="${l[1][1]}" r="3"/>`).join("") +
     (top > 140 ? `<path d="M720,110 V${top}"/><circle cx="720" cy="${top}" r="3"/><circle cx="720" cy="110" r="3"/>` : "");
-  if (!MOTION()) return;
+  const geo = { all, top: top > 140 ? top : 0, cy };
+  if (!MOTION() || !animate) return geo;
   const AT = [90, 0, 30, 140];
   svg.querySelectorAll("path").forEach((p, i) => {
     const n = p.getTotalLength(); p.style.strokeDasharray = n;
     p.animate([{ strokeDashoffset: n }, { strokeDashoffset: 0 }], { duration: 1100, delay: 200 + (AT[i % 4] ?? 60), easing: "cubic-bezier(.65,0,.35,1)", fill: "both" });
   });
   svg.querySelectorAll("circle").forEach((c) => c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 1150, fill: "backwards" }));
+  return geo;
+}
+// On a computer the hero holds still while the scroll carries the data on the left into one plan and out to the four plans on the right.
+// It follows the scroll position and runs backwards with it; nothing plays on its own.
+function heroSignals(svg, g, stage, start) {
+  if (!g || !MOTION() || !stage.isConnected) return;
+  const D = C().ds, art = svg.parentElement, hero = stage.firstElementChild, copy = hero.querySelector(".hero-copy"), src = hero.querySelector(".hero-source");
+  const hub = [720, g.cy], R = [56, 112, 176], ring = (r) => 2 * Math.PI * r;
+  const mk = (tag, attrs) => { const n = document.createElementNS(SVGNS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); svg.appendChild(n); return n; };
+  const drawn = (p) => { p.n = p.getTotalLength(); p.style.strokeDasharray = p.n; return p; };
+  const rings = R.map((r) => { const c = mk("circle", { class: "hs-ring", cx: hub[0], cy: hub[1], r, transform: `rotate(-90 ${hub[0]} ${hub[1]})` }); c.n = ring(r); c.style.strokeDasharray = c.n; return c; });
+  const left = g.all.slice(0, 4), right = g.all.slice(4), hx = hub[0] - R[0], ox = hub[0] + R[0];
+  const ins = left.map(([, q]) => drawn(mk("path", { d: `M${q[0]},${q[1]} C${q[0] + 90},${q[1]} ${hx - 60},${hub[1]} ${hx},${hub[1]}` })));
+  if (g.top) ins.push(drawn(mk("path", { d: `M720,${g.top} V${hub[1] - R[0]}` })));
+  const outs = right.map(([, q]) => drawn(mk("path", { class: "hs-out", d: `M${ox},${hub[1]} C${ox + 60},${hub[1]} ${q[0] - 90},${q[1]} ${q[0]},${q[1]}` })));
+  // The art box is 1440 wide and centered, so on narrower screens its edges are cut off; labels stay inside what shows.
+  const vis = Math.max(0, 720 - innerWidth / 2) + 20;
+  const lab = (x, y, cls, [b, sub]) => h("div", { class: `hs-lab ${cls}`, style: { left: `${x}px`, top: `${y}px` } }, h("b", {}, b), sub ? h("span", {}, sub) : null);
+  const inLabs = left.map(([p], i) => lab(Math.max(p[0], vis), p[1], "", D.signals[i]));
+  if (g.top) inLabs.push(lab(720, 110, "side", D.signalTop));
+  const outLabs = right.map(([p], i) => lab(Math.min(p[0], 1440 - vis), p[1], "r", [D.names[["safe", "income", "soil", "today"][i]]]));
+  const dot = h("div", { class: "hs-hub", style: { left: `${hub[0]}px`, top: `${hub[1]}px` } });
+  const hubLab = h("div", { class: "hs-hub-lab", style: { left: `${hub[0]}px`, top: `${hub[1]}px` } }, D.signalHub);
+  art.append(...inLabs, ...outLabs, dot, hubLab);
+  const end = h("div", { class: "hs-end" }, h("p", {}, D.signalEnd), h("button", { class: "btn lime big", onclick: start }, C().cta, h("span", { class: "dot" }, icon("i-arrow-r"))));
+  hero.append(end);
+
+  const S = (p, a, b) => Math.max(0, Math.min(1, (p - a) / (b - a)));
+  const ease = (t) => (t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+  const show = (el, t, clip) => { el.style.visibility = t > 0 ? "visible" : "hidden"; el.style.clipPath = clip(100 - t * 100); };
+  const draw = () => {
+    const r = stage.getBoundingClientRect(), p = S(-r.top, 0, r.height - hero.offsetHeight);
+    const c = ease(S(p, 0, .22));
+    copy.style.opacity = src.style.opacity = 1 - c;
+    copy.style.transform = `translateY(${-28 * c}px) scale(${1 - .04 * c})`;
+    copy.style.visibility = c > .98 ? "hidden" : "";
+    inLabs.forEach((el, i) => show(el, ease(S(p, .1 + i * .06, .18 + i * .06)), (v) => `inset(0 ${v}% 0 0)`));
+    rings.forEach((el, i) => (el.style.strokeDashoffset = el.n * (1 - ease(S(p, .2 + i * .05, .42 + i * .05)))));
+    ins.forEach((el, i) => (el.style.strokeDashoffset = el.n * (1 - ease(S(p, .36 + i * .02, .56 + i * .02)))));
+    const k = ease(S(p, .54, .62));
+    dot.style.visibility = k > 0 ? "visible" : "hidden";
+    dot.style.transform = `scale(${.3 + .7 * k})`;
+    show(hubLab, S(p, .58, .66), (v) => `inset(0 ${v / 2}% 0 ${v / 2}%)`);
+    outs.forEach((el, i) => (el.style.strokeDashoffset = el.n * (1 - ease(S(p, .6 + i * .03, .74 + i * .03)))));
+    outLabs.forEach((el, i) => show(el, ease(S(p, .68 + i * .04, .76 + i * .04)), (v) => `inset(0 0 0 ${v}%)`));
+    const e = ease(S(p, .82, .94));
+    show(end, e, (v) => `inset(0 0 ${v}% 0)`);
+    end.style.transform = `translateY(${16 * (1 - e)}px)`;
+  };
+  let raf = 0;
+  const onScroll = () => {
+    if (!stage.isConnected) return removeEventListener("scroll", onScroll);
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); });
+  };
+  addEventListener("scroll", onScroll, { passive: true });
+  stage.cleanup = () => {
+    removeEventListener("scroll", onScroll);
+    [...inLabs, ...outLabs, dot, hubLab, end].forEach((el) => el.remove());
+    for (const el of [copy, src]) el.style.opacity = el.style.transform = el.style.visibility = "";
+  };
+  draw();
+}
+// Geometry depends on the window size and the stage only exists from 721px up, so a resize rebuilds it from scratch.
+function mountHero(art, title, start) {
+  const stage = $(".hero-stage");
+  heroSignals(art, heroLines(art, title), stage, start);
+  let t = 0;
+  const onResize = () => {
+    if (!stage.isConnected) return removeEventListener("resize", onResize);
+    clearTimeout(t);
+    t = setTimeout(() => { stage.cleanup?.(); stage.cleanup = null; heroSignals(art, heroLines(art, title, false), stage, start); }, 150);
+  };
+  addEventListener("resize", onResize);
 }
 const MOTION = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
 const ILLU = { daule: "rice", quevedo: "maize", iowa: "soybean" };
@@ -280,13 +354,13 @@ function viewLanding() {
   const openDemo = (k) => { setPlan(demoPlan(k)); state.mode = defaultMode(state.plan); state.pick = null; memo.clear(); go("plan"); };
   const dot = (ic = "i-arrow-r") => h("span", { class: "dot" }, icon(ic));
   const art = document.createElementNS(SVGNS, "svg"), title = h("h1", { class: "display" }, c.heroTitle);
-  put($("#view"), h("div", { class: "landing" },
+  put($("#view"), h("div", { class: "landing" }, h("div", { class: "hero-stage" },
     h("header", { class: "hero" }, h("div", { class: "hero-img", style: { backgroundImage: "url(img/sat/daule.jpg)" } }), h("div", { class: "hero-art", "aria-hidden": "true" }, art),
       h("nav", { class: "l-nav" }, lockup(true),
         h("div", { class: "l-links" }, langBtn(), h("a", { class: "btn glass desk-only", href: "#/bootcamp" }, c.ctaBootcamp), h("button", { class: "btn lime desk-only", onclick: start }, c.cta, dot()))),
       h("div", { class: "hero-copy" }, h("span", { class: "pill-eyebrow glass mono" }, D.eyebrow), title, h("p", { class: "lead" }, c.heroLead),
         h("div", { class: "hero-actions" }, h("button", { class: "btn lime big", onclick: start }, c.cta, dot()), h("button", { class: "btn glass big", onclick: () => openDemo("daule") }, D.example, dot()))),
-      h("p", { class: "hero-source mono" }, D.source)),
+      h("p", { class: "hero-source mono" }, D.source))),
     h("section", { class: "l-sheet" }, h("div", { class: "l-wrap" },
       h("div", { class: "l-stats" }, ...D.howStats.map(([n, t]) => h("div", { class: "l-stat" }, h("b", {}, n), h("span", {}, t)))),
       h("div", { class: "l-how-head", id: "how" }, h("span", { class: "eyebrow lime-tag" }, D.howEyebrow), h("h2", { class: "h2" }, D.howTitle)),
@@ -303,7 +377,7 @@ function viewLanding() {
       h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
     h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"))))));
   tilt(document.querySelectorAll(".how"));
-  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => heroLines(art, title));
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => mountHero(art, title, start));
 }
 // Cards lean toward the pointer on desktop; CSS eases the vars so each move stays short.
 function tilt(cards) {
