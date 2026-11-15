@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=52";
+import { COPY } from "./copy.js?v=53";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -1082,18 +1082,18 @@ function viewTerreno() {
     const bal = (m) => months[m].rain - months[m].et0;
     const wetOf = (m) => Math.max(0, Math.min(1, (bal(m) + 170) / 310)), floodOf = (m) => Math.max(0, Math.min(0.24, (bal(m) / 134) * 0.22 * (0.6 + 0.8 * wl)));
     const soilWord = (m) => (wetOf(m) >= 0.75 ? T.soilWet : wetOf(m) >= 0.4 ? T.soilMoist : T.soilDry);
-    const st = { m: months.reduce((b, x, i) => (x.rain > months[b].rain ? i : b), 0), ex: 3, mode: "foto", water: true, lifted: true };
+    const st = { m: months.reduce((b, x, i) => (x.rain > months[b].rain ? i : b), 0), mode: "foto", water: true, roofs: true, lifted: true };
     let scene = null;
     const hi = (key) => { scene?.highlight(key); document.querySelectorAll(".terreno .trow[data-k]").forEach((x) => x.classList.toggle("on", x.dataset.k === key)); };
 
     const hMonth = h("h2", {}), hSub = h("p", {}), labelsEl = h("div", { class: "s3-labels" }), note = h("div", { class: "s3-note", hidden: true });
     const segBtn = (lab, on, fn, dot) => h("button", { "aria-pressed": String(on), onclick: fn }, dot ? h("span", { class: "dot", style: { background: dot } }) : null, lab);
-    const relief = h("div", { class: "s3-seg", role: "group", "aria-label": T.reliefK }), tools = h("div", { class: "s3-seg", role: "group" });
+    const tools = h("div", { class: "s3-seg", role: "group" });
     const strip = h("div", { class: "s3-months" }), bars = h("div", { class: "clim-bars" });
     const stage = h("section", { class: "s3", "aria-label": T.from },
       labelsEl,
       h("div", { class: "s3-head" }, h("div", { class: "mono" }, T.from), hMonth, hSub),
-      h("div", { class: "s3-ctrl" }, relief, tools),
+      h("div", { class: "s3-ctrl" }, tools),
       drawn ? null : h("div", { class: "s3-example" }, icon("i-info"), T.example),
       h("div", { class: "s3-src" }, T.src),
       h("div", { class: "s3-foot" }, strip, h("div", { class: "s3-unk" }, ...T.unk.map(([lab, tx]) => h("button", { "aria-expanded": "false", onclick: (e) => {
@@ -1105,20 +1105,20 @@ function viewTerreno() {
       h("div", { class: "s3-loading" }, T.loading));
     const labels = () => {
       const f = st.water ? floodOf(st.m) : 0;
-      return { lot: T.lot, lotSub: T.lotSub, cut: T.cut, soil: d ? c.texture[d.texture] : c.noData, waterK: f > 0 ? T.lows : T.lowsK, waterV: f > 0 ? T.lowsPct(Math.round(floodOf(st.m) * 100)) : T.noLows };
+      return { lot: T.lot, lotSub: T.lotSub, cut: T.cut, soil: d ? c.texture[d.texture] : c.noData, waterK: f > 0 ? T.lows : T.lowsK, waterV: f > 0 ? T.lowsPct(Math.round(floodOf(st.m) * 100)) : T.noLows, roofsK: T.roofsK, roofsV: T.roofsV };
     };
     const paint = (rebuild = true) => {
       const m = st.m, x = months[m];
       hMonth.textContent = cap(S().monthsLong[m]);
       hSub.textContent = `${x.rain >= x.et0 * 0.8 ? T.rainy : x.rain < 0.5 * x.et0 ? T.drySeason : T.between} · ${soilWord(m)}`;
-      put(relief, ...[[1, T.real], [3, T.relief(3)], [10, "×10"]].map(([ex, lab]) => segBtn(lab, st.ex === ex, () => { st.ex = ex; paint(); })));
       put(tools, segBtn(T.photo, st.mode === "foto", () => { st.mode = "foto"; paint(); }),
         segBtn(T.green, st.mode === "verdor", () => { st.mode = "verdor"; paint(); }, "linear-gradient(90deg,#CDBF8C,#549A5C,#C8FF9E)"),
         segBtn(T.water, st.water, () => { st.water = !st.water; paint(); }, "var(--rain)"),
+        segBtn(T.roofs, st.roofs, () => { st.roofs = !st.roofs; paint(); }, "#E9E3D3"),
         segBtn(T.lift, st.lifted, () => { st.lifted = !st.lifted; scene?.lift(st.lifted); paint(false); }));
       put(strip, ...months.map((y, i) => h("button", { "aria-pressed": String(i === m), "aria-label": cap(S().monthsLong[i]), onclick: () => { st.m = i; paint(); } }, h("i", { class: y.rain >= y.et0 * 0.8 ? "wet" : y.rain >= 0.5 * y.et0 ? "mid" : "" }), mon(i + 1))));
       bars.querySelectorAll(".cb").forEach((b, i) => b.setAttribute("aria-pressed", String(i === m)));
-      if (rebuild) scene?.update({ month: m, ex: st.ex, mode: st.mode, water: st.water, lifted: st.lifted, wet: wetOf(m), flood: floodOf(m) });
+      if (rebuild) scene?.update({ mode: st.mode, water: st.water, roofs: st.roofs, lifted: st.lifted, wet: wetOf(m), flood: floodOf(m) });
     };
     put(bars, ...months.map((x, i) => h("button", { class: "cb", "aria-label": cap(S().monthsLong[i]), onclick: () => { st.m = i; paint(); stage.scrollIntoView({ behavior: "smooth", block: "nearest" }); } },
       h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1]))));
@@ -1150,7 +1150,7 @@ function viewTerreno() {
 
     // The 3D loads after the page; without WebGL or the network the flat satellite map stays
     const [lon, lat] = lotCenter(pts);
-    import("./soil3d.js?v=1").then((m) => m.mountSoil3d(stage, labelsEl, { lat, lon, lot: pts, labels })).then((s) => {
+    import("./soil3d.js?v=2").then((m) => m.mountSoil3d(stage, labelsEl, { lat, lon, lot: pts, labels })).then((s) => {
       if (!s) return;
       scene = s; stage.classList.add("ready"); paint();
     }).catch(() => { if (stage.isConnected) stage.replaceWith(plotMap(r, picked)); });
