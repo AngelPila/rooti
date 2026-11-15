@@ -187,17 +187,11 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 .hero-copy .lead { font-size: 17px; line-height: 1.45; max-width: 560px; color: rgba(243, 240, 229, .86); margin-bottom: 28px; }
 .hero-copy .pill-eyebrow { align-self: center; }
 .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.hero-art .hs-ring { fill: none; stroke: rgba(243, 240, 229, .3); stroke-width: 1; }
-.hero-art .hs-out { stroke: var(--lime); stroke-width: 1.4; }
-.hs-lab { position: absolute; color: var(--cream); white-space: nowrap; transform: translate(0, calc(-100% - 12px)); visibility: hidden; }
-.hs-lab b { display: block; font: 500 12px/1.3 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; }
-.hs-lab span { display: block; font: 400 11px/1.3 var(--f-mono); letter-spacing: .06em; color: var(--lime); }
-.hs-lab.r { transform: translate(-100%, calc(-100% - 12px)); text-align: right; }
-.hs-lab.side { transform: translate(14px, -50%); }
-.hs-hub { position: absolute; width: 18px; height: 18px; margin: -9px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 7px rgba(200, 255, 158, .22), 0 0 48px rgba(200, 255, 158, .45); visibility: hidden; }
-.hs-hub-lab { position: absolute; transform: translate(-50%, 24px); padding: 6px 9px; border-radius: 8px; background: var(--lime); color: var(--forest); font: 500 12px/1.2 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; visibility: hidden; }
-.hs-end { position: absolute; z-index: 2; left: 0; right: 0; bottom: 140px; display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; padding: 0 var(--side); visibility: hidden; }
-.hs-end p { font: 450 28px/1.15 var(--f-display); letter-spacing: -.03em; max-width: 640px; }
+.hf-chip { position: absolute; z-index: 2; transform: translateY(-50%); display: inline-flex; align-items: center; gap: 8px; padding: 3px 12px 3px 3px; border-radius: 999px; background: rgba(243, 240, 229, .95); color: var(--forest); font: 500 13px/1 var(--f-body); white-space: nowrap; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); }
+.hf-chip img { width: 22px; height: 22px; border-radius: 50%; }
+.hf-chip.out { transform: translate(-100%, -50%); background: var(--lime); }
+.hero-art path.out { stroke: var(--lime); }
+.hero-art .hf-dot { fill: var(--lime); }
 .hero-source { position: absolute; z-index: 2; left: 0; right: 0; bottom: 64px; text-align: center; color: rgba(243, 240, 229, .6); font-size: 10px; padding: 0 var(--side); }
 .motion .hero-copy .display { animation: lead 700ms var(--ease) both; }
 .motion .hero-copy .lead, .motion .hero-copy .hero-actions { animation: support 550ms var(--ease) 120ms both; }
@@ -273,10 +267,10 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 .l-examples { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 @media (min-width: 721px) {
   .hero-art { display: block; }
-  /* The hero stays pinned while the scroll plays the data-to-plans drawing (heroSignals in main.js). */
-  .motion .hero-stage { height: calc(max(640px, min(100svh, 900px)) + 140svh); }
-  .motion .hero-stage > .hero { position: sticky; top: 0; }
-  .motion .hero-stage .hero-copy, .motion .hero-stage .hero-art, .motion .hero-stage .hero-img { animation: none; }
+  /* The hero holds still for a short scroll while the weather flows into the headline and out to the crops (heroFlow in main.js). */
+  .motion .hero-stage.flow { height: calc(max(640px, min(100svh, 900px)) + 60svh); }
+  .motion .hero-stage.flow > .hero { position: sticky; top: 0; }
+  .motion .hero-stage.flow .hero-copy, .motion .hero-stage.flow .hero-art, .motion .hero-stage.flow .hero-img { animation: none; }
   .hero-copy .display { font-size: 96px; line-height: .98; }
   .hero-copy .lead { font-size: 20px; }
   .l-nav { margin-top: 16px; max-width: calc(1920px - 2 * var(--side)); width: calc(100% - 2 * var(--side)); align-self: center; padding-left: 22px; background: rgba(233, 229, 213, .14); }
