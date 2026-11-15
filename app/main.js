@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=49";
+import { COPY } from "./copy.js?v=51";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -97,6 +97,8 @@ const ym = (p) => `${mon(p.m)} ${p.y}`;
 const monL = (m) => S().monthsLong[m - 1];
 const span = (a, b) => (a.y === b.y ? (a.m === b.m ? `${monL(a.m)} ${a.y}` : `${C().ds.monthsTo(monL(a.m), monL(b.m))} ${a.y}`) : C().ds.monthsTo(`${monL(a.m)} ${a.y}`, `${monL(b.m)} ${b.y}`));
 const fmtDate = (s) => new Date(s + "T12:00:00").toLocaleDateString(state.lang, { day: "numeric", month: "short", year: "numeric" });
+// A plan's dates as months spelled out: "diciembre 2026 a noviembre 2027"
+const fmtSpan = (P) => { const m = (s) => { const d = new Date(s + "T12:00:00"); return `${d.toLocaleDateString(state.lang, { month: "long" })} ${d.getFullYear()}`; }; return `${m(P.start)} ${es() ? "a" : "to"} ${m(P.end)}`; };
 const num = (v, d = 1) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString(state.lang);
 const fmtArea = (share, P = state.plan) => { const v = share * (P.area || 1); return `${P.unit === "m2" ? Math.round(v).toLocaleString(state.lang) : num(v)} ${C().units[P.unit || "ha"]}`; };
 const andList = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} ${es() ? "y" : "and"} ${xs[xs.length - 1]}`);
@@ -414,10 +416,25 @@ function lotSyncEl() {
     s === "error" ? h("button", { class: "link", onclick: syncLot }, W.retry) : null);
 }
 
+// A scroll box without a scrollbar fades at the edge that has more content
+function edgeFade(el) {
+  if (!el) return;
+  const f = () => { el.style.setProperty("--fade-t", el.scrollTop > 4 ? "28px" : "0px"); el.style.setProperty("--fade-b", el.scrollTop + el.clientHeight < el.scrollHeight - 4 ? "40px" : "0px"); };
+  el.addEventListener("scroll", f, { passive: true }); new ResizeObserver(f).observe(el); f();
+}
+// Redrawing the planner after a tap (a crop, a date, a unit) keeps the scroll where the farmer was
+function keepScroll(draw) {
+  const y = scrollY, els = [".pf-secs", "#view", ".res.cmp > .col-left"].map((q) => [q, document.querySelector(q)?.scrollTop || 0]);
+  const back = () => { for (const [q, t] of els) { const el = document.querySelector(q); if (el) el.scrollTop = t; } scrollTo(0, y); };
+  const out = draw();
+  if (out?.then) return out.then((v) => { back(); return v; });
+  back();
+  return out;
+}
 function viewPlanear(stepArg) {
   const d = draft();
   if (desktop()) return planDesktop(d);
-  const n = Math.min(4, Math.max(1, +stepArg || 1)), redo = () => viewPlanear(n);
+  const n = Math.min(4, Math.max(1, +stepArg || 1)), redo = () => keepScroll(() => viewPlanear(n));
   const c = C(), err = dateErr(d);
   const head = h("div", { class: "step-head" },
     h("div", { class: "row between" }, h("button", { class: "round", "aria-label": es() ? "Atrás" : "Back", onclick: () => (n > 1 ? go(`planear/${n - 1}`) : go("")) }, icon("i-back")), h("span", { class: "small", style: { fontWeight: 600 } }, c.stepOf(n))),
@@ -444,7 +461,7 @@ function viewPlanear(stepArg) {
 }
 // Computer: the map fills the screen; one floating panel with four sections, one open at a time.
 function planDesktop(d) {
-  const c = C(), err = dateErr(d), redo = () => planDesktop(d);
+  const c = C(), err = dateErr(d), redo = () => keepScroll(() => planDesktop(d));
   const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); updateMap(pl, null); };
   state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
   put($("#map-overlay"), state.drawing ? null : h("div", { class: "map-hint" }, icon("i-pointer"), d.place ? c.lot.clickMore : c.clickMap));
@@ -564,7 +581,7 @@ function barSheet(r, f, k, s, pl) {
     st ? h("p", { class: "small" }, C().rainVsNeed(Math.round(st.rain), Math.round(st.need))) : null,
     h("p", { class: "small" }, C().checkLocal));
 }
-const resHead = (P) => h("div", { class: "res-head" }, h("div", { class: "grow" }, h("b", {}, `${P.place.name} · ${fmtArea(1)}`), h("small", {}, `${fmtDate(P.start)} – ${fmtDate(P.end)}`)),
+const resHead = (P) => h("div", { class: "res-head" }, h("div", { class: "grow" }, h("b", {}, `${P.place.name} · ${fmtArea(1)}`), h("small", {}, fmtSpan(P))),
   h("a", { class: "btn", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; } }, C().change));
 async function withResults(draw) {
   const v = $("#view");
@@ -580,7 +597,10 @@ async function namedPlans(P = state.plan, mode = state.mode) {
   const [rs, ri] = await Promise.all([results(P, mode, "soil"), results(P, mode, "income")]);
   const today = rs.today, tSig = today ? sig(today) : null;
   const pool = [rs.farm, ri.farm, ...(rs.others || []), ...(ri.others || [])].filter((f) => f && sig(f) !== tSig && f.parcels.some((p) => p.d.steps.length));
-  const safe = [...pool].sort((a, b) => a.anyLoss - b.anyLoss || b.harvest - a.harvest)[0];
+  // A plan offered as new must be a rotation: at least two crops, and never the same crop twice in a row on a plot
+  const rotates = (f) => new Set(f.parcels.flatMap((p) => p.d.steps.map((s) => s.crop))).size > 1 && f.parcels.every((p) => p.d.steps.every((s, i, a) => !i || s.crop !== a[i - 1].crop));
+  const rot = pool.filter(rotates);
+  const safe = [...(rot.length ? rot : pool)].sort((a, b) => a.anyLoss - b.anyLoss || b.harvest - a.harvest)[0];
   const out = [], seen = new Set();
   for (const [key, f] of [["safe", safe], ["income", ri.farm], ["soil", rs.farm]]) { if (!f || seen.has(sig(f))) continue; seen.add(sig(f)); out.push({ key, f }); }
   if (today) out.push({ key: "today", f: today });
@@ -661,15 +681,6 @@ function yearDots(el, r, f) {
   el.onclick = (e) => { if (e.target.dataset.i) show(e.target); };
   el.onpointerleave = () => { tip.classList.remove("on"); el.querySelectorAll("i.on").forEach((q) => q.classList.remove("on")); };
 }
-// Soil cover: a month counts as covered when most of the land has a crop or straw on it
-function coverSquares(el, r, f) {
-  const N = r.period.length, cov = coveredMonths(f, N), cells = el.querySelectorAll("i"), D = C().ds;
-  const title = (t) => `${cap(monL(r.period[t].m))}: ${cov[t] ? cap(es() ? "tierra cubierta" : "soil covered") : D.bare}`;
-  if (cells.length === N) { cells.forEach((c, t) => { c.style.transitionDelay = t * 15 + "ms"; c.classList.toggle("bare", !cov[t]); c.title = title(t); }); return; }
-  el.style.setProperty("--n", Math.min(N, 12));
-  put(el, ...cov.map((c, t) => h("div", {}, h("i", { class: c ? "" : "bare", title: title(t) }), t < 12 ? cap(monL(r.period[t].m)).slice(0, 1) : "")));
-}
-
 // Calendar: rain of a normal year, one lane per plot, a playhead moved by tap, drag or arrow keys
 function planCalendar(el, r, f) {
   const c = C(), D = c.ds, N = r.period.length, nm = normals(r.clim), coast = COAST(state.plan.place);
@@ -699,7 +710,7 @@ function planCalendar(el, r, f) {
   for (let a = 0; a < N;) { let b = a; while (b + 1 < N && wet[b + 1] === wet[a]) b++; const w = wet[a]; kids.push(h("div", { class: `pc-season${w ? " w" : ""}${N > 24 ? " tiny" : b - a < (N > 12 ? 2 : 1) ? " short" : ""}`, style: { gridRow: String(last), gridColumn: `${a + 1} / ${b + 2}` } }, w ? (coast ? D.wet : D.wetX) : coast ? D.dry : D.dryX)); a = b + 1; }
   const hits = r.period.map((p, t) => h("button", { class: "pc-hit", style: { gridRow: `1 / ${last + 1}`, gridColumn: String(t + 1) }, "aria-label": `${cap(monL(p.m))} ${p.y}`, tabindex: "-1" }));
   const dot = h("div", { class: "pc-dot" }, h("b"), h("span", { class: "pc-pt" }));
-  const grid = h("div", { class: "pc-grid", style: { "--n": N } }, ...kids, ...hits, dot);
+  const grid = h("div", { class: plots.length > 1 ? "pc-grid" : "pc-grid one", style: { "--n": N } }, ...kids, ...hits, dot);
   const when = h("span", { class: "mono" }), big = h("span", { class: "pc-big" }), mm = h("span", { class: "pc-big" }), now = h("div", { class: "pc-now" });
   put(el, h("div", { class: "pc-head" }, h("div", { class: "pc-when" }, when, big), h("div", { class: "pc-rain" }, mm, h("span", { class: "mono" }, D.normalRain))), now, grid, h("p", { class: "small pc-note" }, D.tapMonth));
   // A season name that does not fit its months is hidden instead of cut mid-word; the line stays.
@@ -739,20 +750,20 @@ function planCalendar(el, r, f) {
 }
 
 // A card per plan: why it is suggested, its crops in order, how it would have gone
-function planCard(it, r, plans, onPick) {
+function planCard(it, r, plans, onPick, best, choose) {
   const D = C().ds, f = it.f, N = r.period.length, plots = plotsOf(f).map((x) => ({ ...x, runs: runsOf(x.pc, N) }));
   const order = [];
   for (let t = 0; t < N; t++) for (const { runs } of plots) { const c = runs.find((x) => x.t0 <= t && t < x.t1).c; if (!order.includes(c)) order.push(c); }
   const lossYears = f.per.filter((x) => x.lostShare > 0).length, cov = coveredMonths(f, N).filter(Boolean).length;
-  return h("button", { class: "strat", role: "radio", "aria-checked": String(it.key === state.pick), "data-id": it.key, onclick: () => onPick(it.key) },
-    h("span", { class: "spec mono" }, whyOf(it, plans), h("span", { class: "radio" })),
+  return h("button", { class: ["strat", best ? "best" : "", choose ? "choose" : ""].filter(Boolean).join(" "), ...(choose ? {} : { role: "radio", "aria-checked": String(it.key === state.pick) }), "data-id": it.key, onclick: () => onPick(it.key) },
+    h("span", { class: "spec mono" }, whyOf(it, plans), choose ? null : h("span", { class: "radio" })),
     h("span", { class: "pname" }, icon(NAMED_ICON[it.key]), D.names[it.key]),
     h("span", { class: "cropline" }, ...order.slice(0, 4).map((c) => { const L = look(c); return h("span", { class: `cl-chip${c === "bare" ? " bare" : ""}` }, h("i", { style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, icon(L.icon)), cropLabel(c)); }),
       order.length > 4 ? h("span", { class: "cl-chip more", title: order.slice(4).map(cropLabel).join(", ") }, `+${order.length - 4}`) : null),
-    h("span", { class: "cl-note" }, plots.length > 1 ? D.inPlots(plots.length) : D.wholeFarm),
-    h("span", { class: "mini", style: { "--n": N } }, ...plots.map(({ runs }) => h("div", {}, ...runs.flatMap((ru) => Array.from({ length: ru.t1 - ru.t0 }, () => h("i", { class: ru.c === "bare" ? "bare" : "", style: { background: look(ru.c).color } })))))),
+    plots.length > 1 ? h("span", { class: "cl-note" }, D.inPlots(plots.length)) : null,
     h("span", { class: `badge ${f.verdict}` }, C().verdict[f.verdict]),
-    h("span", { class: "facts" }, r.samples.length > 1 ? h("span", {}, icon("i-care"), D.lossYears(lossYears)) : null, h("span", {}, icon("i-straw"), D.coverOf(cov, N))));
+    h("span", { class: "facts" }, r.samples.length > 1 ? h("span", {}, icon("i-care"), D.lossYears(lossYears)) : null, h("span", {}, icon("i-straw"), D.coverOf(cov, N))),
+    choose ? h("span", { class: "go" }, D.seePlan, icon("i-arrow-r")) : null);
 }
 
 // What we don't know: a short label each, the sentence opens on tap
@@ -773,63 +784,77 @@ function sourceNote(r, f) {
   return b;
 }
 
-function viewPlan() {
+// Two screens: first the farmer picks a plan from the cards, then that plan opens on its own (#/plan/<key>),
+// with a selector to switch plans without going back.
+function viewPlan(arg) {
   return withResults(async (r) => {
     const c = C(), D = c.ds, P = state.plan, N = r.period.length, multi = r.samples.length > 1;
     const [plans, ids] = await Promise.all([namedPlans(P), ideas(r), loadVecinos()]);
     if (!plans.length) { put($("#view"), h("div", { class: "res" }, resHead(P), h("div", { class: "card" }, h("p", {}, c.noPlans), h("a", { class: "btn dark", href: "#/planear" }, c.changeData)))); return; }
-    if (!plans.some((x) => x.key === state.pick)) state.pick = plans[0].key;
+    // When what the farmer does today loses a harvest in fewer years than any new plan, say so plainly
+    const today = plans.find((x) => x.key === "today"), newBest = plans.filter((x) => x.key !== "today").reduce((a, b) => (!a || b.f.anyLoss < a.f.anyLoss ? b : a), null);
+    const lossN = (f) => f.per.filter((x) => x.lostShare > 0).length, covN = (f) => coveredMonths(f, N).filter(Boolean).length;
+    const todayWins = multi && today && newBest && lossN(today.f) < lossN(newBest.f);
+    const honest = todayWins ? h("p", { class: "pv-honest" }, icon("i-info"), h("span", {}, D.todaySafer(lossN(today.f), lossN(newBest.f), covN(newBest.f) > covN(today.f) ? [covN(newBest.f), covN(today.f), N] : null))) : null;
+    // Rooti asks for "auto": the plan on screen, or the first one, opened directly
+    if (arg === "auto") { arg = plans.some((x) => x.key === state.pick) ? state.pick : plans[0].key; history.replaceState(null, "", `#/plan/${arg}`); }
+    if (!plans.some((x) => x.key === arg)) {
+      const cards = h("div", { class: "strats", "data-rooti": "plans", style: { "--k": plans.length } }, ...plans.map((it) => planCard(it, r, plans, (key) => go(`plan/${key}`), todayWins && it.key === "today", true)));
+      put($("#view"), h("div", { class: "res pv" }, resHead(P), linked() ? lotSyncEl() : null, tagged(ninoBanner(r), "nino"),
+        h("section", { class: "pv-panel" },
+          h("div", { class: "pv-block pv-cards pv-choose" }, h("div", { class: "pv-title" }, h("h1", { class: "h3" }, D.plansTitle(plans.filter((x) => x.key !== "today").length, plans.some((x) => x.key === "today"))), h("p", { class: "small" }, D.chooseHint)), cards, honest),
+          h("div", { class: "pv-foot" }, unknownChips(r, plans[0].f), sourceNote(r, plans[0].f)))));
+      return;
+    }
+    state.pick = arg;
     const cur = () => plans.find((x) => x.key === state.pick);
-    const head = h("div", { class: "pv-block", id: "pvHead" }), routeBox = h("div", { "data-rooti": "route" }), stat = h("div", { "data-rooti": "years" }), dots = h("div", { class: "dots", "data-rooti": "years" }), coverLab = h("b"), squares = h("div", { class: "squares", "data-rooti": "cover" }), cal = h("div", { class: "pcal", "data-rooti": "calendar" });
+    const verdictBox = h("div"), head = h("div", { class: "pv-block", id: "pvHead" }), routeBox = h("div", { "data-rooti": "route" }), stat = h("div", { "data-rooti": "years" }), dots = h("div", { class: "dots", "data-rooti": "years" }), risks = h("div", { class: "pv-block pv-risks" }), cal = h("div", { class: "pcal", "data-rooti": "calendar" });
     const isSaved = () => state.saved && JSON.stringify(state.saved.plan) === JSON.stringify(P);
     const saveBtn = h("button", { class: "round", "aria-label": c.save, title: c.save, onclick: () => { state.saved = { plan: P, at: Date.now() }; store.set("saved3", state.saved); put(saveBtn, icon("i-check")); } }, icon(isSaved() ? "i-check" : "i-bookmark"));
     const show = (anim) => {
       const it = cur(), f = it.f, good = f.per.filter((x) => yearLv(x) === "g").length, cov = coveredMonths(f, N).filter(Boolean).length;
-      put(head, h("span", { class: "pill-eyebrow mono" }, whyOf(it, plans)), h("h2", { class: "h3" }, D.names[it.key]), h("span", { class: `badge ${f.verdict}` }, c.verdict[f.verdict]));
+      put(verdictBox, h("span", { class: `badge ${f.verdict}` }, c.verdict[f.verdict]));
       put(routeBox, routeEl(r, f));
+      // The risks the challenge asks for sit in view, not behind a button; the full reasoning opens on request
+      const e = explain(f, r), rk = e.risks.length ? [c.riskTitle, e.risks, "bad"] : [c.whyTitle, e.why, "good"];
+      put(risks, h("b", {}, rk[0]), h("ul", { class: `bul ${rk[2]}` }, ...rk[1].slice(0, 3).map((x) => h("li", {}, x))));
       if (multi) {
         const [a, b, z] = D.goodYears(f.per.length), n = h("span", {}, String(good));
         put(stat, h("div", { class: "statbox" }, h("div", { class: "stat" }, n), h("p", {}, a, h("b", {}, b), z)));
         yearDots(dots, r, f);
         if (anim) countUp(n, good, 800);
       }
-      coverLab.textContent = D.coverOf(cov, N);
-      coverSquares(squares, r, f);
       planCalendar(cal, r, f);
-      if (anim) [head, routeBox, stat, cal].forEach((x) => { x.classList.remove("swap"); void x.offsetWidth; x.classList.add("swap"); });
+      if (anim) [verdictBox, routeBox, risks, stat, cal].forEach((x) => { x.classList.remove("swap"); void x.offsetWidth; x.classList.add("swap"); });
       bar?.redraw();
     };
-    const cards = h("div", { class: "strats", "data-rooti": "plans", role: "radiogroup", "aria-label": D.names.safe, style: { "--k": plans.length } });
-    const pickPlan = (key) => {
-      state.pick = key;
-      cards.querySelectorAll(".strat").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.id === key)));
-      show(true);
-      // On narrow screens the plan sits above the cards: bring it into view so the change is seen
-      const rc = head.getBoundingClientRect();
-      if (!desktop() && (rc.top < 60 || rc.bottom > innerHeight)) {
-        head.scrollIntoView({ behavior: MOTION() ? "smooth" : "auto", block: "start" });
-        const badge = head.querySelector(".badge"); badge.classList.add("flash"); setTimeout(() => badge.classList.remove("flash"), 900);
-      }
-    };
-    put(cards, ...plans.map((it) => planCard(it, r, plans, pickPlan)));
+    // Switch plans in place: the address follows without a new history entry, so Back still returns to the choice
+    // The plan's name is the title and the selector at once
+    const sel = h("select", { class: "pv-select", "aria-label": D.planLabel, onchange: (e) => { state.pick = e.target.value; history.replaceState(null, "", `#/plan/${state.pick}`); show(true); } },
+      ...plans.map((it) => h("option", { value: it.key, selected: it.key === state.pick ? "" : null }, D.names[it.key])));
+    put(head, sel, verdictBox);
+    head.setAttribute("data-rooti", "plans");
+    // Opened from WhatsApp: choosing here tells Rooti in the chat
     const bar = linked() ? pickBar(r, cur) : null;
+    const switcher = h("div", { class: "pv-switch" }, h("a", { class: "pv-back", href: "#/plan" }, icon("i-back"), D.allPlans));
     const legend = h("div", { class: "dots-legend" }, ...["g", "c", "x"].map((k) => h("span", {}, h("i", { class: k, style: { background: { g: "var(--good)", c: "var(--care)", x: "var(--danger)" }[k] } }), D.legend[k])),
       COAST(P.place) ? h("span", {}, h("i", { class: "n" }), D.legend.n) : null);
     put($("#view"), h("div", { class: "res pv" },
       resHead(P),
+      switcher,
       linked() ? lotSyncEl() : null,
       tagged(ninoBanner(r), "nino"),
       h("section", { class: "pv-panel" },
         h("div", { class: "pv-body" },
           h("div", { class: "pv-left" },
-            h("div", { class: "pv-a" }, head, h("div", { class: "pv-block" }, h("b", {}, D.whatWhen), routeBox),
-              h("div", { class: "pv-acts" }, h("button", { class: "btn soft", onclick: () => explainSheet(D.names[cur().key], cur().f, r) }, D.whyRisks), saveBtn,
+            h("div", { class: "pv-a" }, head, h("div", { class: "pv-block" }, h("b", {}, D.whatWhen), routeBox), risks,
+              h("div", { class: "pv-acts" }, h("button", { class: "btn soft", onclick: () => explainSheet(D.names[cur().key], cur().f, r) }, D.whyAll), saveBtn,
                 h("button", { class: "round", "aria-label": c.listen, title: c.listen, onclick: () => speak(`${D.names[cur().key]}. ${routeWords(r, cur().f)}. ${c.verdict[cur().f.verdict]}.`) }, icon("i-volume")))),
             h("div", { class: "pv-b" },
-              multi ? [stat, h("div", { class: "pv-block" }, dots, legend, h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r")))] : h("p", { class: "small" }, D.realOnly),
-              h("div", { class: "pv-block" }, coverLab, squares))),
-          h("div", { class: "pv-right" }, cal)),
-        h("div", { class: "pv-block pv-cards" }, h("b", {}, D.plansTitle(plans.filter((x) => x.key !== "today").length, plans.some((x) => x.key === "today"))), cards, bar),
+              multi ? [stat, h("div", { class: "pv-block" }, dots, legend, h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r")))] : h("p", { class: "small" }, D.realOnly))),
+          // Rooti still marks "cover": the calendar is where bare and covered months show now
+          h("div", { class: "pv-right", "data-rooti": "cover" }, cal)),
+        bar,
         h("div", { class: "pv-foot" }, unknownChips(r, plans[0].f), sourceNote(r, plans[0].f))),
       ids.length ? h("a", { class: "hint", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(ids.length)), icon("i-chev-r")) : null,
       h("section", { class: "card" }, h("b", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot)),
@@ -924,7 +949,7 @@ function ninoBanner(r) {
     const years = seasonsOf(r);
     if (!years.length || !years.every((year) => NINO_ONSET.includes(year))) return null;
     const seasons = years.map((year) => `${year}-${String(year + 1).slice(2)}`);
-    return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, h("b", {}, c.ninoOnTitle), " ", c.ninoOn(andList(seasons))), h("button", { class: "link", onclick: () => { state.mode = "all"; render(); } }, c.ninoSeeAll));
+    return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, h("b", {}, c.ninoOnTitle), " ", c.ninoOn(seasons)), h("button", { class: "link", onclick: () => { state.mode = "all"; render(); } }, c.ninoSeeAll));
   }
   if (ninoNow(P)) return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, c.ninoOff), h("button", { class: "link", onclick: () => { state.mode = "nino"; render(); } }, c.ninoTest));
   return null;
@@ -1315,7 +1340,7 @@ function viewComparar() {
   return withResults(async (r) => {
     const c = C(), P = state.plan, { f: rec, name: recName } = await chosen(r), N = r.period.length;
     if (!state.custom || state.customKey !== JSON.stringify(P)) { state.custom = customFrom(r.today || rec); state.customKey = JSON.stringify(P); state.customStraw = !r.today && P.crops.includes("mulch"); }
-    const K = state.custom, redo = () => viewComparar();
+    const K = state.custom, redo = () => keepScroll(() => viewComparar());
     const mine = r.evalFarm(K.map((pc) => ({ share: (+pc.area || 0) / (P.area || 1), steps: pc.steps })), { noMulch: !state.customStraw });
     const choices = [...new Set([...P.crops.filter((id) => id !== "mulch"), ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id])])];
     const used = K.reduce((x, pc) => x + (+pc.area || 0), 0);
@@ -1337,7 +1362,7 @@ function viewComparar() {
             h("select", { "aria-label": c.what, onchange: (e) => { st.crop = e.target.value; redo(); } }, ...choices.map((id) => h("option", { value: id, selected: id === st.crop || null }, cap(cropName(id))))),
             h("select", { "aria-label": c.when, onchange: (e) => { st.t0 = +e.target.value; redo(); } }, ...r.period.map((p, t) => h("option", { value: t, selected: t === st.t0 || null, disabled: r.monthsOf(st.crop) + t > N || null }, ym(p)))),
             h("span", { class: `res-txt v-${lv}` }, er ? (er.why === "overlap" ? c.overlap : c.noTime) : s ? `→ ${ym(r.period[s.t1 - 1])} · ${outcomeShort({ fail: s.fail, yld: s.yld }, s.n)}` : ""),
-            h("button", { class: "x", "aria-label": c.remove, onclick: () => { pc.steps.splice(j, 1); redo(); } }, "✕"));
+            h("button", { class: "x", "aria-label": c.remove, title: c.remove, onclick: () => { pc.steps.splice(j, 1); redo(); } }, icon("i-x")));
         }),
         nextCrop ? h("button", { class: "link", style: { alignSelf: "flex-start", fontSize: "14px" }, onclick: () => { pc.steps.push({ crop: nextCrop, t0: next }); redo(); } }, c.addPlanting) : null);
     });
@@ -1391,6 +1416,7 @@ function viewComparar() {
           mR != null && mM != null ? h("p", { class: "small" }, c.moneyNote) : null,
           h("div", { class: `conclusion ${score > 0 ? "good" : "even"}` }, icon(score < 0 ? "i-info" : "i-check"), h("span", {}, score < 0 ? (why || c.recBetter) : score > 0 ? c.mineBetter : c.tie)),
         ])));
+    edgeFade($(".res.cmp > .col-left"));
   });
 }
 
@@ -1746,7 +1772,8 @@ const rooti = createRooti({
     const r = ROOTI_SCREENS[screen];
     if (!r) return `Unknown screen ${screen}`;
     if (RESULTS.includes(r) && !state.plan) return "There is no plan yet: the farmer has to give the plot first";
-    goOrRender(r);
+    const target = r === "plan" ? "plan/auto" : r;
+    if (location.hash === `#/${target}` || (r !== "plan" && route().r === r)) render(); else go(target);
     return null;
   },
   changePlot: rootiChangePlot, tryIdea: rootiTryIdea, whatsapp: rootiWhatsApp,
@@ -1787,7 +1814,7 @@ function renderChrome(r) {
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
   // Off the results there are no tabs, so the bar carries a way back: to the plan when there is one, else home
   const back = isRes ? null : h("a", { class: "round", href: (r === "planear" || r === "aviso") && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : c.planTitle}`)),
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtSpan(P)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null,
       linked() && hasWhatsApp() ? h("a", { class: "round", href: waUrl(), "aria-label": c.wa.back, title: c.wa.back }, icon("i-chat")) : null, langBtn()));
@@ -1817,7 +1844,7 @@ async function render() {
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
   rooti.route(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
   try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
