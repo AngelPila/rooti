@@ -41,7 +41,7 @@
 
 - [DeepSeek API](https://api-docs.deepseek.com/) (`deepseek-chat`): the model behind Rooti, the same one as on WhatsApp.
 - [Groq](https://console.groq.com/docs/speech-to-text) Whisper large-v3-turbo: speech to text for what the farmer says into the microphone.
-- The browser's own speech synthesis (Web Speech API) reads Rooti's answers aloud.
+- The browser's own speech synthesis (Web Speech API) reads Rooti's answers aloud only where the server has no voice (the Node server); the bot's server speaks them with edge-tts.
 
 ## WhatsApp agent (`bot/`)
 

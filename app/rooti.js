@@ -81,7 +81,7 @@ export function createRooti(app) {
     return h("div", { class: "rt-row" }, face("xs"), h("div", { class: "rt-bot" }, h("p", {}, m.text),
       ...(m.cards || []).map(cardEl),
       m.chips ? chipsFor(m.chips) : null,
-      m.text && !m.chips ? h("button", { type: "button", class: "rt-say", "aria-label": t().listen, title: t().listen, onclick: () => app.speak(m.text) }, icon("i-volume")) : null));
+      m.text && !m.chips ? h("button", { type: "button", class: "rt-say", "aria-label": t().listen, title: t().listen, onclick: () => { unlock(); say(m.text); } }, icon("i-volume")) : null));
   }
   function cardEl(c) {
     if (c.kind === "change") return h("div", { class: `rt-chg${c.undone ? " undone" : ""}` }, icon("i-check"), h("span", {}, c.text),
@@ -163,7 +163,7 @@ export function createRooti(app) {
     S.msgs.push({ who: "bot", text: reply || "…", cards });
     if (acted && !wide()) S.peek = true;
     draw();
-    if (voice && reply) app.speak(reply);
+    if (voice && reply) say(reply);
   }
 
   async function runTool(name, a) {
@@ -217,13 +217,35 @@ export function createRooti(app) {
     draw();
   }
 
+  /* ---------- Rooti's voice ---------- */
+  // The server speaks with Rooti's WhatsApp voice; the browser's own is only a fallback, since many phones and
+  // Linux browsers have no Spanish voice and stay silent
+  const player = new Audio(), SILENCE = "data:audio/wav;base64,UklGRuYAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgATElTVBoAAABJTkZPSVNGVA0AAABMYXZmNjMuMS4xMDIAAGRhdGGgAAAAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
+  let said = 0, saidUrl = null;
+  // iOS only lets a page play sound later from an element it played during a tap
+  function unlock() { if (!player.src) { player.src = SILENCE; player.play().catch(() => {}); } }
+  function hush() { said++; player.pause(); app.stopSpeaking(); }
+  async function say(text) {
+    hush(); const mine = said;
+    if (S.say) try {
+      const r = await fetch("/api/rooti/say", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, lang: app.lang() }) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      if (mine !== said) return;
+      if (saidUrl) URL.revokeObjectURL(saidUrl);
+      player.src = saidUrl = URL.createObjectURL(blob);
+      return await player.play();
+    } catch (e) { console.warn("rooti: voice", e); }
+    if (mine === said) app.speak(text);
+  }
+
   /* ---------- voice: hold to talk, like a WhatsApp voice note ---------- */
   let stream = null;
   async function recStart() {
     if (S.rec || S.busy) return;
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { S.note = t().noMic; return draw(); }
     const rec = { t0: Date.now(), chunks: [], up: false };
-    S.rec = rec; app.stopSpeaking(); draw();
+    S.rec = rec; unlock(); hush(); draw();
     try { stream ||= await navigator.mediaDevices.getUserMedia({ audio: true }); }
     catch { S.rec = null; S.note = t().noMic; return draw(); }
     // The first press may end while the browser was still asking for the microphone
@@ -262,7 +284,7 @@ export function createRooti(app) {
 
   return {
     async start() {
-      try { const r = await fetch("/api/rooti", { cache: "no-store" }); if (!r.ok || !(await r.json()).on) return; } catch { return; }
+      try { const r = await fetch("/api/rooti", { cache: "no-store" }), st = r.ok && (await r.json()); if (!st?.on) return; S.say = !!st.say; } catch { return; }
       build(); root.hidden = false; S.ready = true;
       root.dataset.screen = S.screen || "landing";
       draw(); greetOnce();
