@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=22";
-import { COPY } from "./copy.js?v=30";
+import { COPY } from "./copy.js?v=31";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -554,8 +554,8 @@ function coverSquares(el, r, f) {
   const N = r.period.length, cov = coveredMonths(f, N), cells = el.querySelectorAll("i"), D = C().ds;
   const title = (t) => `${cap(monL(r.period[t].m))}: ${cov[t] ? cap(es() ? "tierra cubierta" : "soil covered") : D.bare}`;
   if (cells.length === N) { cells.forEach((c, t) => { c.style.transitionDelay = t * 15 + "ms"; c.classList.toggle("bare", !cov[t]); c.title = title(t); }); return; }
-  el.style.setProperty("--n", N);
-  put(el, ...cov.map((c, t) => h("div", {}, h("i", { class: c ? "" : "bare", title: title(t) }), N <= 24 ? cap(monL(r.period[t].m)).slice(0, 1) : "")));
+  el.style.setProperty("--n", Math.min(N, 12));
+  put(el, ...cov.map((c, t) => h("div", {}, h("i", { class: c ? "" : "bare", title: title(t) }), t < 12 ? cap(monL(r.period[t].m)).slice(0, 1) : "")));
 }
 
 // Calendar: rain of a normal year, one lane per plot, a playhead moved by tap, drag or arrow keys
@@ -579,12 +579,12 @@ function planCalendar(el, r, f) {
     for (const ru of runs) {
       const L = look(ru.c), lv = ru.st ? level(ru.st) : "good";
       kids.push(h("div", { class: ["pc-run", ru.c === "bare" ? "bare" : ru.c === "mulch" ? "straw" : "", L.light ? "light" : "", lv !== "good" ? lv : ""].filter(Boolean).join(" "),
-        style: { gridRow: String(row + 1), gridColumn: `${ru.t0 + 1} / ${ru.t1 + 1}`, background: L.color }, title: `${cropLabel(ru.c)} · ${monthsText(r, ru)}` }, h("span", {}, ru.t1 - ru.t0 > 1 ? cropLabel(ru.c) : "")));
+        style: { gridRow: String(row + 1), gridColumn: `${ru.t0 + 1} / ${ru.t1 + 1}`, background: L.color }, title: `${cropLabel(ru.c)} · ${monthsText(r, ru)}` }, h("span", {}, ru.t1 - ru.t0 > (N > 12 ? 3 : 1) ? cropLabel(ru.c) : "")));
     }
   });
   const short = (p) => (N <= 12 ? cap(monL(p.m)).slice(0, 3) : cap(monL(p.m)).slice(0, 1));
-  r.period.forEach((p, t) => kids.push(h("div", { class: "pc-month", style: { gridRow: String(last - 1), gridColumn: String(t + 1) } }, N > 24 && t % 2 ? "" : short(p))));
-  for (let a = 0; a < N;) { let b = a; while (b + 1 < N && wet[b + 1] === wet[a]) b++; const w = wet[a]; kids.push(h("div", { class: `pc-season${w ? " w" : ""}${b - a < 1 ? " short" : ""}`, style: { gridRow: String(last), gridColumn: `${a + 1} / ${b + 2}` } }, w ? (coast ? D.wet : D.wetX) : coast ? D.dry : D.dryX)); a = b + 1; }
+  r.period.forEach((p, t) => kids.push(h("div", { class: "pc-month", style: { gridRow: String(last - 1), gridColumn: String(t + 1) } }, N > 24 ? (p.m === 1 ? `'${String(p.y).slice(2)}` : "") : short(p))));
+  for (let a = 0; a < N;) { let b = a; while (b + 1 < N && wet[b + 1] === wet[a]) b++; const w = wet[a]; kids.push(h("div", { class: `pc-season${w ? " w" : ""}${N > 24 || b - a < (N > 12 ? 2 : 1) ? " short" : ""}`, style: { gridRow: String(last), gridColumn: `${a + 1} / ${b + 2}` } }, w ? (coast ? D.wet : D.wetX) : coast ? D.dry : D.dryX)); a = b + 1; }
   const hits = r.period.map((p, t) => h("button", { class: "pc-hit", style: { gridRow: `1 / ${last + 1}`, gridColumn: String(t + 1) }, "aria-label": `${cap(monL(p.m))} ${p.y}`, tabindex: "-1" }));
   const dot = h("div", { class: "pc-dot" }, h("b"), h("span", { class: "pc-pt" }));
   const grid = h("div", { class: "pc-grid", style: { "--n": N } }, ...kids, ...hits, dot);
@@ -683,7 +683,7 @@ function viewPlan() {
       planCalendar(cal, r, f);
       if (anim) [head, routeBox, stat, cal].forEach((x) => { x.classList.remove("swap"); void x.offsetWidth; x.classList.add("swap"); });
     };
-    const cards = h("div", { class: "strats", role: "radiogroup", "aria-label": D.plansTitle, style: { "--k": plans.length } });
+    const cards = h("div", { class: "strats", role: "radiogroup", "aria-label": D.names.safe, style: { "--k": plans.length } });
     const pickPlan = (key) => {
       state.pick = key;
       cards.querySelectorAll(".strat").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.id === key)));
@@ -710,7 +710,7 @@ function viewPlan() {
             h("div", { class: "pv-b" },
               multi ? [stat, h("div", { class: "pv-block" }, dots, legend)] : h("p", { class: "small" }, D.realOnly),
               h("div", { class: "pv-block" }, coverLab, squares))),
-          h("div", { class: "pv-right" }, cal, h("div", { class: "pv-block" }, h("b", {}, D.plansTitle), cards))),
+          h("div", { class: "pv-right" }, cal, h("div", { class: "pv-block" }, h("b", {}, D.plansTitle(plans.filter((x) => x.key !== "today").length, plans.some((x) => x.key === "today"))), cards))),
         h("div", { class: "pv-foot" }, unknownChips(r, plans[0].f), sourceNote(r, plans[0].f))),
       ids.length ? h("a", { class: "hint", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(ids.length)), icon("i-chev-r")) : null,
       h("section", { class: "card" }, h("b", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot))));
@@ -723,12 +723,12 @@ function viewPlan() {
 const COAST = (pl) => pl.lat > -5 && pl.lat < 2 && pl.lon > -81.5 && pl.lon < -78.5;
 // A strong El Niño is under way (NOAA/ERFEN, data/outlook.json): on the Pacific coast, a plan for the coming rainy
 // season is tested by default on the seasons that followed past strong El Niños, not on all years alike.
-const ninoNow = (P) => !!P && DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place) && P.start.slice(0, 7) <= "2027-04";
+const ninoNow = (P) => !!P && DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place) && P.start.slice(0, 7) <= "2027-04" && P.end >= iso(new Date());
 const defaultMode = (P) => (ninoNow(P) ? "nino" : "all");
 const seasonsOf = (r) => r.samples.filter((s) => s.base != null).map((s) => `${s.base}-${String(s.base + 1).slice(2)}`);
 function ninoBanner(r) {
   const c = C(), P = state.plan;
-  if (state.mode === "nino") return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, h("b", {}, c.ninoOnTitle), " ", c.ninoOn(andList(seasonsOf(r)))), h("button", { class: "link", onclick: () => { state.mode = "all"; render(); } }, c.ninoSeeAll));
+  if (state.mode === "nino" && seasonsOf(r).length) return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, h("b", {}, c.ninoOnTitle), " ", c.ninoOn(andList(seasonsOf(r)))), h("button", { class: "link", onclick: () => { state.mode = "all"; render(); } }, c.ninoSeeAll));
   if (ninoNow(P)) return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, c.ninoOff), h("button", { class: "link", onclick: () => { state.mode = "nino"; render(); } }, c.ninoTest));
   return null;
 }
