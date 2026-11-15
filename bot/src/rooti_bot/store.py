@@ -41,6 +41,12 @@ CREATE TABLE IF NOT EXISTS handoffs (     -- a lot made on the website, waiting 
   lot TEXT NOT NULL,
   created_at REAL NOT NULL, used_by TEXT, used_at REAL
 );
+CREATE TABLE IF NOT EXISTS buttons (      -- every page button Rooti sends; one a tool asks for waits for the answer
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  phone TEXT NOT NULL,
+  label TEXT NOT NULL, text TEXT NOT NULL, url TEXT NOT NULL,
+  queued_at REAL NOT NULL, sent_at REAL
+);
 """
 # Columns added after the first deploy: CREATE TABLE IF NOT EXISTS leaves an older table as it was.
 LATER_COLUMNS = {"plot": "TEXT NOT NULL DEFAULT '[]'", "chosen": "TEXT"}
@@ -181,3 +187,30 @@ def redeem_handoff(code: str, phone: str) -> dict | None:
             return None
         db.execute("UPDATE handoffs SET used_by = ?, used_at = ? WHERE code = ?", (phone, time.time(), code.upper()))
         return json.loads(row["lot"])
+
+
+def queue_button(phone: str, label: str, text: str, url: str, *, sent: bool = False) -> int:
+    now = time.time()
+    with connect() as db:
+        return db.execute("INSERT INTO buttons (phone, label, text, url, queued_at, sent_at) VALUES (?, ?, ?, ?, ?, ?)",
+                          (phone, label, text, url, now, now if sent else None)).lastrowid
+
+
+def claim_buttons(phone: str, ids: list[int] | None = None) -> list[dict]:
+    """The chat's buttons still waiting, marked sent: whoever claims a button first sends it, never both."""
+    claimed = []
+    with connect() as db:
+        rows = db.execute("SELECT * FROM buttons WHERE phone = ? AND sent_at IS NULL ORDER BY id", (phone,)).fetchall()
+        for row in rows:
+            if ids is not None and row["id"] not in ids:
+                continue
+            if db.execute("UPDATE buttons SET sent_at = ? WHERE id = ? AND sent_at IS NULL",
+                          (time.time(), row["id"])).rowcount:
+                claimed.append(dict(row))
+    return claimed
+
+
+def sent_buttons(phone: str, since: float) -> list[dict]:
+    with connect() as db:
+        return [dict(r) for r in db.execute("SELECT label, sent_at FROM buttons WHERE phone = ? AND sent_at >= ? "
+                                            "ORDER BY sent_at", (phone, since))]

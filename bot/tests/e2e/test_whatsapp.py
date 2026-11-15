@@ -3,9 +3,11 @@ live NASA POWER data, the real alert service and the real call server; WhatsApp,
 are stand-ins (fakes.py). One farmer in Daule:
 
 1. writes «hola»: the turn opens with what Rooti knows (nothing yet) and Rooti asks for the plot's location;
-2. shares the location, then says what they grow: the lot is saved and its plan computed;
+2. shares the location, then says what they grow: the lot is saved and its plan computed, and while it computes
+   Rooti says it is checking (the model's own words only go out when the turn ends);
 3. asks when to sow rice: the answer comes from cuando_sembrar on that plan;
-4. asks to talk: the «📞 Hablar con Rooti» button arrives, with a signed link;
+4. asks to talk: the «📞 Hablar con Rooti» button arrives right after Rooti's answer, never before it, with a signed
+   link; the next turns know which buttons the farmer already has;
 5. a group message gets no answer; «/ayuda» is chat, not a Hermes command; when the model fails, the farmer gets a
    short apology, never Hermes' English error;
 6. agrees to alerts; a 55 mm day in the forecast sends a voice note and the call button;
@@ -234,13 +236,14 @@ def test_farmer_on_whatsapp(tmp_path):
             return got
 
         def button_reply(text):
-            """The button a tool sends, once the model's closing text is in too, so it never spills into the next step."""
+            """The button a tool asked for: it arrives after Rooti's answer, as a person sends a link after explaining."""
             mark = wa.mark()
             wa.say(FARMER, text)
-            done = lambda ms: ms if any(m["path"] == "send-url-button" for m in ms) and ms[-1]["path"] == "send" else None
-            got = wa.wait_for(lambda: done(wa.messages_to(FARMER, mark)), 120)
+            paths = lambda: [m["path"] for m in wa.messages_to(FARMER, mark)]
+            got = wa.wait_for(lambda: "send-url-button" in paths() and "send" in paths(), 120)
             assert got, f"no button.\n{(tmp_path / 'gateway.log').read_text()[-3000:]}"
-            return next(m for m in got if m["path"] == "send-url-button")
+            assert paths().index("send") < paths().index("send-url-button"), paths()
+            return next(m for m in wa.messages_to(FARMER, mark) if m["path"] == "send-url-button")
 
         # 1. A new farmer: the turn starts with what Rooti knows, and it asks for the plot's location.
         first = reply(lambda: wa.say(FARMER, "hola"), timeout=180)
@@ -260,8 +263,13 @@ def test_farmer_on_whatsapp(tmp_path):
 
         # 2. The location, then the crops: the lot is saved and its plan computed (live NASA POWER).
         reply(lambda: wa.location(FARMER, *DAULE))
-        done = reply(lambda: wa.say(FARMER, "siembro arroz y a veces maíz, son 3 cuadras y no se encharca."), timeout=180)
-        assert "revisé su lote" in done[-1]["message"]
+        mark = wa.mark()
+        wa.say(FARMER, "siembro arroz y a veces maíz, son 3 cuadras y no se encharca.")
+        done = wa.wait_for(lambda: [m["message"] for m in wa.messages_to(FARMER, mark)
+                                    if m["path"] == "send" and "revisé su lote" in m["message"]], 180)
+        assert done, wa.messages_to(FARMER, mark)
+        said = [m["message"] for m in wa.messages_to(FARMER, mark) if m["path"] == "send"]
+        assert said[0] == "Déjeme revisar su lote con los datos de la NASA, un ratito 🌱", said
         db = sqlite3.connect(data / "rooti.db")
         lot = db.execute("SELECT lat, lon, crops, area, unit, waterlog FROM farmers WHERE phone = ?", (FARMER,)).fetchone()
         assert lot == (DAULE[0], DAULE[1], '["rice", "maize", "soybean"]', 3.0, "cuadra", 0), lot
@@ -287,6 +295,9 @@ def test_farmer_on_whatsapp(tmp_path):
         assert mark_btn["buttonText"] == "Marcar mi lote" and mark_btn["url"].startswith(f"{site}/#t=")
         assert mark_btn["url"].endswith("&r=planear/1"), "the signed link rides in the fragment, never in a log"
         plan_btn = button_reply("mándeme el plan")
+        last_turn = "\n".join(text_of(m) for m in [r for r in llm.requests if r.get("tools")][-1]["messages"])
+        assert "Botones que ya le llegaron hoy" in last_turn and "«Marcar mi lote»" in last_turn, \
+            "the turn knows which pages the farmer already has"
         assert plan_btn["buttonText"] == "Ver mi plan" and plan_btn["url"].endswith("&r=plan")
         page_token = token_of(plan_btn["url"])
         status, html = http("GET", f"{site}/")

@@ -1,7 +1,10 @@
 """The web app's planner (bot/engine/rooti.mjs), run with Node, plus the saved plan of each lot."""
+import fcntl
+import hashlib
 import json
 import os
 import subprocess
+from contextlib import contextmanager
 
 from rooti_bot import config, store
 
@@ -12,10 +15,14 @@ class EngineError(Exception):
     pass
 
 
-def run(request: dict, timeout: int = 120) -> dict:
+def run(request: dict, timeout: int = 180) -> dict:
     env = {**os.environ, "ROOTI_ENGINE_CACHE": str(config.data_dir() / "engine-cache.json")}
-    proc = subprocess.run([config.node_bin(), str(ENGINE)], input=json.dumps(request), capture_output=True, text=True,
-                          timeout=timeout, env=env)
+    try:
+        proc = subprocess.run([config.node_bin(), str(ENGINE)], input=json.dumps(request), capture_output=True,
+                              text=True, timeout=timeout, env=env)
+    except subprocess.TimeoutExpired:  # a new plot waits on NASA POWER and SoilGrids, which can be slow for minutes
+        raise EngineError("los datos de la NASA y del suelo no respondieron a tiempo; se puede probar en un rato") \
+            from None
     try:
         out = json.loads(proc.stdout or "{}")
     except json.JSONDecodeError:
@@ -25,17 +32,38 @@ def run(request: dict, timeout: int = 120) -> dict:
     return out
 
 
+def cold(farmer: dict) -> bool:
+    """True when the lot's plan is not saved yet, so asking for it means waiting on NASA."""
+    saved = store.saved_plan(farmer["phone"])
+    return not saved or saved[0] != {**store.lot_inputs(farmer), "mode": "auto"}
+
+
+@contextmanager
+def _one_at_a_time(phone: str):
+    # The page's save (web.py, the call server) and the chat (the MCP server) can ask for the same new plan at once.
+    path = config.data_dir() / "locks" / f"{hashlib.sha256(phone.encode()).hexdigest()[:16]}.lock"
+    path.parent.mkdir(exist_ok=True)
+    with open(path, "w") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
 def plan_for(farmer: dict, *, fresh: bool = False, mode: str = "auto") -> dict:
     """The lot's plan. The first one takes up to a minute (NASA POWER and SoilGrids); after that it is read from
     the database until the lot changes, so an answer never waits on NASA."""
     if farmer.get("lat") is None or not farmer.get("crops"):
         raise EngineError("Todavía no sé dónde está el lote o qué siembra.")
+    if fresh or mode != "auto":
+        return run({"cmd": "plan", "lot": store.lot_inputs(farmer), "mode": mode})
     inputs = {**store.lot_inputs(farmer), "mode": mode}
-    saved = store.saved_plan(farmer["phone"])
-    if saved and not fresh and saved[0] == inputs:
-        return saved[1]
-    result = run({"cmd": "plan", "lot": store.lot_inputs(farmer), "mode": mode})
-    if mode == "auto":
+    with _one_at_a_time(farmer["phone"]):
+        saved = store.saved_plan(farmer["phone"])
+        if saved and saved[0] == inputs:
+            return saved[1]
+        result = run({"cmd": "plan", "lot": store.lot_inputs(farmer), "mode": mode})
         store.save_plan(farmer["phone"], inputs, result)
     return result
 
