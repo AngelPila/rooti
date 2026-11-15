@@ -100,6 +100,32 @@ cd app && python3 -m http.server 8765
 # open http://localhost:8765
 ```
 
+With Vecinos shared between phones (the app and its API, plus a throwaway Postgres):
+
+```bash
+docker network create rooti-dev
+docker run -d --name rooti-pg --network rooti-dev -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=rooti postgres:16-alpine
+docker build -f server/Dockerfile -t rooti-web .
+docker run --rm --network rooti-dev -p 3000:3000 -e DATABASE_URL=postgres://postgres:dev@rooti-pg:5432/rooti rooti-web
+# open http://localhost:3000
+```
+
+Without the API (the static server above) Vecinos still works: it shows the example posts and keeps what you post on
+that phone.
+
+## Deploy on Coolify
+
+1. **Database:** New resource → Database → PostgreSQL 16. Copy its *internal* connection URL.
+2. **App:** New resource → this repository, build pack **Dockerfile**, Dockerfile location `server/Dockerfile`,
+   base directory `/` (the build needs both `server/` and `app/`). Port **3000**.
+3. **Environment:** `DATABASE_URL` = the internal URL from step 1. Nothing else is needed.
+4. Health check path `/healthz`. On the first start the server creates the tables (`server/schema.sql`) and loads
+   the example posts from `app/data/vecinos.json` once, marked as examples.
+
+Moderation: a post leaves the feed when 3 different devices report it. To hide or bring back a post by hand, run in
+the database's terminal: `UPDATE vec_posts SET hidden = true WHERE id = '...';`. The WhatsApp bot can later write
+to the same database (`source = 'whatsapp'`) over Coolify's internal network.
+
 Rebuild the data (needs Docker and the data folder produced by `data-pipeline/`):
 
 ```bash

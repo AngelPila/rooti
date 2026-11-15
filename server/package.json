@@ -1,0 +1,9 @@
+{
+  "name": "rooti-web",
+  "private": true,
+  "type": "module",
+  "description": "Serves the Rooti app and the Vecinos API (Postgres).",
+  "scripts": { "start": "node server.mjs" },
+  "engines": { "node": ">=22" },
+  "dependencies": { "pg": "8.13.1" }
+}

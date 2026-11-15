@@ -26,6 +26,9 @@ Rules learned from design reviews. Each one comes from a correction the product 
 - **Never write month ranges as abbreviations ("dic–mar", "abr–jul") in a plan. Show the plan as a route: crop icon, crop name, and the months spelled out ("Maíz · diciembre a marzo").** Cards show the crops as icon chips, not a sentence.
   Why: "esta huevada no se entiende y se ve horrible asi dic-mar".
   <!-- 2026-11-15 -->
+- **The route is a stack of blocks that fit together like Scratch: no gaps and no arrows between steps; each block is tinted with its crop's colour and has a tab that fits into the next one, which shows the order.**
+  Why: "esas tarjetitas con flechas mas parecidas a las de scratch, pegaditas pero con direccion".
+  <!-- 2026-11-15 -->
 - **A stat is a big number plus a plain sentence ("39 — de los últimos 44 años, le habría ido bien con este plan"), never a fraction with a label like "39/44 años salió bien".**
   Why: the old version was not understood ("esto tmb").
   <!-- 2026-11-15 -->

@@ -2,14 +2,9 @@ import { BOOTCAMP, CROP_GUIDE, SOURCES } from "./bootcamp-content.js?v=2";
 
 const PROGRESS_KEY = "bootcamp1";
 const PHOTO_SOURCE = "https://commons.wikimedia.org/wiki/File:Corn_in_a_field_by_Myrstigen_1.jpg";
-const CROP_MARKS = {
-  rice: "🌾", maize: "🌽", soybean: "🫘", potato: "🥔", common_bean: "🫘", peanut: "🥜",
-  sorghum: "🌾", wheat: "🌾", barley: "🌾", sunflower: "🌻", chickpea: "🫘", cowpea: "🫘",
-  jack_bean: "🌿", velvet_bean: "🌿",
-};
 const LESSON_ICONS = ["i-sprout", "i-leaf", "i-calendar", "i-history"];
 
-export function createBootcamp({ h, put, icon, store, speak }) {
+export function createBootcamp({ h, put, icon, tile, store, speak }) {
   const progress = store.get(PROGRESS_KEY, { current: 0, completed: [] });
   const isComplete = (index) => progress.completed.includes(index);
   const external = (label, href) => h("a", { href, target: "_blank", rel: "noopener noreferrer" }, label);
@@ -23,7 +18,7 @@ export function createBootcamp({ h, put, icon, store, speak }) {
     const meter = h("progress", { max: text.lessons.length, "aria-label": text.path });
     const startLabel = h("span");
     let narration;
-    const mark = (id) => h("span", { class: "bc-crop-mark", "aria-hidden": "true" }, CROP_MARKS[id] || icon("i-sprout"));
+    const mark = (id) => tile(id);
 
     function updatePath() {
       count.textContent = text.progress(progress.completed.length);
