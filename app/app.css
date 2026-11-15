@@ -219,7 +219,7 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 @keyframes img-settle { from { scale: 1.2; } }
 @keyframes from-below { from { translate: 0 70%; } }
 .l-sheet { position: relative; z-index: 3; margin-top: -48px; background: var(--cream); border-radius: 48px 48px 0 0; padding: 48px 0 0; }
-.l-wrap { max-width: 1280px; margin: 0 auto; padding: 0 var(--side); display: flex; flex-direction: column; gap: 28px; }
+.l-wrap { max-width: 1920px; margin: 0 auto; padding: 0 var(--side); display: flex; flex-direction: column; gap: 28px; }
 .l-how { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .how { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 14px; row-gap: 4px; padding: 18px; border-radius: var(--r-card); background: var(--paper); border: 1px solid var(--line); }
 .how .tile-i { grid-row: span 2; width: 44px; height: 44px; border-radius: 13px; }
@@ -247,7 +247,7 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
   .hero-art { display: block; }
   .hero-copy .display { font-size: 96px; line-height: .98; }
   .hero-copy .lead { font-size: 20px; }
-  .l-nav { margin-top: 16px; max-width: 1360px; width: calc(100% - 2 * var(--side)); align-self: center; padding-left: 22px; background: rgba(233, 229, 213, .14); }
+  .l-nav { margin-top: 16px; max-width: calc(1920px - 2 * var(--side)); width: calc(100% - 2 * var(--side)); align-self: center; padding-left: 22px; background: rgba(233, 229, 213, .14); }
   .l-links .btn { font-size: 13px; }
   .l-sheet { margin-top: -96px; border-radius: 96px 96px 0 0; padding-top: 88px; }
   .l-how { grid-template-columns: repeat(3, 1fr); }
@@ -642,7 +642,7 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 /* ---------- computer ---------- */
 @media (min-width: 1024px) {
   body.app-route #topbar { display: flex; }
-  #topbar { position: sticky; top: 0; z-index: 6; height: 72px; padding: 0 24px; align-items: center; justify-content: space-between; gap: 16px; background: rgba(243, 240, 229, .88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
+  #topbar { position: sticky; top: 0; z-index: 6; height: 72px; padding: 0 max(24px, calc((100% - 1920px) / 2 + 24px)); align-items: center; justify-content: space-between; gap: 16px; background: rgba(243, 240, 229, .88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
   #topbar .lockup { font-size: 26px; }
   #topbar .crumb { font: 500 12px/1 var(--f-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--lichen); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #topbar > .row:first-child { flex: 1; }
@@ -686,7 +686,8 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
   .pf-next { align-self: flex-start; min-height: 42px; font-size: 12px; }
   .pf-foot { padding: 16px 28px 24px; border-top: 1px solid var(--line); }
   /* results */
-  .res { padding: 32px; gap: 24px; flex-direction: row; align-items: flex-start; max-width: 1440px; width: 100%; margin: 0 auto; }
+  /* Full width up to 1920px; past that the topbar insets to the same column so both edges line up. */
+  .res { padding: 24px; gap: 24px; flex-direction: row; align-items: flex-start; width: 100%; max-width: 1920px; margin: 0 auto; }
   .res-head { display: none; }
   .col-left { width: 420px; flex: none; display: flex; flex-direction: column; gap: 16px; }
   .col-left.wide { width: 500px; }
@@ -788,6 +789,7 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 }
 @media (min-width: 1024px) {
   .vec-grid { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); gap: 32px; align-items: start; }
+  .res.vec > .vec-grid { flex: 1; min-width: 0; }
   .vec-side { position: sticky; top: 88px; }
   .vp-text, .vp-replies li p:last-child { max-width: 75ch; }
 }
@@ -905,3 +907,10 @@ body.drawing .search, body.drawing .geo, body.drawing .gps, body.drawing .pf-nex
 .rain-chart .rd { font: 500 11px var(--f-mono); text-transform: uppercase; letter-spacing: .04em; fill: var(--lichen); }
 .rain-chart .rdn { font: 500 12px var(--f-body); fill: var(--forest); }
 @media (min-width: 721px) { .aviso { max-width: 720px; margin: 0 auto; width: 100%; } .av-acts { flex-direction: row; } .av-acts .btn { flex: 1; } }
+
+/* Wide screens: the landing cards would grow taller than the screen, and the neighbours feed fills two columns instead of leaving the right half empty. */
+@media (min-width: 1400px) {
+  .demo-card { aspect-ratio: 4 / 3.4; }
+  .vec-feed { display: block; columns: 2 440px; column-gap: 12px; }
+  .vec-feed > * { break-inside: avoid; margin-bottom: 12px; }
+}

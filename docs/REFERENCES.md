@@ -75,6 +75,6 @@
 ## Su terreno in 3D (`app/soil3d.js`, mocks in `prototypes/soil3d/`)
 - [three.js](https://threejs.org/) 0.160.0 (MIT), loaded from jsDelivr: the 3D scene and orbit controls.
 - Esri World Imagery tiles: the satellite photo draped on the terrain.
-- [Terrain Tiles on AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Terrarium encoding, mostly NASA SRTM): the relief, exaggerated on purpose and labelled as such.
-- Plant height on the surface is estimated from the photo's excess-green index; it is a visual aid, not a measurement.
+- [Terrain Tiles on AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Terrarium encoding, mostly NASA SRTM): in the app, only which ground is lowest, where the month's water is drawn; the prototypes also draw it as exaggerated relief.
+- In the app, houses are raised where the photo shows roofs (little green, busy texture, in clusters); in the prototypes, plant height comes from the photo's excess-green index. Both are visual aids, not measurements.
 - Soil, soil water, rain and greenness come from `app/data/daule.json` (ISRIC SoilGrids, NASA GLDAS, NASA POWER, NASA MODIS NDVI).
