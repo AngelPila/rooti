@@ -6,7 +6,8 @@ are stand-ins (fakes.py). One farmer in Daule:
 2. shares the location, then says what they grow: the lot is saved and its plan computed;
 3. asks when to sow rice: the answer comes from cuando_sembrar on that plan;
 4. asks to talk: the «📞 Hablar con Rooti» button arrives, with a signed link;
-5. a group message gets no answer;
+5. a group message gets no answer; «/ayuda» is chat, not a Hermes command; when the model fails, the farmer gets a
+   short apology, never Hermes' English error;
 6. agrees to alerts; a 55 mm day in the forecast sends a voice note and the call button;
 7. opening that call (a WebRTC offer, as the page sends: call_probe.py) is answered and marks the alert opened,
    so no reminder follows.
@@ -94,6 +95,10 @@ def script(req: dict) -> dict:
         return {"tool_calls": [(tool(req, "cuando_sembrar"), {"cultivo": "rice"})]}
     if "hablar" in said:
         return {"tool_calls": [(tool(req, "boton_llamada"), {})]}
+    if "/ayuda" in said:  # plain chat, not a Hermes command
+        return {"content": "Le ayudo a ver qué sembrar y cuándo. ¿Me manda la ubicación de su lote?"}
+    if "prueba de falla" in said:
+        return {"status": 401, "error": "Invalid API key: this is not an OpenRouter API key."}
     if "avíseme" in said:
         return {"tool_calls": [(tool(req, "guardar_lote"), {"alerts_ok": True})]}
     return {"content": "Hola, soy Rooti. ¿Me manda la ubicación de su lote con el clip?"}
@@ -199,8 +204,13 @@ def test_farmer_on_whatsapp(tmp_path):
         assert [m["message"] for m in first] == ["Hola, soy Rooti. ¿Me manda la ubicación de su lote con el clip?"], \
             "solo la respuesta de Rooti: ningún aviso de Hermes"
         turns = [r for r in llm.requests if r.get("tools")]  # not Hermes' own side calls (the session title)
-        assert "Agricultor nuevo" in "\n".join(text_of(m) for m in turns[0]["messages"]), \
-            "el turno empieza con el contexto del lote (rooti-bot contexto)"
+        first_turn = "\n".join(text_of(m) for m in turns[0]["messages"])
+        assert "Agricultor nuevo" in first_turn, "el turno empieza con el contexto del lote (rooti-bot contexto)"
+        assert "/help" not in first_turn, "la nota de primer contacto de Hermes pide mencionar /help"
+
+        # A «/» is chat for Rooti, never a Hermes command.
+        helped = reply(lambda: wa.say(FARMER, "/ayuda"))
+        assert [m["message"] for m in helped] == ["Le ayudo a ver qué sembrar y cuándo. ¿Me manda la ubicación de su lote?"]
 
         report = subprocess.run([str(BIN), "tiempos"], env=env, capture_output=True, text=True, check=True).stdout
         assert re.search(r"texto → texto: mediana \d+\.\d s", report), report
@@ -234,6 +244,11 @@ def test_farmer_on_whatsapp(tmp_path):
         wa.say("120363000000000000@g.us", "rooti, ¿qué siembro?", group=True, sender=FARMER)
         time.sleep(8)
         assert not [m for m in wa.sent[mark:] if m.get("chatId", "").endswith("@g.us")]
+
+        # 5b. The model fails (a revoked key): a short apology in Spanish, never Hermes' own error.
+        failed = reply(lambda: wa.say(FARMER, "prueba de falla"))
+        assert [m["message"] for m in failed] == ["Disculpe, ahorita no le pude responder. ¿Me escribe de nuevo en un ratito?"], \
+            failed
 
         # 6. Alerts: only after the farmer agrees; heavy rain in the forecast sends a voice note and the call button.
         reply(lambda: wa.say(FARMER, "sí, avíseme cuando venga lluvia"))

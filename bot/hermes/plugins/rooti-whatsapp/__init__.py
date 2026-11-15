@@ -6,7 +6,10 @@ Rooti on WhatsApp, adapted from Vinci's vinci-whatsapp and vinci-botones plugins
 - A forwarded audio or an .m4a is transcribed like a voice note (Hermes hears only voice notes on its own).
 - A question split across bubbles reaches the model as one (Vinci's endpointing): 3 s after a bubble that ends
   mid-clause, 0.3 s after «?» or «.», 1 s otherwise, never more than 20 s from the first one.
-- Hermes' notices for an operator (self-improvement review, busy ack) never reach a farmer.
+- Only Rooti talks to a farmer, never Hermes: a message starting with «/» is plain chat, not a command; Hermes'
+  first-contact note (which has the model mention /help) is off; and a Hermes notice on its way out (an error, a
+  warning, any of its own strings) is dropped, spoken by no voice note, and replaced by a short apology when the
+  farmer would otherwise get no answer at all.
 - Every Rooti tool call carries the chat it comes from (`_canal`), so the tools read that farmer's lot and two
   farmers at once never mix; the model never sees or sets it.
 - Every turn starts with the farmer's lot (`rooti-bot contexto`), so the first answer needs no tool round trip.
@@ -33,12 +36,17 @@ AUDIO = ("ptt", "audio")
 HERMES_NOTICE_RE = re.compile(
     r"\s*(?:💾\s|💡\s*First-time tip|[↪⏩⏳⚡]️?\s*(?:Redirected|Steered|Queued for|Interrupting|"
     r"Ejecución actual redirigida|Redirigido a la ejecución|En cola para el siguiente|Interrumpiendo la tarea))")
+# Text only Hermes writes: its name, its commands, provider errors, code blocks. Rooti speaks plain Spanish.
+LEAK_RE = re.compile(r"hermes|(?:^|\s)/[a-z]{2,}\b|api key|provider said|http \d{3}|settings →|openrouter|```",
+                     re.IGNORECASE)
+APOLOGY = "Disculpe, ahorita no le pude responder. ¿Me escribe de nuevo en un ratito?"
 TIMES = "{{DATA}}/tiempos.jsonl"
 _HEARD = {}
 _TURNS = {}  # chat → the farmer's last message: when it arrived and whether it was a voice note
 
 
 def register(ctx):
+    _no_first_contact_note()
     ctx.register_hook("pre_gateway_dispatch", _dispatch)
     ctx.register_hook("pre_tool_call", _before_tool)
     ctx.register_hook("pre_llm_call", _turn_context)
@@ -112,8 +120,83 @@ def _turn_context(**_):
 
 def _wire(_native, adapter):
     _wire_burst(adapter)
+    _no_commands(adapter)
     _quiet(adapter)
     _time_voice(adapter)
+
+
+def _no_first_contact_note():
+    """Hermes asks the model to introduce itself and mention /help on the install's first message ever."""
+    try:
+        import agent.onboarding as onboarding
+        onboarding.first_contact_turn_note = lambda *_a, **_k: None
+    except Exception as exc:
+        logger.warning("no pude apagar la nota de primer contacto: %s", exc)
+
+
+def _no_commands(adapter):
+    """A farmer's «/ayuda» is chat for the model, never a Hermes command or an answer to a Hermes prompt."""
+    if getattr(adapter, "_rooti_plain", False):
+        return
+    build = adapter._build_message_event
+
+    async def plain_event(*args, **kwargs):
+        event = await build(*args, **kwargs)
+        if event is not None:
+            event.allow_gateway_control = False
+        return event
+
+    adapter._build_message_event = plain_event
+    adapter._rooti_plain = True
+
+
+_PHRASES = None
+
+
+def _hermes_phrases():
+    """Long literal pieces of every string Hermes can show a user (its locales, its turn-failure copy)."""
+    global _PHRASES
+    if _PHRASES is not None:
+        return _PHRASES
+    texts = []
+    try:
+        import os
+        from pathlib import Path
+        import yaml
+        import agent
+        dirs = [os.environ.get("HERMES_BUNDLED_LOCALES"), Path(agent.__file__).resolve().parents[1] / "locales"]
+        for folder in (Path(d) for d in dirs if d):
+            for name in ("en.yaml", "es.yaml"):
+                if (folder / name).exists():
+                    texts += _strings(yaml.safe_load((folder / name).read_text(encoding="utf-8")))
+            if texts:
+                break
+        import agent.turn_failure_copy as failure_copy
+        texts += _strings([v for v in vars(failure_copy).values() if isinstance(v, (str, dict, list, tuple))])
+    except Exception as exc:
+        logger.warning("no pude leer los textos de Hermes: %s", exc)
+    pieces = {piece.strip().lower() for text in texts for piece in re.split(r"\{[^}]*\}|\n", text)}
+    _PHRASES = [p for p in pieces if len(p) >= 24]
+    return _PHRASES
+
+
+def _strings(node):
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, dict):
+        node = list(node.values())
+    if isinstance(node, (list, tuple)):
+        return [s for item in node for s in _strings(item)]
+    return []
+
+
+def _from_hermes(text):
+    if not isinstance(text, str) or not text.strip():
+        return False
+    if HERMES_NOTICE_RE.match(text) or LEAK_RE.search(text):
+        return True
+    lower = text.lower()
+    return any(piece in lower for piece in _hermes_phrases())
 
 
 def _note_reply(chat_id, what):
@@ -133,14 +216,18 @@ def _note_reply(chat_id, what):
 def _time_voice(adapter):
     if getattr(adapter, "_rooti_timed", False):
         return
-    play = adapter.play_tts
+    play, prepare = adapter.play_tts, adapter.prepare_tts_text
 
     async def timed_play(chat_id, audio_path, **kwargs):
         result = await play(chat_id, audio_path, **kwargs)
         _note_reply(chat_id, "voz")
         return result
 
+    def quiet_prepare(text):  # an empty script means no voice note
+        return "" if _from_hermes(text) else prepare(text)
+
     adapter.play_tts = timed_play
+    adapter.prepare_tts_text = quiet_prepare
     adapter._rooti_timed = True
 
 
@@ -217,9 +304,15 @@ def _quiet(adapter):
     send = adapter.send
 
     async def quiet_send(chat_id, content, reply_to=None, metadata=None, **kwargs):
-        if isinstance(content, str) and HERMES_NOTICE_RE.match(content):
+        if _from_hermes(content):
             from gateway.platforms.base import SendResult
-            return SendResult(success=True)
+            turn = _TURNS.get(str(chat_id))
+            if HERMES_NOTICE_RE.match(content) or not turn or "texto" in turn or turn.get("disculpa"):
+                logger.info("aviso de Hermes no enviado: %r", content[:120])
+                return SendResult(success=True)
+            logger.warning("el turno falló, en su lugar va una disculpa: %r", content[:200])
+            turn["disculpa"] = True
+            return await send(chat_id, APOLOGY, reply_to=reply_to, metadata=metadata, **kwargs)
         result = await send(chat_id, content, reply_to=reply_to, metadata=metadata, **kwargs)
         _note_reply(chat_id, "texto")
         return result

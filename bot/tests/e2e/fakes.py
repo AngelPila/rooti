@@ -120,7 +120,7 @@ class _WhatsAppHandler(_Quiet):
 
 
 class ScriptedLLM(_Server):
-    """script(request) -> {"content": str} or {"tool_calls": [(name, args), ...]}"""
+    """script(request) -> {"content": str}, {"tool_calls": [(name, args), ...]} or {"status": int, "error": str}"""
 
     def __init__(self, script):
         super().__init__(_LLMHandler)
@@ -144,6 +144,8 @@ class _LLMHandler(_Quiet):
             answer = llm.script(req) or {"content": "ok"}
         except Exception as exc:  # a bug in the script shows up in the chat, not as a hang
             answer = {"content": f"[script error: {type(exc).__name__}: {exc}]"}
+        if "status" in answer:  # a provider error, e.g. a revoked key
+            return self._json(answer["status"], {"error": {"message": answer["error"], "type": "invalid_request_error"}})
         calls = [{"id": f"call_{time.time_ns()}_{i}", "type": "function",
                   "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)}}
                  for i, (name, args) in enumerate(answer.get("tool_calls") or [])]

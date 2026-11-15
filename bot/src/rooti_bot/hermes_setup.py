@@ -16,7 +16,7 @@ from rooti_bot import config
 
 MARKER = "Generado por rooti-bot hermes-perfil"
 PLUGIN = "rooti-whatsapp"
-TOOLSETS = ["mcp-rooti", "clarify"]
+TOOLSETS = ["mcp-rooti"]  # no clarify: its numbered menus and reply prompts are Hermes, not Rooti
 # Everything else Hermes has stays off: Rooti answers from its own tools, never from a terminal, files or the web.
 BLOCKED = ["terminal", "file", "code_execution", "browser", "computer_use", "delegation", "cronjob", "kanban",
            "vision", "video", "image_gen", "video_gen", "todo", "connections", "homeassistant", "spotify",
