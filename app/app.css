@@ -514,6 +514,7 @@ body.results .bottom-nav { display: grid; grid-template-columns: repeat(4, 1fr);
 .cb-line b { text-align: right; font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 15px; }
 .cb-line.win b { font-weight: 600; color: var(--good); }
 .cb-line .icon { width: 18px; height: 18px; color: var(--good); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .plot { display: flex; flex-direction: column; gap: 10px; }
 .plot-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

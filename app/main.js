@@ -977,13 +977,19 @@ function viewComparar() {
         h("p", { class: used > (P.area || 1) + 1e-6 ? "err" : "small" }, c.uses(fmtArea(used / (P.area || 1)), fmtArea(1)))),
       h("div", { class: "col-right" },
         h("h2", { class: "display phone-only", style: { fontSize: "22px" } }, c.cmpTitle),
-        h("div", { class: "seg cmp-seg" }, ...[["rec", recName], ["mine", c.mine]].map(([k, l]) => h("button", { "aria-pressed": String((state.cmpView || "rec") === k), onclick: () => { state.cmpView = k; redo(); } }, l))),
-        (state.cmpView || "rec") === "rec" ? calCard(recName, rec) : calCard(c.mine, mine),
+        // Swaps only the calendar so the pressed button keeps keyboard focus.
+        h("div", { class: "seg cmp-seg" }, ...[["rec", recName], ["mine", c.mine]].map(([k, l]) => h("button", { "aria-pressed": String((state.cmpView || "rec") === k), onclick: (e) => {
+          state.cmpView = k;
+          for (const bt of e.currentTarget.parentElement.children) bt.setAttribute("aria-pressed", String(bt === e.currentTarget));
+          put($("#cmpCal"), k === "rec" ? calCard(recName, rec) : calCard(c.mine, mine));
+        } }, l))),
+        h("div", { id: "cmpCal" }, (state.cmpView || "rec") === "rec" ? calCard(recName, rec) : calCard(c.mine, mine)),
         h("section", { class: "card cmp-bars" }, h("div", { class: "cmp-key" }, h("span", {}, h("i", { class: "a" }), recName), h("span", {}, h("i", { class: "b" }), c.mine)),
           ...rows.map(([l, a, b, va, vb, up]) => {
             const w = better(va, vb, up), mx = Math.max(Math.abs(va), Math.abs(vb), 1e-9), bars = va >= 0 && vb >= 0;
-            const line = (cls, txt, v, win) => h("div", { class: `cb-line ${cls}${win ? " win" : ""}` }, bars ? h("span", { class: "cb-track" }, h("i", { style: { width: `${Math.max(3, (Math.abs(v) / mx) * 100)}%` } })) : h("span", { class: "cb-track empty" }), h("b", {}, txt), win ? icon("i-check") : h("span", { class: "cb-tick" }));
-            return h("div", { class: "cb-row" }, h("span", { class: "cb-label" }, l), line("a", a, va, w < 0), line("b", b, vb, w > 0));
+            const line = (cls, who, txt, v, win) => h("div", { class: `cb-line ${cls}${win ? " win" : ""}` }, h("span", { class: `cb-track${bars ? "" : " empty"}`, "aria-hidden": "true" }, bars ? h("i", { style: { width: `${Math.max(3, (Math.abs(v) / mx) * 100)}%` } }) : null),
+              h("b", {}, h("span", { class: "sr-only" }, `${who}: `), txt, win ? h("span", { class: "sr-only" }, es() ? " (mejor)" : " (better)") : null), win ? icon("i-check") : h("span", { class: "cb-tick" }));
+            return h("div", { class: "cb-row", role: "group", "aria-label": l }, h("span", { class: "cb-label", "aria-hidden": "true" }, l), line("a", recName, a, va, w < 0), line("b", c.mine, b, vb, w > 0));
           })),
         mR != null && mM != null ? h("p", { class: "small" }, c.moneyNote) : null,
         h("div", { class: `conclusion ${score > 0 ? "good" : "even"}` }, icon(score < 0 ? "i-info" : "i-check"), h("span", {}, score < 0 ? (why || c.recBetter) : score > 0 ? c.mineBetter : c.tie)))));
