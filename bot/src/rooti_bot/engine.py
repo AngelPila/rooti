@@ -2,13 +2,16 @@
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import subprocess
+import threading
 import time
 from contextlib import contextmanager
 
 from rooti_bot import config, store
 
+log = logging.getLogger("rooti.engine")
 ENGINE = config.BOT_DIR / "engine" / "rooti.mjs"
 SOIL_RETRY_S = 86400  # a plan saved without soil asks SoilGrids again after this long
 PLAN_FORMAT = 3  # bump when a plan's content changes (rooti.mjs, the soil fetch), so saved plans are computed again
@@ -20,9 +23,13 @@ class EngineError(Exception):
 
 def run(request: dict, timeout: int = 180) -> dict:
     env = {**os.environ, "ROOTI_ENGINE_CACHE": str(config.data_dir() / "engine-cache.json")}
+    lot = request.get("lot") or {}
     try:
-        proc = subprocess.run([config.node_bin(), str(ENGINE)], input=json.dumps(request), capture_output=True,
-                              text=True, timeout=timeout, env=env)
+        # One fetch per spot: a second engine for the same plot (the chat while the warm-up runs) waits for the
+        # first and then reads its cache, instead of asking NASA and SoilGrids again.
+        with _locked(f"spot:{float(lot.get('lat', 0)):.3f},{float(lot.get('lon', 0)):.3f}"):
+            proc = subprocess.run([config.node_bin(), str(ENGINE)], input=json.dumps(request), capture_output=True,
+                                  text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:  # a new plot waits on NASA POWER and SoilGrids, which can be slow for minutes
         raise EngineError("los datos de la NASA y del suelo no respondieron a tiempo; se puede probar en un rato") \
             from None
@@ -46,10 +53,28 @@ def cold(farmer: dict) -> bool:
     return not _reusable(store.saved_plan(farmer["phone"]), inputs)
 
 
+def warm(lat: float, lon: float) -> None:
+    """Fetches the plot's climate and soil in the background, so the farmer's first question after the website or
+    the page does not wait on NASA POWER and SoilGrids (about half a minute for a new spot)."""
+    def work():
+        try:
+            run({"cmd": "warm", "lot": {"lat": lat, "lon": lon}})
+        except EngineError as exc:  # the plan will try again when it is asked for
+            log.warning("no pude adelantar los datos de %.3f,%.3f: %s", lat, lon, exc)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
 @contextmanager
 def _one_at_a_time(phone: str):
     # The page's save (web.py, the call server) and the chat (the MCP server) can ask for the same new plan at once.
-    path = config.data_dir() / "locks" / f"{hashlib.sha256(phone.encode()).hexdigest()[:16]}.lock"
+    with _locked(phone):
+        yield
+
+
+@contextmanager
+def _locked(name: str):
+    path = config.data_dir() / "locks" / f"{hashlib.sha256(name.encode()).hexdigest()[:16]}.lock"
     path.parent.mkdir(exist_ok=True)
     with open(path, "w") as fh:
         fcntl.flock(fh, fcntl.LOCK_EX)
