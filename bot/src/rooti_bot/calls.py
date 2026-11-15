@@ -28,16 +28,16 @@ def link(phone: str, alert_id: int | None = None) -> str:
     base = config.call_url()
     if not base:
         raise RuntimeError("Falta ROOTI_CALL_URL: la dirección pública de la página de llamada.")
-    return f"{base}/#t={token(phone, alert_id)}"
+    return f"{base}/llamada#t={token(phone, alert_id)}"
 
 
 def page(phone: str, route: str, alert_id: int | None = None, hours: int = LINK_HOURS) -> str:
-    """The web app (web.py serves it at /app/) opened on `route`, signed in as this farmer. The link rides in the
+    """The web app (web.py serves it at the root) opened on `route`, signed in as this farmer. The link rides in the
     fragment, as in Vinci's webviews: it never reaches the proxy or its logs, and the page drops it on reading."""
     base = config.call_url()
     if not base:
         raise RuntimeError("Falta ROOTI_CALL_URL: la dirección pública de las páginas de Rooti.")
-    return f"{base}/app/#t={token(phone, alert_id, hours)}&r={route}"
+    return f"{base}/#t={token(phone, alert_id, hours)}&r={route}"
 
 
 def redeem(tok: str) -> dict:
