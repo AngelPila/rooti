@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=56";
+import { COPY } from "./copy.js?v=57";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=23";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -709,6 +709,20 @@ function normals(clim) {
   }));
 }
 
+// While the 3D plot loads: a block of land builds itself, and each real step (photo, relief, 3D) ticks off
+function soilLoader(T) {
+  const sides = (y, t, side, front) => `<path d="M10 ${y + 25}L60 ${y + 50}V${y + 50 + t}L10 ${y + 25 + t}Z" fill="${side}"/><path d="M60 ${y + 50}L110 ${y + 25}V${y + 25 + t}L60 ${y + 50 + t}Z" fill="${front}"/>`;
+  const field = (d, fill, i) => `<path class="sl-f" style="--i:${i}" d="${d}" fill="${fill}"/>`;
+  const art = h("div", { class: "sl-art", "aria-hidden": "true" });
+  // Rock, subsoil, then topsoil with four fields on top (the four modules of the logo)
+  art.innerHTML = `<svg viewBox="0 16 120 104"><g class="sl-s sl-s3">${sides(52, 14, "#3E3328", "#544536")}</g><g class="sl-s sl-s2">${sides(34, 18, "#6B5038", "#86664A")}</g>
+    <g class="sl-s sl-s1">${sides(22, 12, "#4F6B3B", "#668A4B")}${field("M60 22L85 34.5L60 47L35 34.5Z", "#7FA65A", 0)}${field("M85 34.5L110 47L85 59.5L60 47Z", "#C9B77E", 1)}${field("M35 34.5L60 47L35 59.5L10 47Z", "#5E8C46", 2)}${field("M60 47L85 59.5L60 72L35 59.5Z", "#A3C46C", 3)}</g></svg>`;
+  const steps = T.steps.map((txt) => h("li", { "data-s": "wait" }, h("i", {}), h("span", {}, txt)));
+  steps[0].dataset.s = "now";
+  const order = ["photo", "relief", "build"];
+  const step = (k) => { const n = order.indexOf(k); steps.forEach((li, i) => { li.dataset.s = i < n ? "done" : i === n ? "now" : "wait"; }); };
+  return { el: h("div", { class: "s3-loading", role: "status" }, art, h("ol", {}, ...steps)), step };
+}
 // The plan as a route: crop, then the months spelled out
 // Plans longer than a year show the first year; the rest opens on request so the route still reads at a glance
 function routeEl(r, f) {
@@ -1157,6 +1171,7 @@ function viewTerreno() {
     const segBtn = (lab, on, fn, dot) => h("button", { "aria-pressed": String(on), onclick: fn }, dot ? h("span", { class: "dot", style: { background: dot } }) : null, lab);
     const tools = h("div", { class: "s3-seg", role: "group" });
     const strip = h("div", { class: "s3-months" }), bars = h("div", { class: "clim-bars" });
+    const loader = soilLoader(T);
     const stage = h("section", { class: "s3", "aria-label": T.from },
       labelsEl,
       h("div", { class: "s3-head" }, h("div", { class: "mono" }, T.from), hMonth, hSub),
@@ -1169,7 +1184,7 @@ function viewTerreno() {
         b.setAttribute("aria-expanded", String(open)); note.hidden = !open; note.textContent = tx;
       } }, lab)))),
       note,
-      h("div", { class: "s3-loading" }, T.loading));
+      loader.el);
     const labels = () => {
       const f = st.water ? floodOf(st.m) : 0;
       return { lot: T.lot, lotSub: T.lotSub, cut: T.cut, soil: d ? c.texture[d.texture] : c.noData, waterK: f > 0 ? T.lows : T.lowsK, waterV: f > 0 ? T.lowsPct(Math.round(floodOf(st.m) * 100)) : T.noLows, roofsK: T.roofsK, roofsV: T.roofsV };
@@ -1217,7 +1232,7 @@ function viewTerreno() {
 
     // The 3D loads after the page; without WebGL or the network the flat satellite map stays
     const [lon, lat] = lotCenter(pts);
-    import("./soil3d.js?v=2").then((m) => m.mountSoil3d(stage, labelsEl, { lat, lon, lot: pts, labels })).then((s) => {
+    import("./soil3d.js?v=3").then((m) => m.mountSoil3d(stage, labelsEl, { lat, lon, lot: pts, labels, onStep: loader.step })).then((s) => {
       if (!s) return;
       scene = s; stage.classList.add("ready"); paint();
     }).catch(() => { if (stage.isConnected) stage.replaceWith(plotMap(r, picked)); });
@@ -1792,18 +1807,29 @@ function renderChrome(r) {
   if (r !== "planear") put($("#map-overlay"));
 }
 let shownRoute = null;
-// Between tabs the new screen enters from the side of the tab that was pressed; the year-by-year view rises from the plan.
+// A new page rises over the old one as a sheet with round top corners; between tabs the blocks come in from the side of the tab that was pressed.
 function enterView(prev, r) {
-  if (MOTION() && (prev === "planear" || prev === "") && r === "plan") return revealPlan();
-  if (!MOTION() || prev === r || !RESULTS.includes(prev) || !RESULTS.includes(r) || tabIx(prev) < 0 || tabIx(r) < 0) return;
-  const d = Math.sign(tabIx(r) - tabIx(prev)), v = $("#view");
+  if (!MOTION() || prev === null || prev === r) return;
+  const tabs = RESULTS.includes(prev) && RESULTS.includes(r) && tabIx(prev) >= 0 && tabIx(r) >= 0;
+  if (tabs) return cascade(Math.sign(tabIx(r) - tabIx(prev)));
+  riseSheet();
+  if (r === "plan") return revealPlan();
+  if (r !== "") cascade(0, 90);
+}
+function riseSheet() {
+  const v = $("#view");
   v.getAnimations().forEach((a) => a.cancel());
-  v.animate([{ opacity: 0, transform: d ? `translateX(${d * 28}px)` : "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 280, easing: EASE_OUT });
+  v.animate([{ clipPath: "inset(12% 0 0 0 round 56px 56px 0 0)", transform: "translateY(72px)" }, { clipPath: "inset(0 0 0 0 round 0 0 0 0)", transform: "none" }], { duration: 620, easing: EASE_OUT });
+}
+// The view's top blocks, one after another; d = -1/1 slides them in from that side, 0 lifts them
+function cascade(d, delay = 0) {
+  const blocks = [...document.querySelectorAll("#view > * > *")].filter((el) => el.getClientRects().length).slice(0, 8);
+  blocks.forEach((el, i) => el.animate([{ opacity: 0, transform: d ? `translateX(${d * 44}px)` : "translateY(22px)" }, { opacity: 1, transform: "none" }], { duration: 420, delay: delay + i * 45, easing: EASE_OUT, fill: "backwards" }));
 }
 // Arriving at a new plan is rare and is what the farmer came for: its parts come in one after another.
 function revealPlan() {
   const parts = document.querySelectorAll("#view .res-head, #view .nino-note, #view .pv-a, #view .pv-right, #view .pv-b, #view .pv-cards .strat, #view .pv-foot, #view .res.pv > .hint, #view .res.pv > .card");
-  parts.forEach((el, i) => el.animate([{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 480, delay: Math.min(i, 8) * 55, easing: EASE_OUT, fill: "backwards" }));
+  parts.forEach((el, i) => el.animate([{ opacity: 0, transform: "translateY(18px)" }, { opacity: 1, transform: "none" }], { duration: 520, delay: 120 + Math.min(i, 8) * 55, easing: EASE_OUT, fill: "backwards" }));
 }
 async function render() {
   const { r, arg, courseId, lessonNumber } = route();
