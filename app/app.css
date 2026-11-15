@@ -160,6 +160,13 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 .bottom-nav a { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0 7px; border-radius: 16px; text-decoration: none; color: rgba(243, 240, 229, .65); font: 500 10px/1 var(--f-mono); letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
 .bottom-nav a .icon { width: 22px; height: 22px; }
 .bottom-nav a[aria-current="page"] { background: rgba(243, 240, 229, .1); color: var(--lime); }
+.tabs { position: relative; }
+.tabs a, .bottom-nav a { position: relative; z-index: 1; }
+.tab-ghost { position: absolute; z-index: 0; border-radius: 16px; background: rgba(243, 240, 229, .1); pointer-events: none; }
+.tabs .tab-ghost { border-radius: 12px; background: var(--forest); }
+.tabs a.sliding[aria-current="page"], .bottom-nav a.sliding[aria-current="page"] { background: transparent; }
+.tabs a.dim[aria-current="page"] { color: var(--lichen); }
+.bottom-nav a.dim[aria-current="page"] { color: rgba(243, 240, 229, .65); }
 
 /* ---------- landing ---------- */
 .landing { display: flex; flex-direction: column; background: var(--cream); }

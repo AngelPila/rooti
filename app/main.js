@@ -1306,8 +1306,27 @@ function route() {
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
   return { r: ["", "planear", "bootcamp", ...RESULTS].includes(r) ? r : "", arg };
 }
+const TAB_ORDER = ["plan", "terreno", "probar", "comparar", "vecinos"];
+const tabIx = (r) => TAB_ORDER.indexOf(r === "pasado" ? "plan" : r);
+// The active tab's background travels from the previous tab instead of jumping; the nav itself is rebuilt on every route.
+function slideTab(nav, from) {
+  const to = nav?.querySelector('[aria-current="page"]');
+  if (!from || !to || !MOTION()) return;
+  const n = nav.getBoundingClientRect(), b = to.getBoundingClientRect();
+  if (Math.abs(from.left - b.left) < 1) return;
+  const ghost = h("span", { class: "tab-ghost", "aria-hidden": "true", style: { left: `${b.left - n.left}px`, top: `${b.top - n.top}px`, width: `${b.width}px`, height: `${b.height}px` } });
+  nav.prepend(ghost);
+  to.classList.add("sliding", "dim");
+  // The label turns active halfway, when the pill is under it, so it never sits light-on-light
+  setTimeout(() => to.classList.remove("dim"), 140);
+  ghost.animate([{ transform: `translateX(${from.left - b.left}px)`, width: `${from.width}px` }, { transform: "none", width: `${b.width}px` }], { duration: 320, easing: "cubic-bezier(.16, 1, .3, 1)" })
+    // The ghost leaves only after the tab's own background has faded back in under it
+    .finished.then(() => { to.classList.remove("sliding"); setTimeout(() => ghost.remove(), 200); });
+}
 function renderChrome(r) {
   const c = C(), P = state.plan, isRes = RESULTS.includes(r);
+  const was = (sel) => document.querySelector(`${sel} [aria-current="page"]`)?.getBoundingClientRect();
+  const fromTop = was("#topbar .tabs"), fromBottom = was("#bottom-nav");
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
@@ -1317,14 +1336,26 @@ function renderChrome(r) {
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, icon(ic), l)));
+  slideTab($("#topbar .tabs"), fromTop);
+  slideTab($("#bottom-nav"), fromBottom);
   if (r !== "planear") put($("#map-overlay"));
+}
+let shownRoute = null;
+// Between tabs the new screen enters from the side of the tab that was pressed; the year-by-year view rises from the plan.
+function enterView(prev, r) {
+  if (!MOTION() || prev === r || !RESULTS.includes(prev) || !RESULTS.includes(r) || tabIx(prev) < 0 || tabIx(r) < 0) return;
+  const d = Math.sign(tabIx(r) - tabIx(prev)), v = $("#view");
+  v.getAnimations().forEach((a) => a.cancel());
+  v.animate([{ opacity: 0, transform: d ? `translateX(${d * 28}px)` : "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 280, easing: "cubic-bezier(.16, 1, .3, 1)" });
 }
 async function render() {
   const { r, arg } = route();
+  const prev = shownRoute;
+  shownRoute = r;
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
   const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg) };
-  try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
+  try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
   document.documentElement.classList.toggle("motion", MOTION());
