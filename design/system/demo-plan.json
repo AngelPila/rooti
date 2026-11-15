@@ -1,0 +1,122 @@
+{
+ "rain": [
+  44,
+  136,
+  238,
+  241,
+  154,
+  59,
+  16,
+  8,
+  4,
+  7,
+  7,
+  22
+ ],
+ "season": "dwwwwwdddddd",
+ "firstYear": 1981,
+ "nino": [
+  1,
+  6,
+  10,
+  16,
+  28,
+  34,
+  42
+ ],
+ "tip": "Viene un Niño fuerte: limpie drenajes antes de enero y guarde semilla por si tiene que volver a sembrar.",
+ "plans": [
+  {
+   "key": "safe",
+   "name": "El más seguro",
+   "why": "El que menos años se pierde",
+   "icon": "i-escudo",
+   "title": "Maíz en dic–mar; paja entre siembras",
+   "verdict": "good",
+   "verdictText": "Le iría bien",
+   "loss": "1 de cada 9",
+   "years": "gggggxggggggggggxgggxggcgcgggggggggggggggggg",
+   "plots": [
+    {
+     "name": "Toda la finca",
+     "ha": "5,2",
+     "m": "MMMMPPPPPPPP"
+    }
+   ]
+  },
+  {
+   "key": "income",
+   "name": "El que más deja",
+   "why": "Pensado para vender más",
+   "icon": "i-ingreso",
+   "title": "Maíz y soya en dic–mar; arroz en ene–abr; maíz en abr–jul; paja entre siembras",
+   "verdict": "good",
+   "verdictText": "Le iría bien",
+   "loss": "1 de cada 7",
+   "years": "cggggcggggggggggxgggcggcgxgggggggggggggggggg",
+   "plots": [
+    {
+     "name": "Parcela A",
+     "ha": "1,6",
+     "m": "MMMMPPPPPPPP"
+    },
+    {
+     "name": "Parcela B",
+     "ha": "1,6",
+     "m": "SSSSMMMMPPPP"
+    },
+    {
+     "name": "Parcela C",
+     "ha": "2",
+     "m": "-RRRRPPPPPPP"
+    }
+   ]
+  },
+  {
+   "key": "soil",
+   "name": "El que más cuida la tierra",
+   "why": "La tierra no queda pelada",
+   "icon": "i-paja",
+   "title": "Maíz, arroz y soya en dic–mar; maíz en abr–jul; paja entre siembras",
+   "verdict": "good",
+   "verdictText": "Le iría bien",
+   "loss": "1 de cada 7",
+   "years": "cggggcggggggggggxgggcggxgxgggggggggggggggggg",
+   "plots": [
+    {
+     "name": "Parcela A",
+     "ha": "1,6",
+     "m": "MMMMPPPPPPPP"
+    },
+    {
+     "name": "Parcela B",
+     "ha": "1,6",
+     "m": "SSSSMMMMPPPP"
+    },
+    {
+     "name": "Parcela C",
+     "ha": "2",
+     "m": "RRRRPPPPPPPP"
+    }
+   ]
+  },
+  {
+   "key": "today",
+   "name": "Lo que hace hoy",
+   "why": "Para comparar",
+   "icon": "i-parcela",
+   "title": "Arroz en dic–mar",
+   "verdict": "care",
+   "verdictText": "Le iría más o menos",
+   "loss": "1 de cada 9",
+   "years": "cggggggggggggggggggggggxgxgggggggggggggggggg",
+   "plots": [
+    {
+     "name": "Toda la finca",
+     "ha": "5,2",
+     "m": "RRRR--------"
+    }
+   ]
+  }
+ ]
+}

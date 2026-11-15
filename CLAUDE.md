@@ -26,5 +26,6 @@ Reto: "Field Shift: Adapting Farms with NASA Data". Herramienta de apoyo a la de
 - `app/data/crops.json` → parámetros agronómicos **con fuente por cada valor**.
 
 ## Estilo
+- Antes de crear o cambiar UI, lee `DESIGN.md`: son las reglas de diseño que salieron de las revisiones.
 - Honestidad sobre la incertidumbre: resolución (POWER ~50 km), nubes en MODIS, suelo de baja confianza en Babahoyo. Mostrarla en la UI, no esconderla.
 - Lenguaje para agricultores, no para científicos. Nada de jerga sin explicación.

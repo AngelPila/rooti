@@ -4,3 +4,5 @@ data-cache/
 *.log
 .DS_Store
 logs/
+# AI originals without the required visible watermark
+design/system/assets/raw/
