@@ -36,7 +36,7 @@ from pipecat.transports.smallwebrtc.request_handler import (
 )
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 
-from rooti_bot import calls, config, store, tools, voice, web, web_agent
+from rooti_bot import calls, config, store, tools, vecinos, voice, web, web_agent
 
 PAGE = config.BOT_DIR / "call"
 # The audio goes over UDP straight between the phone and this server. STUN lets each side learn its public address;
@@ -194,6 +194,7 @@ def app() -> FastAPI:
 
     web.mount(api)
     web_agent.mount(api)
+    vecinos.mount(api)
     api.mount("/static", StaticFiles(directory=PAGE), name="static")
     web.mount_site(api)  # last: the web app answers every path the routes above do not
     return api

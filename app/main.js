@@ -1419,7 +1419,17 @@ function loadVecinos(pl = state.plan?.place, fresh = false) {
   if (!fresh && VEC.load && VEC.zone === z) return VEC.load;
   VEC.zone = z;
   return (VEC.load = (async () => {
-    if (z) try { const d = await vecApi(`?zone=${encodeURIComponent(z)}`); VEC.posts = d.posts || []; VEC.server = true; return; } catch { /* no server: examples and this phone */ }
+    if (z) try {
+      const q = `?zone=${encodeURIComponent(z)}`;
+      let d = await vecApi(q);
+      // What was saved on this phone while there was no server goes up now, once, so the neighbors see it too
+      const sent = new Set();
+      for (const p of store.get("vecMine1", []).filter((x) => x.zone === z)) {
+        try { await vecApi("", { ...p, author: state.vecName || p.author }); sent.add(p.id); } catch { break; }
+      }
+      if (sent.size) { store.set("vecMine1", store.get("vecMine1", []).filter((x) => !sent.has(x.id))); d = await vecApi(q); }
+      VEC.posts = d.posts || []; VEC.server = true; return;
+    } catch { /* no server: examples and this phone */ }
     VEC.server = false;
     try { const d = await fetch("data/vecinos.json?v=1").then(ok); VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true })); } catch { VEC.posts = []; }
   })());
