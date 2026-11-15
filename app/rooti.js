@@ -6,7 +6,7 @@ const T = {
     open: "Hablar con Rooti", close: "Cerrar", greet: "Hola, soy Rooti. Pregúnteme por su lote.", seeing: "Viendo", hello: (s) => `Hola, soy Rooti. Veo que está en ${s}. ¿En qué le ayudo?`,
     now: (s) => `Ahora está en ${s}`, write: "Escriba aquí…", send: "Enviar", hold: "Mantenga apretado el micrófono mientras habla", listening: "Le escucho… suelte para enviar",
     noMic: "Este teléfono no deja usar el micrófono aquí. Escríbame, por favor.", micAgain: "Listo. Ahora mantenga apretado el micrófono y hable.",
-    hint: "Escriba, o mantenga el micrófono y hable", conv: "Ver la conversación", undo: "Deshacer", undone: "Deshecho", restored: "Listo, lo dejé como estaba.",
+    hint: "Escriba, o mantenga el micrófono y hable", conv: "Ver la conversación", undo: "Deshacer", undone: "Deshecho", restored: "Listo, lo dejé como estaba.", done: "Listo, veci, ahí en la página lo tiene.", again: "Perdón, veci, no le entendí bien. ¿Me lo dice de otra forma?",
     down: "Ahorita no le puedo responder, veci. Pruebe de nuevo en un ratito.", heard: "No le escuché bien. ¿Me lo repite?", listen: "Escuchar", applied: "Listo, lo apliqué a su plan.",
     chips: {
       "": ["¿Qué hace Rooti?", "Le cuento de mi lote"], planear: ["Le cuento de mi lote", "¿Cómo marco mi lote?"],
@@ -19,7 +19,7 @@ const T = {
     open: "Talk to Rooti", close: "Close", greet: "Hi, I'm Rooti. Ask me about your plot.", seeing: "Seeing", hello: (s) => `Hi, I'm Rooti. I see you're on ${s}. How can I help?`,
     now: (s) => `Now on ${s}`, write: "Type here…", send: "Send", hold: "Hold the microphone while you talk", listening: "Listening… let go to send",
     noMic: "This phone won't let me use the microphone here. Please type instead.", micAgain: "Ready. Now hold the microphone and talk.",
-    hint: "Type, or hold the microphone and talk", conv: "See the conversation", undo: "Undo", undone: "Undone", restored: "Done, I put it back as it was.",
+    hint: "Type, or hold the microphone and talk", conv: "See the conversation", undo: "Undo", undone: "Undone", restored: "Done, I put it back as it was.", done: "Done, it is there on the page.", again: "Sorry, I did not quite get that. Could you say it another way?",
     down: "I can't answer right now. Please try again in a moment.", heard: "I didn't catch that. Could you say it again?", listen: "Listen", applied: "Done, it's in your plan now.",
     chips: {
       "": ["What does Rooti do?", "Let me tell you about my plot"], planear: ["Let me tell you about my plot", "How do I mark my plot?"],
@@ -126,7 +126,11 @@ export function createRooti(app) {
 
   /* ---------- the conversation ---------- */
   // Tool results and calls must stay together, so the history is cut at a farmer's message
-  const recent = () => { const users = S.history.map((m, i) => (m.role === "user" ? i : -1)).filter((i) => i >= 0); return S.history.slice(users[Math.max(0, users.length - 10)] || 0); };
+  // The servers keep the last 40 messages, so a long chat starts at the oldest farmer message that fits
+  const recent = () => {
+    const users = S.history.map((m, i) => (m.role === "user" ? i : -1)).filter((i) => i >= 0).slice(-10);
+    return S.history.slice(users.find((i) => S.history.length - i <= 40) ?? users[users.length - 1] ?? 0);
+  };
   async function ask(text, voice = false) {
     if (S.busy) return;
     if (!S.open) openPanel();
@@ -142,7 +146,7 @@ export function createRooti(app) {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const { message } = await r.json();
         // After acting, the model sometimes ends with no words; the final round forces them
-        if (!message.tool_calls?.length && !message.content?.trim() && round > 0 && !final) { round = 3; continue; }
+        if (!message.tool_calls?.length && !message.content?.trim() && !final) { round = 3; continue; }
         if (!message.tool_calls?.length || final) { reply = message.content; S.history.push({ role: "assistant", content: reply }); break; }
         S.history.push(message);
         for (const call of message.tool_calls) {
@@ -160,7 +164,7 @@ export function createRooti(app) {
       reply = t().down;
     }
     S.busy = false;
-    S.msgs.push({ who: "bot", text: reply || "…", cards });
+    S.msgs.push({ who: "bot", text: reply || (cards.length ? t().done : t().again), cards });
     if (acted && !wide()) S.peek = true;
     draw();
     if (voice && reply) say(reply);
@@ -183,6 +187,12 @@ export function createRooti(app) {
       if (r.error) return { result: { error: r.error } };
       await mark(`idea-${a.idea}`);
       return { acted: true, card: r.apply ? { kind: "offer", label: r.label, apply: r.apply, title: r.title } : null, result: { idea: r.title, why: r.why, effect: r.effect, applied: false } };
+    }
+    if (name === "undo_change") {
+      const c = S.msgs.flatMap((m) => m.cards || []).reverse().find((x) => x.kind === "change" && x.undo && !x.undone);
+      if (!c) return { result: { error: "nothing to undo" } };
+      c.undo(); c.undone = true;
+      return { acted: true, result: { undone: c.text } };
     }
     if (name === "offer_whatsapp") {
       const w = app.whatsapp();

@@ -5,7 +5,7 @@ import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=23";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
-import { createRooti } from "./rooti.js?v=3";
+import { createRooti } from "./rooti.js?v=4";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -1684,8 +1684,13 @@ async function rootiContext() {
     const soil = describeSoil(res.terrain?.soil), slope = res.terrain?.slopePct;
     out.push(`The land: ${soil ? `${C().texture[soil.texture]}, pH ${num(soil.ph)}` : "soil unknown"}; slope ${slope != null ? `${num(slope)} %` : "unknown"}; floods ${res.site.wl >= 0.6 ? "often" : res.site.wl >= 0.35 ? "sometimes" : "rarely"}.`);
     const ids = await ideas(res);
-    if (ids.length) out.push(`Ideas on the Try screen (kind: idea, effect): ${ids.map((x) => `${x.kind}: ${x.title}, ${x.eff}`).join("; ")}.`);
+    if (ids.length) out.push(`Ideas on the Try screen (kind: idea, effect): ${ids.map((x) => `${x.kind}: ${x.title}, ${x.eff}`).join("; ")}. An effect in land "of harvest" means as much more harvest as that much land fully harvested over the plan's months, not more land; say it like "como cosechar media cuadra más".`);
   } catch { out.push("The plan could not be computed right now."); }
+  try {
+    await loadVecinos();
+    const posts = vecPosts(P.place).filter((p) => !p.hidden), K = { aviso: "alert", pregunta: "question", asi_me_fue: "how it went" };
+    out.push(posts.length ? `Neighbors screen, posts from farmers near the plot${posts.some((p) => p.example) ? " (marked «Ejemplo»: sample posts that show how it will look)" : ""}: ${posts.slice(0, 6).map((p) => `${K[p.type] || p.type}, ${p.author}, ${p.date}${p.crop ? `, ${cropName(p.crop)}` : ""}${p.result ? `, went ${p.result}` : ""}: ${String(p.text_es || p.text_en || p.text || "").slice(0, 160)}`).join(" | ")}.` : "Neighbors screen: no posts near this plot yet.");
+  } catch { /* the feed is optional */ }
   return out.join("\n");
 }
 async function rootiChangePlot(a) {
