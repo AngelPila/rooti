@@ -1064,7 +1064,7 @@ function nextUp(r, f) {
   const N = r.period.length, now = new Date(), ym = now.getFullYear() * 12 + now.getMonth() + 1;
   let t = r.period.findIndex((p) => p.y * 12 + p.m === ym), early = false;
   // A plan that has not started yet: everything in it is still to sow
-  if (t < 0) { early = r.period[0].y * 12 + r.period[0].m > ym; t = early ? 0 : N - 1; }
+  if (t < 0) { early = r.period[0].y * 12 + r.period[0].m > ym; if (!early) return []; t = 0; }
   const crop = (x) => x && x.c !== "bare" && x.c !== "mulch";
   return plotsOf(f).map(({ pc, name }) => {
     const runs = runsOf(pc, N), cur = runs.find((x) => x.t0 <= t && t < x.t1);
