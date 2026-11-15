@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=22";
-import { COPY } from "./copy.js?v=41";
+import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
+import { COPY } from "./copy.js?v=42";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -638,7 +638,8 @@ function planCard(it, r, plans, onPick) {
   return h("button", { class: "strat", role: "radio", "aria-checked": String(it.key === state.pick), "data-id": it.key, onclick: () => onPick(it.key) },
     h("span", { class: "spec mono" }, whyOf(it, plans), h("span", { class: "radio" })),
     h("span", { class: "pname" }, icon(NAMED_ICON[it.key]), D.names[it.key]),
-    h("span", { class: "cropline" }, ...order.map((c) => { const L = look(c); return h("span", { class: `cl-chip${c === "bare" ? " bare" : ""}` }, h("i", { style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, icon(L.icon)), cropLabel(c)); })),
+    h("span", { class: "cropline" }, ...order.slice(0, 4).map((c) => { const L = look(c); return h("span", { class: `cl-chip${c === "bare" ? " bare" : ""}` }, h("i", { style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, icon(L.icon)), cropLabel(c)); }),
+      order.length > 4 ? h("span", { class: "cl-chip more", title: order.slice(4).map(cropLabel).join(", ") }, `+${order.length - 4}`) : null),
     h("span", { class: "cl-note" }, plots.length > 1 ? D.inPlots(plots.length) : D.wholeFarm),
     h("span", { class: "mini", style: { "--n": N } }, ...plots.map(({ runs }) => h("div", {}, ...runs.flatMap((ru) => Array.from({ length: ru.t1 - ru.t0 }, () => h("i", { class: ru.c === "bare" ? "bare" : "", style: { background: look(ru.c).color } })))))),
     h("span", { class: `badge ${f.verdict}` }, C().verdict[f.verdict]),
@@ -715,7 +716,8 @@ function viewPlan() {
             h("div", { class: "pv-b" },
               multi ? [stat, h("div", { class: "pv-block" }, dots, legend, h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r")))] : h("p", { class: "small" }, D.realOnly),
               h("div", { class: "pv-block" }, coverLab, squares))),
-          h("div", { class: "pv-right" }, cal, h("div", { class: "pv-block" }, h("b", {}, D.plansTitle(plans.filter((x) => x.key !== "today").length, plans.some((x) => x.key === "today"))), cards))),
+          h("div", { class: "pv-right" }, cal)),
+        h("div", { class: "pv-block pv-cards" }, h("b", {}, D.plansTitle(plans.filter((x) => x.key !== "today").length, plans.some((x) => x.key === "today"))), cards),
         h("div", { class: "pv-foot" }, unknownChips(r, plans[0].f), sourceNote(r, plans[0].f))),
       ids.length ? h("a", { class: "hint", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(ids.length)), icon("i-chev-r")) : null,
       h("section", { class: "card" }, h("b", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot))));
@@ -804,8 +806,20 @@ const tipList = (items) => h("ul", { class: "tips" }, ...items.map(([ic, tx]) =>
 function sig(f) { return f.parcels.map((p) => p.d.steps.map((s) => s.crop + s.t0).join(",")).join("|"); }
 
 /* ---------- the plot ---------- */
+// The plot from the satellite with the picked plan's plots drawn on it. The split is illustrative, and says so.
+function plotMap(r, f) {
+  const P = state.plan, pl = P.place, D = C().ds, dk = demoKey(pl), d = 0.006, N = r.period.length;
+  const bb = [pl.lon - d * 2.6, pl.lat - d, pl.lon + d * 2.6, pl.lat + d].join(",");
+  const plots = plotsOf(f).map((x) => ({ ...x, lead: runsOf(x.pc, N).find((ru) => ru.c !== "bare" && ru.c !== "mulch")?.c || "bare" }));
+  return h("section", { class: "plot-map" },
+    h("img", { alt: "", src: dk ? `img/sat/${dk}.jpg` : `${ESRI}/export?bbox=${bb}&bboxSR=4326&size=1000,420&format=jpg&f=image` }),
+    h("div", { class: "pm-lot" }, ...plots.map(({ pc, name, lead }) => h("div", { class: "pm-plot", style: { flexGrow: String(pc.share), "--c": look(lead).color } },
+      h("span", {}, tile(lead), h("b", {}, name), `${cropLabel(lead)} · ${fmtArea(pc.share)}`)))),
+    h("div", { class: "pm-cap" }, h("b", {}, D.plotMap), h("span", {}, D.plotMapNote)));
+}
 function viewTerreno() {
-  return withResults((r) => {
+  return withResults(async (r) => {
+    const picked = (await chosen(r)).f;
     const c = C(), P = state.plan, tr = r.terrain, d = describeSoil(tr?.soil), wl = r.site.wl;
     const months = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([k]) => +k.slice(5) === i + 1 && +k.slice(0, 4) >= 1991 && +k.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (f) => vs.reduce((a, v) => a + v[f], 0) / Math.max(1, vs.length); return { m: i + 1, rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
     const annual = months.reduce((a, x) => a + x.rain, 0), wet = months.filter((x) => x.rain >= x.et0 * 0.8).map((x) => mon(x.m)), dry = months.filter((x) => x.rain < 0.5 * x.et0).map((x) => mon(x.m));
@@ -819,6 +833,7 @@ function viewTerreno() {
     const noaa = DATA.outlook?.official?.noaa, erfen = DATA.outlook?.official?.erfen;
     put($("#view"), h("div", { class: "res terreno" },
       resHead(P),
+      plotMap(r, picked),
       h("div", { class: "col-left" },
         h("section", { class: "card" }, h("h2", { class: "card-h" }, c.yourPlot),
           row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
@@ -883,23 +898,17 @@ function viewProbar() {
       return h("div", { class: "sow-row", style: { "--lab": lab } }, h("b", { style: { fontSize: desktop() ? "16px" : "13px" } }, cap(cropName(id))),
         h("div", { class: "sow-cells", style: { "--n": N } }, ...w.starts.map((s, t) => h("i", { class: s ? s.level : "none", title: s ? `${ym(r.period[t])}: ${Math.round(s.value * 100)} %` : c.sowNone }, s && w.best && s.t === w.best.t && w.best.level !== "danger" ? "★" : ""))));
     };
-    const byWin = new Map(), no = [];
-    for (const id of picked) { const top = r.windows[id].windows[0]; if (!top) { no.push(cap(cropName(id))); continue; } const k = span(top.from, top.to); byWin.set(k, [...(byWin.get(k) || []), cropName(id)]); }
-    const reads = [...[...byWin].map(([k, cs]) => c.sowRead(andList(cs), k)), ...no.map((x) => c.sowNo(x))];
-    put($("#view"), h("div", { class: "res" },
+    put($("#view"), h("div", { class: "res stack" },
       resHead(P),
-      h("div", { class: "col-left wide" },
-        h("div", { class: "res-title" }, h("h1", { class: "display" }, c.tryTitle), h("p", {}, c.tryLead)),
-        state.undo ? h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { setPlan(state.undo.plan); state.mode = state.undo.mode; state.undo = null; render(); } }, icon("i-undo"), " ", c.undo) : null,
-        list.length ? h("div", { class: "ideas" }, ...list.map((it) => h("div", { class: `idea${it.on ? " on" : ""}` }, h("span", { class: "ic" }, icon(it.icon)), h("div", { class: "grow" }, h("b", {}, it.title), h("p", {}, it.why), h("em", {}, it.eff)),
-          h("button", { class: "btn dark", onclick: it.apply }, it.on ? c.undo : c.tryBtn)))) : h("p", {}, c.noIdeas)),
-      h("div", { class: "col-right" },
-        h("section", { class: "card sow-card" },
-          h("div", { class: "row between wrap" }, h("b", { style: { fontSize: desktop() ? "20px" : "16px" } }, c.sowTitle),
-            h("div", { class: "legend" }, ...[["good", c.sowGood], ["care", c.sowCare], ["danger", c.sowBad], ["none", c.sowNone]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l)))),
-          h("p", { class: "small" }, c.sowLead),
-          h("div", { class: "sow" }, head, h("p", { class: "sow-group" }, c.yours), ...picked.map(sowRow), suggested.length ? h("p", { class: "sow-group" }, c.suggested) : null, ...suggested.slice(0, 3).map(sowRow)),
-          reads.length ? h("div", { class: "read", style: { marginTop: "auto" } }, icon("i-info"), h("span", {}, reads.join(" "))) : null))));
+      h("div", { class: "res-title" }, h("h1", { class: "display" }, c.tryTitle), h("p", {}, c.tryLead)),
+      state.undo ? h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { setPlan(state.undo.plan); state.mode = state.undo.mode; state.undo = null; render(); } }, icon("i-undo"), " ", c.undo) : null,
+      list.length ? h("div", { class: "ideas row-ideas" }, ...list.map((it) => h("div", { class: `idea${it.on ? " on" : ""}` }, h("span", { class: "ic" }, icon(it.icon)), h("div", { class: "grow" }, h("b", {}, it.title), h("p", {}, it.why), h("em", {}, it.eff)),
+        h("button", { class: "btn dark", onclick: it.apply }, it.on ? c.undo : c.tryBtn)))) : h("p", {}, c.noIdeas),
+      h("section", { class: "card sow-card" },
+        h("div", { class: "row between wrap" }, h("b", { class: "card-h" }, c.sowTitle),
+          h("div", { class: "legend" }, ...[["good", c.sowGood], ["care", c.sowCare], ["danger", c.sowBad], ["none", c.sowNone]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l)))),
+        h("p", { class: "small" }, c.sowLead),
+        h("div", { class: "sow" }, head, h("p", { class: "sow-group" }, c.yours), ...picked.map(sowRow), suggested.length ? h("p", { class: "sow-group" }, c.suggested) : null, ...suggested.slice(0, 3).map(sowRow)))));
   });
 }
 
@@ -969,10 +978,20 @@ function viewComparar() {
         h("p", { class: used > (P.area || 1) + 1e-6 ? "err" : "small" }, c.uses(fmtArea(used / (P.area || 1)), fmtArea(1)))),
       h("div", { class: "col-right" },
         h("h2", { class: "display phone-only", style: { fontSize: "22px" } }, c.cmpTitle),
-        h("div", { class: "cals2" }, calCard(recName, rec), calCard(c.mine, mine)),
-        h("section", { class: "card", style: { padding: "6px 20px" } }, h("table", { class: "cmp" },
-          h("thead", {}, h("tr", {}, h("th", {}), h("th", { style: { textAlign: "right" } }, recName), h("th", { style: { textAlign: "right" } }, c.mine))),
-          h("tbody", {}, ...rows.map(([l, a, b, va, vb, up]) => { const w = better(va, vb, up); return h("tr", {}, h("th", { scope: "row" }, l), h("td", { class: w < 0 ? "win" : "" }, a), h("td", { class: w > 0 ? "win" : "" }, b)); })))),
+        // Swaps only the calendar so the pressed button keeps keyboard focus.
+        h("div", { class: "seg cmp-seg" }, ...[["rec", recName], ["mine", c.mine]].map(([k, l]) => h("button", { "aria-pressed": String((state.cmpView || "rec") === k), onclick: (e) => {
+          state.cmpView = k;
+          for (const bt of e.currentTarget.parentElement.children) bt.setAttribute("aria-pressed", String(bt === e.currentTarget));
+          put($("#cmpCal"), k === "rec" ? calCard(recName, rec) : calCard(c.mine, mine));
+        } }, l))),
+        h("div", { id: "cmpCal" }, (state.cmpView || "rec") === "rec" ? calCard(recName, rec) : calCard(c.mine, mine)),
+        h("section", { class: "card cmp-bars" }, h("div", { class: "cmp-key" }, h("span", {}, h("i", { class: "a" }), recName), h("span", {}, h("i", { class: "b" }), c.mine)),
+          ...rows.map(([l, a, b, va, vb, up]) => {
+            const w = better(va, vb, up), mx = Math.max(Math.abs(va), Math.abs(vb), 1e-9), bars = va >= 0 && vb >= 0;
+            const line = (cls, who, txt, v, win) => h("div", { class: `cb-line ${cls}${win ? " win" : ""}` }, h("span", { class: `cb-track${bars ? "" : " empty"}`, "aria-hidden": "true" }, bars ? h("i", { style: { width: `${Math.max(3, (Math.abs(v) / mx) * 100)}%` } }) : null),
+              h("b", {}, h("span", { class: "sr-only" }, `${who}: `), txt, win ? h("span", { class: "sr-only" }, es() ? " (mejor)" : " (better)") : null), win ? icon("i-check") : h("span", { class: "cb-tick" }));
+            return h("div", { class: "cb-row", role: "group", "aria-label": l }, h("span", { class: "cb-label", "aria-hidden": "true" }, l), line("a", recName, a, va, w < 0), line("b", c.mine, b, vb, w > 0));
+          })),
         mR != null && mM != null ? h("p", { class: "small" }, c.moneyNote) : null,
         h("div", { class: `conclusion ${score > 0 ? "good" : "even"}` }, icon(score < 0 ? "i-info" : "i-check"), h("span", {}, score < 0 ? (why || c.recBetter) : score > 0 ? c.mineBetter : c.tie)))));
   });
@@ -1050,9 +1069,11 @@ function updateMap(pl, verdict) {
   const col = verdict ? { good: "#2F7D4F", care: "#C7860F", danger: "#D2452E" }[verdict] : "#153E32";
   if (lotEntity) viewer.entities.remove(lotEntity);
   lotEntity = viewer.entities.add({
-    polygon: { height: 0, hierarchy: Cz.Cartesian3.fromDegreesArray([pl.lon - d, pl.lat - d, pl.lon + d, pl.lat - d * 0.9, pl.lon + d * 0.95, pl.lat + d, pl.lon - d * 1.05, pl.lat + d * 0.92]), material: Cz.Color.fromCssColorString(col).withAlpha(0.45), outline: true, outlineColor: Cz.Color.WHITE, outlineWidth: 3 },
+    polygon: { height: 0, hierarchy: Cz.Cartesian3.fromDegreesArray([pl.lon - d, pl.lat - d, pl.lon + d, pl.lat - d * 0.9, pl.lon + d * 0.95, pl.lat + d, pl.lon - d * 1.05, pl.lat + d * 0.92]), material: Cz.Color.fromCssColorString(col).withAlpha(0.25) },
+    polyline: { clampToGround: true, width: 3, material: Cz.Color.fromCssColorString("#C8FF9E"), positions: Cz.Cartesian3.fromDegreesArray([pl.lon - d, pl.lat - d, pl.lon + d, pl.lat - d * 0.9, pl.lon + d * 0.95, pl.lat + d, pl.lon - d * 1.05, pl.lat + d * 0.92, pl.lon - d, pl.lat - d]) },
     position: Cz.Cartesian3.fromDegrees(pl.lon, pl.lat),
-    label: { text: pl.name, font: "500 15px Geist, sans-serif", fillColor: Cz.Color.fromCssColorString("#14201A"), showBackground: true, backgroundColor: Cz.Color.WHITE, backgroundPadding: new Cz.Cartesian2(10, 6), pixelOffset: new Cz.Cartesian2(0, -36) },
+    point: { pixelSize: 12, color: Cz.Color.fromCssColorString("#C8FF9E"), outlineColor: Cz.Color.fromCssColorString("#153E32"), outlineWidth: 3, heightReference: Cz.HeightReference.CLAMP_TO_GROUND },
+    label: { text: pl.name, font: "500 15px Geist, sans-serif", fillColor: Cz.Color.fromCssColorString("#F3F0E5"), showBackground: true, backgroundColor: Cz.Color.fromCssColorString("#153E32"), backgroundPadding: new Cz.Cartesian2(12, 8), pixelOffset: new Cz.Cartesian2(0, -30), heightReference: Cz.HeightReference.CLAMP_TO_GROUND },
   });
   viewer.camera.flyTo({ destination: Cz.Cartesian3.fromDegrees(pl.lon, pl.lat - 0.02, 4500), orientation: { heading: 0, pitch: Cz.Math.toRadians(-55), roll: 0 }, duration: 1.6 });
   viewer.scene.requestRender();
@@ -1217,7 +1238,9 @@ function renderChrome(r) {
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : c.planTitle}`)),
+  // Off the results there are no tabs, so the bar carries a way back: to the plan when there is one, else home
+  const back = isRes ? null : h("a", { class: "round", href: r === "planear" && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, icon(ic), l)));
