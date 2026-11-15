@@ -55,6 +55,12 @@ Applied from the `remove-animations`, `choreograph` and `mobile-native` skills a
 - **UI transitions stay under 300ms (`--t-fast` 150ms, `--t-base` 250ms); only drawings that explain something (the rain curve, the hero lines) take longer, once.**
 - **Hover styles live inside `@media (hover: hover) and (pointer: fine)`; every tappable element has an `:active` state instead.**
 
+## Layout
+- **On a computer, app screens use the full width up to 1920px with the same 24px side margin as the topbar; past 1920px the topbar insets to that same column so the edges line up.**
+  This covers the landing, the results tabs and the bootcamp. Long text keeps its own reading width (about 75ch) inside the wide column instead of narrowing the whole page.
+  Why: "estos espacios entre los lados no se ven bien" (bare cream bands beside a 1440px column on a wide screen).
+  <!-- 2026-11-15 -->
+
 ## Working on UI
 - **Do UI work in a single agent thread; do not fan out subagents for design work.**
   Why: "Un solo agente, este hilo".

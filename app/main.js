@@ -1339,7 +1339,7 @@ async function viewPasaporte() {
   const seasonFire = (x) => x.lot_fires_by_month.slice(4).findIndex((n) => n > 0);
   const zoneBurn = yrs.filter(([, x]) => x.zone_fires_by_month.slice(4).some((n) => n > 0)).length;
   const last = yrs[yrs.length - 1], lastM = last ? seasonFire(last[1]) : -1;
-  put($("#view"), h("div", { class: "res", style: { flexDirection: "column", maxWidth: "760px" } },
+  put($("#view"), h("div", { class: "res", style: { flexDirection: "column" } },
     resHead(state.plan),
     h("div", { class: "res-title" }, h("h1", { class: "display" }, s.passportTitle), h("p", {}, state.plan.place.name)),
     last ? h("div", { class: `pp-answer ${lastM < 0 ? "good" : "danger"}` }, h("p", { class: "small" }, s.burnQ(last[0])), h("b", {}, lastM < 0 ? s.noBurn : s.burnIn(s.monthsLong[lastM + 4])), h("small", { class: "small" }, s.viaSat)) : h("p", {}, "—"),
