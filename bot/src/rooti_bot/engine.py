@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from rooti_bot import config, store
 
 ENGINE = config.BOT_DIR / "engine" / "rooti.mjs"
+PLAN_FORMAT = 2  # bump when rooti.mjs changes what a plan says, so saved plans are computed again
 
 
 class EngineError(Exception):
@@ -35,7 +36,7 @@ def run(request: dict, timeout: int = 180) -> dict:
 def cold(farmer: dict) -> bool:
     """True when the lot's plan is not saved yet, so asking for it means waiting on NASA."""
     saved = store.saved_plan(farmer["phone"])
-    return not saved or saved[0] != {**store.lot_inputs(farmer), "mode": "auto"}
+    return not saved or saved[0] != {**store.lot_inputs(farmer), "mode": "auto", "format": PLAN_FORMAT}
 
 
 @contextmanager
@@ -58,7 +59,7 @@ def plan_for(farmer: dict, *, fresh: bool = False, mode: str = "auto") -> dict:
         raise EngineError("Todavía no sé dónde está el lote o qué siembra.")
     if fresh or mode != "auto":
         return run({"cmd": "plan", "lot": store.lot_inputs(farmer), "mode": mode})
-    inputs = {**store.lot_inputs(farmer), "mode": mode}
+    inputs = {**store.lot_inputs(farmer), "mode": mode, "format": PLAN_FORMAT}
     with _one_at_a_time(farmer["phone"]):
         saved = store.saved_plan(farmer["phone"])
         if saved and saved[0] == inputs:

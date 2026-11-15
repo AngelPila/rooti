@@ -29,6 +29,9 @@ const ym = (p) => `${MONTHS[p.m - 1]} ${p.y}`;
 const cropName = (id) => (id === "mulch" ? "paja sin quemar" : CROPS[id]?.name_es?.toLowerCase() || id);
 // «2 de 7 años», never a percentage (docs/UX_RESEARCH.md, point 7).
 const yearsOf = (share, n) => `${Math.round(share * n)} de ${n} años`;
+// What the count means for the farmer, so the model can say it in words and keep the count for when it matters.
+const riskOf = (share) => (share === 0 ? "en ninguno de esos años le habría ido mal" : share <= 0.2 ? "rara vez le habría ido mal"
+  : share <= 0.45 ? "algunos años le habría ido mal" : "muchos años le habría ido mal");
 const round = (x, d = 1) => Math.round(x * 10 ** d) / 10 ** d;
 
 function period() {
@@ -63,19 +66,20 @@ async function planCmd(lot, mode = "auto") {
   const [clim, terrain] = await Promise.all([fetchClimate(lot.lat, lot.lon), terrainOf(lot)]);
   const site = siteOf(terrain, lot);
   const r = plan(clim, CROPS, picked, { start, end, irrigation: !!lot.irrigation, priority: lot.priority || "soil", mode: used, site, current: lot.current || [] });
-  const n = r.samples.length, area = Number(lot.area) || 0, unit = UNIT_HA[lot.unit] ? lot.unit : "ha";
+  const n = r.samples.length, first = r.samples[0]?.base ?? 1981, area = Number(lot.area) || 0, unit = UNIT_HA[lot.unit] ? lot.unit : "ha";
   const land = (share) => (area ? `${round(share * area)} ${UNIT_NAME[unit]}` : `${Math.round(share * 100)} % del lote`);
   const farm = r.farm && {
     plots: r.farm.parcels.filter((p) => p.share > 0.001).sort((a, b) => b.share - a.share).map((p) => ({
       land: land(p.share),
-      plantings: p.d.steps.map((s) => ({ crop: cropName(s.crop), from: ym(s.from), to: ym(s.to), lost: yearsOf(s.fail, n), harvest_share: round(s.yld, 2) })),
+      plantings: p.d.steps.map((s) => ({ crop: cropName(s.crop), from: ym(s.from), to: ym(s.to), risk: riskOf(s.fail), bad_years: yearsOf(s.fail, n), harvest_share: round(s.yld, 2) })),
     })),
     bare_soil_months: Math.round((1 - r.farm.covered) * r.period.length),
-    years_with_some_loss: yearsOf(r.farm.anyLoss, n),
+    risk: riskOf(r.farm.anyLoss),
+    bad_years: yearsOf(r.farm.anyLoss, n),
     years_losing_over_half: yearsOf(r.farm.bigLoss, n),
     verdict: r.farm.verdict,
   };
-  const today = r.today && { years_with_some_loss: yearsOf(r.today.anyLoss, n), bare_soil_months: Math.round((1 - r.today.covered) * r.period.length), verdict: r.today.verdict };
+  const today = r.today && { risk: riskOf(r.today.anyLoss), bad_years: yearsOf(r.today.anyLoss, n), bare_soil_months: Math.round((1 - r.today.covered) * r.period.length), verdict: r.today.verdict };
   const sow = Object.values(r.windows || {}).map((w) => {
     const good = w.starts.filter((s) => s && s.level === "good").map((s) => r.period[s.t]);
     const best = w.starts.filter(Boolean).sort((a, b) => b.value - a.value)[0];
@@ -83,7 +87,11 @@ async function planCmd(lot, mode = "auto") {
   });
   return {
     from: ym(r.period[0]), to: ym(r.period[r.period.length - 1]),
-    tested_on: used === "nino" ? `los ${n} inviernos que siguieron a un El Niño fuerte (1982-83, 1997-98, 2015-16…)` : `${n} series de años reales desde 1981`,
+    tested_on: used === "nino" ? `los ${n} inviernos que vinieron después de otros Niños fuertes, desde ${first}` : `los ${n} años reales desde ${first}`,
+    // Why those years, said once: a count of years means nothing to a farmer who does not know which years they are.
+    why_these_years: used === "nino"
+      ? `Este invierno viene con un Niño fuerte (lo esperan NOAA y el ERFEN), así que el plan se prueba con lo que pasó después de otros Niños fuertes: si lo hubiera sembrado en esos ${n} inviernos, cómo le habría ido.`
+      : `El plan se prueba con el clima de cada año desde ${first}: si lo hubiera sembrado en esos ${n} años, cómo le habría ido.`,
     farm, today, sow,
     soil: site.soil && { texture: site.soil.texture, ph: round(site.soil.ph ?? 0, 1), ph_class: site.soil.phClass, organic_matter: site.soil.omClass },
     slope_pct: site.slope,
