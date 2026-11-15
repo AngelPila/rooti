@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
-import { COPY } from "./copy.js?v=44";
+import { COPY } from "./copy.js?v=46";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -943,37 +943,78 @@ function plot3d(r, f) {
     const sev = c === "rice" || c === "bare" || c === "mulch" ? 0 : Math.max(0, Math.min(1, ((m?.rain ?? 0) - (m?.et0 ?? 0) - drainCap) / 200)) * (1 - 0.7 * ft);
     return { c, h: H * grow, drown: sev > 0.2 };
   };
-  const box = h("div", { class: "p3-map" }), keys = h("div", { class: "pm-keys" }), status = h("p", { class: "p3-status" }), monthLab = h("b", {});
-  const slider = h("input", { type: "range", min: "0", max: String(N - 1), step: "1", value: String(t), "aria-label": T.month, oninput: (e) => { t = +e.target.value; paint(); } });
-  const yrBox = h("div", { class: "seg p3-yrs" });
+  // What the page knew as text, drawn on the scene: terrain chips, the month's weather, the soil under the plot
+  const tr = r.terrain, sd = describeSoil(tr?.soil), c0 = C(), slope = tr?.slopePct, wl = r.site?.wl ?? 0.25;
+  const nm12 = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([kk]) => +kk.slice(5) === i + 1 && +kk.slice(0, 4) >= 1991 && +kk.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (q) => vs.reduce((a, v) => a + (v[q] ?? 0), 0) / Math.max(1, vs.length); return { rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
+  const chip = (ic, lab, val) => h("div", { class: "p3-chip" }, icon(ic), h("span", {}, h("small", {}, lab), h("b", {}, val)));
+  const terrainChips = h("div", { class: "p3-hud" },
+    tr?.elevation != null ? chip("i-pin", c0.elevation, `${tr.elevation} m`) : null,
+    slope != null ? chip("i-plot", c0.slope, `${slope < 2 ? c0.flat : slope < 8 ? c0.gentle : c0.steep} · ${num(slope)} %`) : null,
+    sd ? chip("i-soil", c0.soilType, c0.texture[sd.texture]) : null,
+    sd ? chip("i-sprout", c0.acidity, `${c0.phWord[sd.phClass]} · pH ${num(sd.ph)}`) : null,
+    chip("i-water", c0.waterlog, wl >= 0.6 ? c0.high : wl >= 0.35 ? c0.medium : c0.low));
+  const box = h("div", { class: "p3-map" }), keys = h("div", { class: "pm-keys" }), wx = h("div", { class: "p3-wx" }), monthLab = h("b", {}), yrBox = h("div", { class: "seg p3-yrs" });
+  const chart = h("div", { class: "p3-chart", tabindex: "0", role: "slider", "aria-label": T.month, "aria-valuemin": "0", "aria-valuemax": String(N - 1) });
+  const pickAt = (e) => { const b = chart.getBoundingClientRect(); t = Math.max(0, Math.min(N - 1, Math.floor(((e.clientX - b.left) / b.width) * N))); paint(); };
+  chart.addEventListener("pointerdown", (e) => { chart.setPointerCapture(e.pointerId); pickAt(e); });
+  chart.addEventListener("pointermove", (e) => { if (chart.hasPointerCapture(e.pointerId)) pickAt(e); });
+  chart.addEventListener("keydown", (e) => { const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0; if (d) { e.preventDefault(); t = Math.max(0, Math.min(N - 1, t + d)); paint(); } });
+  const unk = h("details", { class: "p3-unk" }, h("summary", {}, icon("i-info"), T.unkChip), h("p", {}, T.waterNote));
   const sec = h("section", { class: "p3" },
-    h("div", { class: "p3-stage" }, box, keys, h("div", { class: "pm-cap" }, h("b", {}, T.title), h("span", {}, drawn ? T.drag : T.example))),
+    h("div", { class: "p3-stage" }, box, keys, wx, h("div", { class: "pm-cap" }, h("b", {}, T.title), h("span", {}, drawn ? T.drag : T.example))),
+    terrainChips,
     h("div", { class: "p3-ctl" },
       h("div", { class: "row between wrap", style: { gap: "8px" } }, h("span", { class: "p3-month" }, icon("i-month"), monthLab), yrBox),
-      slider, status, h("p", { class: "small" }, T.scale(k), " · ", T.waterNote)));
+      chart,
+      h("div", { class: "p3-legend" }, h("span", {}, h("i", { class: "sw rain" }), T.lgRain), h("span", {}, h("i", { class: "sw drain" }), T.lgDrain), h("span", {}, h("i", { class: "sw water" }), T.lgWater)),
+      h("div", { class: "row wrap", style: { gap: "8px", alignItems: "center" } }, h("span", { class: "small" }, T.scale(k)), unk)));
+  const W = 40, Hc = 110;
+  const drawChart = (sample) => {
+    const ms = sample.months, thr = ms.map((c) => (c?.et0 ?? 0) + drainCap), rain = ms.map((c) => c?.rain ?? 0);
+    const mx = Math.max(...rain, ...thr) * 1.08 || 1, X = (i) => (i + 0.5) * W, Y = (v) => Hc - (v / mx) * (Hc - 6);
+    const line = (vs) => vs.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    const area = `${line(rain)}L${X(N - 1)},${Hc}L${X(0)},${Hc}Z`;
+    const top = rain.map((v, i) => Math.max(v, thr[i])), water = `${line(top)}${thr.map((v, i) => `L${X(N - 1 - i).toFixed(1)},${Y(thr[N - 1 - i]).toFixed(1)}`).join("")}Z`;
+    const g = svg("svg", { viewBox: `0 0 ${N * W} ${Hc}`, preserveAspectRatio: "none", "aria-hidden": "true" },
+      svg("rect", { x: t * W, y: 0, width: W, height: Hc, class: "cur" }),
+      svg("path", { d: area, class: "rain-a" }), svg("path", { d: water, class: "water-a" }),
+      svg("path", { d: line(thr), class: "drain-l" }), svg("path", { d: line(rain), class: "rain-l" }));
+    const labs = h("div", { class: "p3-months", style: { gridTemplateColumns: `repeat(${N}, 1fr)` } }, ...r.period.map((p, i) => h("span", { class: i === t ? "on" : "" }, N <= 24 || i % 3 === 0 ? mon(p.m) : "")));
+    put(chart, g, labs);
+    chart.setAttribute("aria-valuenow", String(t)); chart.setAttribute("aria-valuetext", `${cap(monL(r.period[t].m))} ${r.period[t].y}`);
+  };
   let ents = [];
   const paint = () => {
-    const p = r.period[t], s = surplusOf(yrs.find((y) => y[0] === mode)[2])[t], now = parts.map((x) => ({ ...x, ...at(x) }));
+    const sample = yrs.find((y) => y[0] === mode)[2], p = r.period[t], s = surplusOf(sample)[t], now = parts.map((x) => ({ ...x, ...at(x) })), m = sample.months[t] || {}, n = nm12[p.m - 1];
     monthLab.textContent = `${cap(monL(p.m))} ${p.y}`;
     put(yrBox, ...yrs.map(([key, lab]) => h("button", { "aria-pressed": String(mode === key), onclick: () => { mode = key; paint(); } }, lab)));
     put(keys, ...now.map((x) => h("div", { class: `pm-key${x.drown ? " drown" : ""}`, style: { "--c": look(x.c).color } },
       h("span", {}, tile(x.c), h("b", {}, x.name), `${cropLabel(x.c)}${x.h >= 0.1 ? ` · ${num(x.h)} m` : ""}`, x.drown ? h("em", {}, T.drown) : null))));
-    status.className = `p3-status${s > 0 ? " wet" : ""}`;
-    put(status, icon(s > 0 ? "i-waves" : "i-drop-off"), s > 0 ? T.water(Math.round(s)) : T.dry);
+    const tmin = m.tmin ?? n.tmin, tmax = m.tmax ?? n.tmax;
+    put(wx, h("div", { class: "p3-chip" }, icon("i-rain"), h("span", {}, h("small", {}, T.rainMonth), h("b", {}, `${Math.round(m.rain ?? n.rain)} mm`), mode !== "normal" ? h("small", {}, T.normalWas(Math.round(n.rain))) : null)),
+      h("div", { class: "p3-chip" }, icon("i-sun"), h("span", {}, h("small", {}, T.temp), h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`))),
+      h("div", { class: `p3-chip ${s > 0 ? "wet" : "dry"}` }, icon(s > 0 ? "i-waves" : "i-drop-off"), h("span", {}, h("small", {}, s > 0 ? T.stays : T.drains), h("b", {}, s > 0 ? `${Math.round(s)} mm` : T.noWater))));
+    drawChart(sample);
     const v = viewer3d, Cz = window.Cesium;
     if (!v || v.isDestroyed() || !Cz) return;
     ents.forEach((e) => v.entities.remove(e)); ents = [];
-    const rel = Cz.HeightReference.RELATIVE_TO_GROUND, flat = (ps) => Cz.Cartesian3.fromDegreesArray(ps.flat());
+    const rel = Cz.HeightReference.RELATIVE_TO_GROUND, flat = (ps) => Cz.Cartesian3.fromDegreesArray(ps.flat()), z0 = tr?.elevation ?? 0;
+    // The soil under the plot: the top 60 cm the roots use, coloured by texture, drawn at the same scale as the crops
+    if (sd) {
+      const soilCol = { clay: "#7A4A32", clay_loam: "#8B5E3C", loam: "#9C7448", sandy_loam: "#B88E5A", sand: "#CDAA72" }[sd.texture];
+      ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: -0.6 * k, heightReference: rel, extrudedHeight: 0, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString(soilCol).withAlpha(0.95) } }));
+      const front = pts.reduce((a, q) => (q[1] < a[1] ? q : a));
+      ents.push(v.entities.add({ position: Cz.Cartesian3.fromDegrees(front[0], front[1], z0 - 0.3 * k), label: { text: `${c0.texture[sd.texture]} · ${T.holdsShort(sd.awc)}`, font: "500 13px Geist, sans-serif", fillColor: Cz.Color.fromCssColorString("#F3F0E5"), showBackground: true, backgroundColor: Cz.Color.fromCssColorString(soilCol).withAlpha(0.92), backgroundPadding: new Cz.Cartesian2(10, 6), pixelOffset: new Cz.Cartesian2(0, 18), disableDepthTestDistance: Number.POSITIVE_INFINITY } }));
+    }
     for (const x of now) {
       if (x.poly.length < 3) continue;
       const col = Cz.Color.fromCssColorString(cssColor(look(x.c).color));
       ents.push(v.entities.add({ polygon: x.h * k >= 0.3
-        ? { hierarchy: flat(x.poly), height: 0, heightReference: rel, extrudedHeight: x.h * k, extrudedHeightReference: rel, material: col.withAlpha(x.drown ? 0.55 : 0.9), outline: false }
-        : { hierarchy: flat(x.poly), material: col.withAlpha(0.75), classificationType: Cz.ClassificationType.TERRAIN } }));
+        ? { hierarchy: flat(x.poly), height: 0, heightReference: rel, extrudedHeight: x.h * k, extrudedHeightReference: rel, material: col.withAlpha(x.drown ? 0.55 : 0.92), outline: false }
+        : { hierarchy: flat(x.poly), height: 0, heightReference: rel, extrudedHeight: 0.15 * k, extrudedHeightReference: rel, material: col.withAlpha(0.9) } }));
     }
-    if (s > 0) ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: 0, heightReference: rel, extrudedHeight: Math.min(1.5, s / 1000) * k, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString("#2E6FD0").withAlpha(0.45) } }));
-    const z0 = (r.terrain?.elevation ?? 0) + 0.5;
-    ents.push(v.entities.add({ polyline: { positions: Cz.Cartesian3.fromDegreesArrayHeights([...pts, pts[0]].flatMap((q) => [q[0], q[1], z0])), width: 3, material: Cz.Color.fromCssColorString("#C8FF9E") } }));
+    if (s > 0) ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: 0, heightReference: rel, extrudedHeight: Math.min(1.5, s / 1000) * k, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString("#2E6FD0").withAlpha(0.42) } }));
+    ents.push(v.entities.add({ polyline: { positions: Cz.Cartesian3.fromDegreesArrayHeights([...pts, pts[0]].flatMap((q) => [q[0], q[1], z0 + 0.5])), width: 3, material: Cz.Color.fromCssColorString("#C8FF9E") } }));
     [0, 200, 600, 1200].forEach((ms) => setTimeout(() => v.isDestroyed() || v.scene.requestRender(), ms));
   };
   paint();
@@ -993,7 +1034,10 @@ function plot3d(r, f) {
     try { v.imageryLayers.addImageryProvider(await Cz.ArcGisMapServerImageryProvider.fromUrl(ESRI)); } catch { /* no imagery: terrain only */ }
     if (v.isDestroyed()) return;
     paint();
-    const [cx, cy] = lotCenter(pts), target = Cz.Cartesian3.fromDegrees(cx, cy, r.terrain?.elevation ?? 0), range = Math.max(220, span * 2.1), pitch = Cz.Math.toRadians(-32);
+    v.resize();
+    // Fit the plot (and the soil under it) whatever the box's shape: Cesium's 60° covers the longer side, so a wide box sees little height
+    const fr = v.camera.frustum, fy = fr.fovy || 0.6, fovy = Math.min(fy, 2 * Math.atan(Math.tan(fy / 2) * (fr.aspectRatio || 1))), pitch = Cz.Math.toRadians(-30);
+    const [cx, cy] = lotCenter(pts), target = Cz.Cartesian3.fromDegrees(cx, cy, (r.terrain?.elevation ?? 0) - 0.3 * k), range = Math.max(180, (span * 0.62) / Math.sin(fovy / 2));
     const aim = (hd) => { v.camera.lookAt(target, new Cz.HeadingPitchRange(Cz.Math.toRadians(hd), pitch, range)); v.scene.requestRender(); };
     // One slow turn on arrival (none if the phone asks for less motion), then the farmer turns it by dragging
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) aim(20);
