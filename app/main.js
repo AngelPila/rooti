@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=22";
-import { COPY } from "./copy.js?v=31";
+import { COPY } from "./copy.js?v=32";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -515,11 +515,15 @@ function normals(clim) {
 }
 
 // The plan as a route: crop, then the months spelled out
+// Plans longer than a year show the first year; the rest opens on request so the route still reads at a glance
 function routeEl(r, f) {
-  const N = r.period.length;
-  return h("div", { class: "route" }, ...plotsOf(f).map(({ pc, name }) => h("div", { class: "rt-plot" }, h("span", { class: "rt-lab" }, `${name} · ${fmtArea(pc.share)}`),
-    h("ol", { class: "rt-steps" }, ...runsOf(pc, N).flatMap((ru, i) => [i ? icon("i-arrow", "icon rt-arrow") : null,
+  const N = r.period.length, D = C().ds, long = N > 12, all = !long || state.routeAll;
+  const box = h("div", { class: "route" }, ...plotsOf(f).map(({ pc, name }) => h("div", { class: "rt-plot" }, h("span", { class: "rt-lab" }, `${name} · ${fmtArea(pc.share)}`),
+    h("ol", { class: "rt-steps" }, ...runsOf(pc, N).filter((ru) => all || ru.t0 < 12).flatMap((ru, i) => [i ? icon("i-arrow", "icon rt-arrow") : null,
       h("li", { class: ru.c === "bare" ? "bare" : "" }, tile(ru.c), h("p", {}, h("b", {}, cropLabel(ru.c)), h("span", {}, monthsText(r, ru))))])))));
+  if (long) box.append(h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { state.routeAll = !all; box.replaceWith(routeEl(r, f)); } },
+    all ? D.routeFirst : D.routeAll(Math.ceil(N / 12))));
+  return box;
 }
 const routeWords = (r, f) => plotsOf(f).map(({ pc }) => runsOf(pc, r.period.length).filter((ru) => ru.c !== "bare").map((ru) => `${cropLabel(ru.c)}, ${monthsText(r, ru)}`).join("; ")).join(". ");
 
