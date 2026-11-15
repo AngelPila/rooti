@@ -88,6 +88,7 @@ function icon(id, cls = "icon") {
   return s;
 }
 const ok = (r) => { if (!r.ok) throw new Error(r.status); return r.json(); };
+const remoteJSON = (url, ms = 12000) => fetch(url, { signal: AbortSignal.timeout(ms) }).then(ok);
 const go = (r) => { location.hash = "#/" + r; };
 
 /* ---------------- words and numbers ---------------- */
@@ -231,13 +232,13 @@ const errorCard = (msg, retry) => h("div", { class: "errorcard", role: "alert" }
 const stepIcon = (ic) => icon(ic === "calendar" ? "i-calendar" : ic === "map-pin" ? "i-pin" : "i-sprout");
 const bootcamp = createBootcamp({ h, put, icon, tile: (id) => tile(id), store, speak });
 
-function viewBootcamp() {
+function viewBootcamp(section, courseId, lessonNumber) {
   const crops = CROP_ORDER.filter((id) => DATA.crops[id]).map((id) => ({
     id,
     name: cap(cropName(id)),
     months: cropMonths(DATA.crops[id]),
   }));
-  put($("#view"), bootcamp(state.lang, crops, C().cta, () => { state.draft = null; }));
+  put($("#view"), bootcamp(state.lang, crops, C().cta, () => { state.draft = null; }, section, courseId, lessonNumber));
 }
 
 /* ================= landing ================= */
@@ -289,7 +290,7 @@ function viewLanding() {
     h("section", { class: "l-sheet" }, h("div", { class: "l-wrap" },
       h("div", { class: "l-how", id: "how" }, ...D.how.map(([ic, t, d]) => h("div", { class: "how" }, h("span", { class: "tile-i dark" }, icon(ic)), h("b", {}, t), h("p", {}, d)))),
       h("h2", { class: "h2" }, D.examplesTitle),
-      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}.jpg?v=2`, alt: "", loading: "lazy" }),
+      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.png`, alt: "", loading: "lazy" }),
         h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),
       h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "tile-i" }, icon("i-agronomist")), h("span", {}, h("b", {}, D.bootTitle), h("p", {}, D.bootLead)), icon("i-arrow-r")),
       h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
@@ -309,25 +310,27 @@ const dateErr = (d) => { const n = monthsIn(d); return !(n >= 2) ? C().tooShort 
 async function placeAt(lat, lon) {
   const base = { name: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, lat, lon };
   try {
-    const r = await fetch(`${REV}?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=${state.lang}`).then(ok);
+    const r = await remoteJSON(`${REV}?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=${state.lang}`);
     const a = r.address || {};
     return { ...base, name: a.village || a.town || a.city || a.county || a.state || base.name, admin: [a.state, a.country].filter(Boolean).join(", ") };
   } catch { return base; }
 }
 function searchBox(onPick) {
   const results = h("div", { class: "geo" }), input = h("input", { type: "search", placeholder: C().search, "aria-label": C().search, autocomplete: "off" });
-  let timer;
+  let timer, request = 0;
   input.addEventListener("input", () => {
     clearTimeout(timer);
     const q = input.value.trim();
+    const current = ++request;
     if (q.length < 2) return put(results);
     timer = setTimeout(async () => {
       try {
-        const r = await fetch(`${GEO}?name=${encodeURIComponent(q)}&count=5&language=${state.lang}&format=json`).then(ok);
+        const r = await remoteJSON(`${GEO}?name=${encodeURIComponent(q)}&count=5&language=${state.lang}&format=json`);
+        if (current !== request) return;
         put(results, ...(r.results || []).map((x) => h("button", { onclick: () => onPick({ name: x.name, admin: [x.admin1, x.country].filter(Boolean).join(", "), lat: x.latitude, lon: x.longitude }) },
           icon("i-pin"), h("span", {}, h("b", {}, x.name), h("small", {}, [x.admin1, x.country].filter(Boolean).join(", "))))));
         if (!r.results?.length) put(results, h("p", { class: "small", style: { padding: "12px 14px" } }, C().noPlace));
-      } catch { put(results); }
+      } catch { if (current === request) put(results, h("p", { class: "small", role: "status", style: { padding: "12px 14px" } }, C().geoError)); }
     }, 300);
   });
   return [h("label", { class: "search" }, icon("i-search"), input), results];
@@ -1350,12 +1353,17 @@ function loadCesium() {
   if (window.Cesium) return Promise.resolve(window.Cesium);
   return (cesiumLoading ||= new Promise((res, rej) => {
     window.CESIUM_BASE_URL = CESIUM;
-    const s = document.createElement("script"); s.src = CESIUM + "Cesium.js"; s.onload = () => res(window.Cesium); s.onerror = rej; document.head.append(s);
+    const s = document.createElement("script"); s.src = CESIUM + "Cesium.js"; s.onload = () => window.Cesium ? res(window.Cesium) : rej(new Error("Cesium unavailable")); s.onerror = () => rej(new Error("Cesium failed to load")); document.head.append(s);
   }));
 }
 async function initCesium(container, { pick = false } = {}) {
   let Cz;
-  try { Cz = await loadCesium(); } catch { return; }
+  try { Cz = await Promise.race([loadCesium(), new Promise((_, reject) => setTimeout(() => reject(new Error("Cesium load timed out")), 15000))]); }
+  catch {
+    const overlay = $("#map-overlay");
+    if (overlay && !overlay.querySelector(".map-unavailable")) overlay.append(h("p", { class: "map-unavailable", role: "status" }, C().mapUnavailable));
+    return;
+  }
   if (!container.isConnected) return;
   if (viewer && viewer.container !== container) { viewer.destroy(); viewer = null; lotEntity = null; pickBound = false; }
   if (!viewer) {
