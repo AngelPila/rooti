@@ -1,5 +1,13 @@
 # Rooti how-it-works illustration prompts
 
+## bootcamp
+
+Generated with the built-in image generator using `plans.webp` and `agent.webp` as style references.
+
+```text
+Use case: illustration-story. Create ONE landscape editorial illustration for Rooti's Bootcamp farming lesson card, ideally 1536x1024 or higher resolution. Input images are STYLE REFERENCES ONLY: match exactly their tactile layered gouache/paper illustration family, fine grain, softly modeled botanical forms, graceful crisp edges, warm editorial realism, never photographic or 3D. Subject: one coastal Ecuadorian smallholder farmer with warm terracotta-brown skin, wearing a woven straw hat, cream work shirt and forest-green trousers, resting seated on a low earthen bank at the edge of rice and maize fields, calmly listening to a spoken farming lesson with a modest unbranded forest-green phone held to the ear. A small open notebook with completely blank cream pages and a small leafy seedling rest nearby. The farmer and phone are the clear central focus, readable at 200x150 CSS pixels. Frame a medium-wide seated portrait: head, phone, torso and notebook clustered in the central 65% of the canvas, with generous soft cream background and restrained field details; all essential details survive a centered 4:3 cover crop. Background: flat coastal Ecuador rice paddy with teal water and drooping golden rice panicles, a few maize leaves and golden ears, low flat horizon, subtle distant palms. Match palette forest #153E32, cream #F3F0E5, parchment #E9E5D5, rice teal #2E9E92, maize #E6AE2E, soybean #78B957, with warm terracotta skin and soil derived from reference. Calm soft cream/parchment atmosphere. No text, letters, numbers, glyphs, logos, brands, flags, captions, watermark, UI mockups, interface screens, or decorative borders. The phone screen is turned away and invisible. Notebook pages absolutely blank. Produce only one finished illustration.
+```
+
 AI use declaration: These four illustrations were generated with the built-in image generator. No watermark is embedded; the page supplies its AI disclosure in HTML.
 
 Style references supplied to every generation: `app/img/illu/maize-clean.png` and `app/img/illu/rice-clean.png`.
