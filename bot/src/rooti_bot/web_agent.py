@@ -5,17 +5,20 @@ sends the prompt and tools in hermes/rooti (WEB.md, web-tools.json), shared with
 - GET  /api/rooti        whether Rooti can answer here (a model key) and hear voice (a Groq key)
 - POST /api/rooti        one model call: the farmer's conversation and the page context in, Rooti's message out
 - POST /api/rooti/voice  a recorded voice note in, its text out
-- POST /api/rooti/say    a reply in, Rooti saying it out loud (mp3, the Edge voice it has on WhatsApp)"""
+- GET  /api/rooti/say    a reply in (?text=&lang=), Rooti saying it out loud (mp3, the Edge voice it has on WhatsApp).
+  It streams as Edge speaks, and every reply is synthesized once: the page asks for it as soon as the reply shows."""
+import asyncio
 import json
 import logging
 import os
 import re
 import threading
 import time
+from collections import OrderedDict
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from rooti_bot import config
 from rooti_bot.voice import VOICE, speakable
@@ -29,9 +32,72 @@ LANGUAGE = {"es": "Spanish, always with «usted».", "en": "English. Keep the sa
 # Place and crop names Whisper otherwise mishears ("Daule" came back as "dable")
 VOCABULARY = "Daule, Babahoyo, Quevedo, Salitre, Vinces, Los Ríos, Guayas, cuadras, hectáreas, arroz, maíz, soya, maní, fréjol, riego, invierno, verano, El Niño, Rooti."
 SPEAKERS = {"es": VOICE, "en": "en-US-AndrewNeural"}
-LIMITS = {"chat": 80, "voice": 30, "say": 80}  # per address every 10 minutes; a question takes one call per tool round
+# Per address every 10 minutes; a question takes one call per tool round. «say» counts only new syntheses.
+LIMITS = {"chat": 80, "voice": 30, "say": 120}
 _hits: dict[str, list[float]] = {}
 _lock = threading.Lock()
+
+
+class Speech:
+    """One Edge synthesis that any number of listeners stream: from its first chunk while it runs, or whole once done."""
+
+    def __init__(self, text: str, voice: str):
+        self.chunks: list[bytes] = []
+        self.done = self.failed = False
+        self._more = asyncio.Event()
+        self.task = asyncio.create_task(self._run(text, voice))
+
+    async def _run(self, text: str, voice: str) -> None:
+        import edge_tts
+
+        try:
+            async for c in edge_tts.Communicate(text, voice).stream():
+                if c["type"] == "audio":
+                    self.chunks.append(c["data"])
+                    self._wake()
+        except Exception as exc:
+            log.error("say: %s", exc)
+            self.failed = True
+        finally:
+            self.done = True
+            self._wake()
+
+    def _wake(self) -> None:
+        self._more.set()
+        self._more = asyncio.Event()
+
+    async def started(self) -> bool:
+        while not self.chunks and not self.done:
+            await self._more.wait()
+        return bool(self.chunks)
+
+    async def stream(self):
+        i = 0
+        while True:
+            while i < len(self.chunks):
+                yield self.chunks[i]
+                i += 1
+            if self.done:
+                return
+            await self._more.wait()
+
+
+SPOKEN: OrderedDict[str, Speech] = OrderedDict()  # ~5 MB at 300 replies of ~15 s
+SPOKEN_MAX = 300
+
+
+def _speech(text: str, lang: str, ip: str) -> Speech | None:
+    """The synthesis of `text`, started now or shared with whoever asked first; None when this address asked too much."""
+    key = f"{lang}:{text}"
+    if (s := SPOKEN.get(key)) and not s.failed:
+        SPOKEN.move_to_end(key)
+        return s
+    if not _allowed("say", ip):
+        return None
+    SPOKEN[key] = s = Speech(text, SPEAKERS[lang])
+    while len(SPOKEN) > SPOKEN_MAX:
+        SPOKEN.popitem(last=False)
+    return s
 
 
 def _persona() -> str:
@@ -148,20 +214,23 @@ def mount(api: FastAPI) -> None:
             raise HTTPException(502, "voice")
         return {"text": str(r.json().get("text", "")).strip()[:1500]}
 
-    @api.post("/api/rooti/say")
-    async def say(request: Request):
-        import edge_tts
-
-        if not _allowed("say", _ip(request)):
-            raise HTTPException(429, "slow down")
-        body = await request.json()
-        text = speakable(str(body.get("text") or ""))[:1500]
+    async def say(request: Request, text: str, lang: str):
+        text = speakable(text)[:1500]
         if not text:
             raise HTTPException(400, "text")
-        try:
-            speech = edge_tts.Communicate(text, SPEAKERS["en" if body.get("lang") == "en" else "es"])
-            mp3 = b"".join([c["data"] async for c in speech.stream() if c["type"] == "audio"])
-        except Exception as exc:
-            log.error("say: %s", exc)
+        speech = _speech(text, "en" if lang == "en" else "es", _ip(request))
+        if speech is None:
+            raise HTTPException(429, "slow down")
+        # Fail before the headers when Edge gives nothing, so the page falls back to the browser's voice
+        if not await speech.started():
             raise HTTPException(502, "say")
-        return Response(mp3, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+        return StreamingResponse(speech.stream(), media_type="audio/mpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+    @api.get("/api/rooti/say")
+    async def say_get(request: Request, text: str = "", lang: str = "es"):
+        return await say(request, text, lang)
+
+    @api.post("/api/rooti/say")
+    async def say_post(request: Request):
+        body = await request.json()
+        return await say(request, str(body.get("text") or ""), str(body.get("lang") or "es"))
