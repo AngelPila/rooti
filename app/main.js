@@ -5,7 +5,8 @@ import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=23";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
-import { createRooti } from "./rooti.js?v=4";
+import { createRooti } from "./rooti.js?v=5";
+import { createVoice } from "./voice.js?v=1";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -217,6 +218,11 @@ function speak(text) {
   speechSynthesis.speak(u);
   return u;
 }
+function listenBtn(words, label) {
+  voice.soon(words());
+  return h("button", { class: "round", "aria-label": label, title: label, onclick: () => voice.say(words()) }, icon("i-volume"));
+}
+const voice = createVoice({ lang: () => state.lang, fallback: speak, stopFallback: () => window.speechSynthesis?.cancel() });
 function sheet(...kids) {
   const d = $("#sheet");
   put(d, h("div", { class: "sheet-body" }, ...kids, h("button", { class: "btn block", onclick: () => d.close() }, C().close)));
@@ -920,7 +926,7 @@ function viewPlan(arg) {
           h("div", { class: "pv-left" },
             h("div", { class: "pv-a" }, head, h("div", { class: "pv-block" }, h("b", {}, D.whatWhen), routeBox), risks,
               h("div", { class: "pv-acts" }, h("button", { class: "btn soft", onclick: () => explainSheet(D.names[cur().key], cur().f, r) }, D.whyAll), saveBtn,
-                h("button", { class: "round", "aria-label": c.listen, title: c.listen, onclick: () => speak(`${D.names[cur().key]}. ${routeWords(r, cur().f)}. ${c.verdict[cur().f.verdict]}.`) }, icon("i-volume")))),
+                listenBtn(() => `${D.names[cur().key]}. ${routeWords(r, cur().f)}. ${c.verdict[cur().f.verdict]}.`, c.listen))),
             h("div", { class: "pv-b" },
               multi ? [stat, h("div", { class: "pv-block" }, dots, legend, h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r")))] : h("p", { class: "small" }, D.realOnly))),
           // Rooti still marks "cover": the calendar is where bare and covered months show now
@@ -1735,7 +1741,7 @@ function rootiWhatsApp() {
 }
 const rooti = createRooti({
   h, icon, motion: MOTION, lang: () => state.lang, screenName: rootiName, context: rootiContext,
-  speak, stopSpeaking: () => window.speechSynthesis?.cancel(),
+  voice,
   show(screen) {
     const r = ROOTI_SCREENS[screen];
     if (!r) return `Unknown screen ${screen}`;
