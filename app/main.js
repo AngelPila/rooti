@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=55";
+import { COPY } from "./copy.js?v=56";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=23";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -252,74 +252,54 @@ function smooth(pts) {
   }
   return d;
 }
-// Curves that converge on the headline. Decoration: drawn once, inner lines first, with uneven gaps.
-function heroLines(svg, title, animate = true) {
+const BADGES = { in: ["rain", "sun", "soil", "nino"], out: ["rice", "maize", "soy"] };
+// Weather words feed the headline and crops come out of it. The left side draws once on load; on a computer the scroll then
+// sends a dot down each line and draws the crops, running backwards with it. Reduced motion shows the finished drawing.
+function heroFlow(svg, title, stage, animate) {
   const art = svg.parentElement;
-  if (!art?.isConnected || getComputedStyle(art).display === "none") return;
-  const a = art.getBoundingClientRect(), t = title.getBoundingClientRect(), H = a.height, k = H / 860;
+  art.querySelectorAll(".hf-chip").forEach((el) => el.remove());
+  svg.innerHTML = "";
+  stage.classList.remove("flow");
+  if (!art.isConnected || getComputedStyle(art).display === "none") return;
+  const D = C().ds, a = art.getBoundingClientRect(), t = title.getBoundingClientRect(), H = a.height, motion = MOTION();
+  // The art box is 1440 wide and centered, so narrower screens cut its edges; without room beside the headline, draw nothing.
+  const vis = Math.max(0, 720 - innerWidth / 2) + 24, cy = t.top - a.top + t.height / 2, L = t.left - a.left - 20, R = t.right - a.left + 20;
+  if (L - vis < 220 || 1440 - vis - R < 220) return;
   svg.setAttribute("viewBox", `0 0 1440 ${H}`);
-  const ex = Math.min(560, t.left - a.left - 28), cy = t.top - a.top + t.height / 2, top = t.top - a.top - 90;
-  const L = [[[130, 186 * k], [ex, cy - 36]], [[40, 330 * k], [ex, cy - 12]], [[40, 520 * k], [ex, cy + 12]], [[120, 650 * k], [ex, cy + 36]]];
-  const curve = ([p, q]) => `M${p[0]},${p[1]} C${(p[0] + q[0]) / 2},${p[1]} ${(p[0] + q[0]) / 2 + 60},${q[1]} ${q[0]},${q[1]}`;
-  const all = [...L, ...L.map(([p, q]) => [[1440 - p[0], p[1]], [1440 - q[0], q[1]]])];
-  svg.innerHTML = all.map((l) => `<path d="${curve(l)}"/><circle cx="${l[0][0]}" cy="${l[0][1]}" r="3.5"/><circle cx="${l[1][0]}" cy="${l[1][1]}" r="3"/>`).join("") +
-    (top > 140 ? `<path d="M720,110 V${top}"/><circle cx="720" cy="${top}" r="3"/><circle cx="720" cy="110" r="3"/>` : "");
-  const geo = { all, top: top > 140 ? top : 0, cy };
-  if (!MOTION() || !animate) return geo;
-  const AT = [90, 0, 30, 140];
-  svg.querySelectorAll("path").forEach((p, i) => {
-    const n = p.getTotalLength(); p.style.strokeDasharray = n;
-    p.animate([{ strokeDashoffset: n }, { strokeDashoffset: 0 }], { duration: 1100, delay: 200 + (AT[i % 4] ?? 60), easing: "cubic-bezier(.65,0,.35,1)", fill: "both" });
+  const chip = (badge, label, x, y, cls) => { const c = h("div", { class: `hf-chip ${cls}`, style: { left: `${x}px`, top: `${y}px` } }, h("img", { src: `img/badges/${badge}.webp`, alt: "" }), label); art.append(c); return c; };
+  const path = (d, cls) => { const p = document.createElementNS(SVGNS, "path"); p.setAttribute("d", d); if (cls) p.setAttribute("class", cls); svg.append(p); p.n = p.getTotalLength(); p.style.strokeDasharray = p.n; return p; };
+  const curve = (x0, y0, x1, y1) => `M${x0},${y0} C${(x0 + x1) / 2},${y0} ${(x0 + x1) / 2},${y1} ${x1},${y1}`;
+  const ins = D.flowIn.map((label, i) => {
+    const y = H * (.22 + i * .18), c = chip(BADGES.in[i], label, vis, y, "");
+    const p = path(curve(vis + c.offsetWidth + 6, y, L, cy + (i - 1.5) * 14));
+    const dot = document.createElementNS(SVGNS, "circle"); dot.setAttribute("r", 4); dot.setAttribute("class", "hf-dot"); dot.style.opacity = 0; svg.append(dot);
+    return { c, p, dot };
   });
-  svg.querySelectorAll("circle").forEach((c) => c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 1150, fill: "backwards" }));
-  return geo;
-}
-// On a computer the hero holds still while the scroll carries the data on the left into one plan and out to the four plans on the right.
-// It follows the scroll position and runs backwards with it; nothing plays on its own.
-function heroSignals(svg, g, stage, start) {
-  if (!g || !MOTION() || !stage.isConnected) return;
-  const D = C().ds, art = svg.parentElement, hero = stage.firstElementChild, copy = hero.querySelector(".hero-copy"), src = hero.querySelector(".hero-source");
-  const hub = [720, g.cy], R = [56, 112, 176], ring = (r) => 2 * Math.PI * r;
-  const mk = (tag, attrs) => { const n = document.createElementNS(SVGNS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); svg.appendChild(n); return n; };
-  const drawn = (p) => { p.n = p.getTotalLength(); p.style.strokeDasharray = p.n; return p; };
-  const rings = R.map((r) => { const c = mk("circle", { class: "hs-ring", cx: hub[0], cy: hub[1], r, transform: `rotate(-90 ${hub[0]} ${hub[1]})` }); c.n = ring(r); c.style.strokeDasharray = c.n; return c; });
-  const left = g.all.slice(0, 4), right = g.all.slice(4), hx = hub[0] - R[0], ox = hub[0] + R[0];
-  const ins = left.map(([, q]) => drawn(mk("path", { d: `M${q[0]},${q[1]} C${q[0] + 90},${q[1]} ${hx - 60},${hub[1]} ${hx},${hub[1]}` })));
-  if (g.top) ins.push(drawn(mk("path", { d: `M720,${g.top} V${hub[1] - R[0]}` })));
-  const outs = right.map(([, q]) => drawn(mk("path", { class: "hs-out", d: `M${ox},${hub[1]} C${ox + 60},${hub[1]} ${q[0] - 90},${q[1]} ${q[0]},${q[1]}` })));
-  // The art box is 1440 wide and centered, so on narrower screens its edges are cut off; labels stay inside what shows.
-  const vis = Math.max(0, 720 - innerWidth / 2) + 20;
-  const lab = (x, y, cls, [b, sub]) => h("div", { class: `hs-lab ${cls}`, style: { left: `${x}px`, top: `${y}px` } }, h("b", {}, b), sub ? h("span", {}, sub) : null);
-  const inLabs = left.map(([p], i) => lab(Math.max(p[0], vis), p[1], "", D.signals[i]));
-  if (g.top) inLabs.push(lab(720, 110, "side", D.signalTop));
-  const outLabs = right.map(([p], i) => lab(Math.min(p[0], 1440 - vis), p[1], "r", [D.names[["safe", "income", "soil", "today"][i]]]));
-  const dot = h("div", { class: "hs-hub", style: { left: `${hub[0]}px`, top: `${hub[1]}px` } });
-  const hubLab = h("div", { class: "hs-hub-lab", style: { left: `${hub[0]}px`, top: `${hub[1]}px` } }, D.signalHub);
-  art.append(...inLabs, ...outLabs, dot, hubLab);
-  const end = h("div", { class: "hs-end" }, h("p", {}, D.signalEnd), h("button", { class: "btn lime big", onclick: start }, C().cta, h("span", { class: "dot" }, icon("i-arrow-r"))));
-  hero.append(end);
-
-  const S = (p, a, b) => Math.max(0, Math.min(1, (p - a) / (b - a)));
-  const ease = (t) => (t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-  const show = (el, t, clip) => { el.style.visibility = t > 0 ? "visible" : "hidden"; el.style.clipPath = clip(100 - t * 100); };
+  const outs = D.flowOut.map((label, i) => {
+    const y = H * (.3 + i * .18), c = chip(BADGES.out[i], label, 1440 - vis, y, "out");
+    return { c, p: path(curve(R, cy + (i - 1) * 14, 1440 - vis - c.offsetWidth - 6, y), "out") };
+  });
+  if (!motion) return;
+  if (animate) ins.forEach(({ c, p }, i) => {
+    c.animate([{ clipPath: "inset(0 100% 0 0 round 999px)" }, { clipPath: "inset(0 0 0 0 round 999px)" }], { duration: 400, delay: 100 + i * 80, easing: "cubic-bezier(.16,1,.3,1)", fill: "backwards" });
+    p.animate([{ strokeDashoffset: p.n }, { strokeDashoffset: 0 }], { duration: 1000, delay: 250 + i * 80, easing: "cubic-bezier(.65,0,.35,1)", fill: "backwards" });
+  });
+  stage.classList.add("flow");
+  const hero = stage.firstElementChild;
+  const S = (p, from, to) => Math.max(0, Math.min(1, (p - from) / (to - from)));
+  const ease = (x) => (x < .5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
   const draw = () => {
     const r = stage.getBoundingClientRect(), p = S(-r.top, 0, r.height - hero.offsetHeight);
-    const c = ease(S(p, 0, .22));
-    copy.style.opacity = src.style.opacity = 1 - c;
-    copy.style.transform = `translateY(${-28 * c}px) scale(${1 - .04 * c})`;
-    copy.style.visibility = c > .98 ? "hidden" : "";
-    inLabs.forEach((el, i) => show(el, ease(S(p, .1 + i * .06, .18 + i * .06)), (v) => `inset(0 ${v}% 0 0)`));
-    rings.forEach((el, i) => (el.style.strokeDashoffset = el.n * (1 - ease(S(p, .2 + i * .05, .42 + i * .05)))));
-    ins.forEach((el, i) => (el.style.strokeDashoffset = el.n * (1 - ease(S(p, .36 + i * .02, .56 + i * .02)))));
-    const k = ease(S(p, .54, .62));
-    dot.style.visibility = k > 0 ? "visible" : "hidden";
-    dot.style.transform = `scale(${.3 + .7 * k})`;
-    show(hubLab, S(p, .58, .66), (v) => `inset(0 ${v / 2}% 0 ${v / 2}%)`);
-    outs.forEach((el, i) => (el.style.strokeDashoffset = el.n * (1 - ease(S(p, .6 + i * .03, .74 + i * .03)))));
-    outLabs.forEach((el, i) => show(el, ease(S(p, .68 + i * .04, .76 + i * .04)), (v) => `inset(0 0 0 ${v}%)`));
-    const e = ease(S(p, .82, .94));
-    show(end, e, (v) => `inset(0 0 ${v}% 0)`);
-    end.style.transform = `translateY(${16 * (1 - e)}px)`;
+    ins.forEach(({ p: line, dot }, i) => {
+      const k = S(p, i * .06, .5 + i * .06), q = line.getPointAtLength(line.n * k);
+      dot.setAttribute("cx", q.x); dot.setAttribute("cy", q.y); dot.style.opacity = k > 0 && k < 1 ? 1 : 0;
+    });
+    outs.forEach(({ c, p: line }, i) => {
+      line.style.strokeDashoffset = line.n * (1 - ease(S(p, .45 + i * .06, .8 + i * .06)));
+      const e = ease(S(p, .7 + i * .06, .88 + i * .06));
+      c.style.visibility = e > 0 ? "" : "hidden";
+      c.style.clipPath = `inset(0 0 0 ${(1 - e) * 100}% round 999px)`;
+    });
   };
   let raf = 0;
   const onScroll = () => {
@@ -327,22 +307,18 @@ function heroSignals(svg, g, stage, start) {
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); });
   };
   addEventListener("scroll", onScroll, { passive: true });
-  stage.cleanup = () => {
-    removeEventListener("scroll", onScroll);
-    [...inLabs, ...outLabs, dot, hubLab, end].forEach((el) => el.remove());
-    for (const el of [copy, src]) el.style.opacity = el.style.transform = el.style.visibility = "";
-  };
+  stage.cleanup = () => removeEventListener("scroll", onScroll);
   draw();
 }
-// Geometry depends on the window size and the stage only exists from 721px up, so a resize rebuilds it from scratch.
-function mountHero(art, title, start) {
+// Geometry depends on the window size and the stage only pins from 721px up, so a resize rebuilds it from scratch.
+function mountHero(svg, title) {
   const stage = $(".hero-stage");
-  heroSignals(art, heroLines(art, title), stage, start);
+  heroFlow(svg, title, stage, true);
   let t = 0;
   const onResize = () => {
     if (!stage.isConnected) return removeEventListener("resize", onResize);
     clearTimeout(t);
-    t = setTimeout(() => { stage.cleanup?.(); stage.cleanup = null; heroSignals(art, heroLines(art, title, false), stage, start); }, 150);
+    t = setTimeout(() => { stage.cleanup?.(); stage.cleanup = null; heroFlow(svg, title, stage, false); }, 150);
   };
   addEventListener("resize", onResize);
 }
@@ -377,7 +353,7 @@ function viewLanding() {
       h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
     h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"))))));
   tilt(document.querySelectorAll(".how"));
-  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => mountHero(art, title, start));
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => mountHero(art, title));
 }
 // Cards lean toward the pointer on desktop; CSS eases the vars so each move stays short.
 function tilt(cards) {
