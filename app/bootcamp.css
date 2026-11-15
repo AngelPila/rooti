@@ -23,6 +23,7 @@ body.r-bootcamp { background: var(--cream); }
   flex-direction: column;
   gap: clamp(24px, 4vw, 44px);
 }
+.bc-lesson > p { max-width: 75ch; }
 .bootcamp a { text-underline-offset: 3px; }
 .bootcamp .btn { min-height: 56px; white-space: normal; text-align: center; line-height: 1.25; }
 .bootcamp h2[tabindex] { scroll-margin-top: 20px; }
@@ -271,7 +272,8 @@ body.r-bootcamp { background: var(--cream); }
 .bootcamp-crops .bc-catalog { margin-top: 4px; }
 
 /* Compact, image-led layouts shared by the bootcamp pages. */
-.bootcamp { width: min(100%, 1600px); gap: clamp(16px, 2.5vw, 28px); padding: clamp(16px, 2.5vw, 36px) clamp(16px, 3vw, 48px) 48px; }
+.bootcamp { width: min(100%, 1920px); gap: clamp(16px, 2.5vw, 28px); padding: clamp(16px, 2.5vw, 36px) clamp(16px, 3vw, 48px) 48px; }
+@media (min-width: 1024px) { .bootcamp { padding-inline: 24px; padding-top: 24px; } }
 .bootcamp-home { gap: clamp(24px, 3.5vw, 38px); }
 .bootcamp-home .bc-hero { min-height: 280px; }
 .bootcamp-home .bc-intro { padding: clamp(28px, 4vw, 54px); }
