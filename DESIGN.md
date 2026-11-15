@@ -49,8 +49,8 @@ Rules learned from design reviews. Each one comes from a correction the product 
   Why: confirmed choice ("ok lo recomendado"): icons must stay sharp at 16px, recolor with the theme, and a watermark cannot fit on an icon.
   <!-- 2026-11-15 -->
 
-- **"How it works" visuals are drawn live from the real components and data (Esri satellite photo, NASA POWER rain, route blocks, chat), never AI screenshots of the UI.**
-  Why: "se ve feo y aparte las capturas se ven borrosas" (AI raster mockups with tiny upscaled text).
+- **"How it works" is four small cards in one row: a simple SVG/HTML diagram on parchment, the step number and title, two lines of text. Never AI screenshots of the UI.**
+  Why: "se ve feo y aparte las capturas se ven borrosas"; "ocupa mucho" (reference: startuparena.gg "How it works").
   <!-- 2026-11-15 -->
 
 ## Motion

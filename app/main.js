@@ -363,13 +363,10 @@ function viewLanding() {
       h("p", { class: "hero-source mono" }, D.source))),
     h("section", { class: "l-sheet" }, h("div", { class: "l-wrap" },
       h("div", { class: "l-stats" }, ...D.howStats.map(([n, t]) => h("div", { class: "l-stat" }, h("b", {}, n), h("span", {}, t)))),
-      h("div", { class: "l-how-head", id: "how" }, h("span", { class: "eyebrow lime-tag" }, D.howEyebrow), h("h2", { class: "h2" }, D.howTitle)),
-      h("div", { class: "l-how" }, ...D.how.map(([art, t, d, alt], i, all) => {
-        const agent = i === all.length - 1;
-        return h("article", { class: agent ? "how agent" : "how" }, h("div", { class: `how-img ${art}`, role: "img", "aria-label": alt }, HOW_ART[art]()),
-          agent ? h("span", { class: "eyebrow lime-tag" }, D.howAgent) : null,
-          h("b", {}, h("i", {}, `${i + 1}.`), " ", t), h("p", {}, d));
-      })),
+      h("h2", { class: "h2 l-how-head", id: "how" }, D.howTitle),
+      h("div", { class: "l-how" }, ...D.how.map(([art, t, d, alt], i) => h("article", { class: "how" },
+        h("div", { class: `how-img ${art}`, role: "img", "aria-label": alt }, HOW_ART[art]()),
+        h("b", {}, h("i", {}, `${i + 1}.`), " ", t), h("p", {}, d)))),
       h("h2", { class: "h2" }, D.examplesTitle),
       h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.png`, alt: "", loading: "lazy" }),
         h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),
@@ -379,47 +376,36 @@ function viewLanding() {
   tilt(document.querySelectorAll(".how"));
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => mountHero(art, title, start));
 }
-// "How it works" art is drawn live from real components and data, so it stays sharp at any zoom and needs no AI image
-const SAT_LOT = "562,447 581,436 611,486 591,502"; // a real paddock in img/sat/daule.jpg (pixel coordinates)
-const monthsSpan = (a, b) => C().ds.monthsTo(monL(a), monL(b));
-const miniStep = (id, a, b) => h("li", { style: { "--c": look(id).color } }, tile(id), h("p", {}, h("b", {}, cropName(id)), h("span", {}, monthsSpan(a, b))));
+// "How it works" art: small diagrams drawn in SVG/HTML, so they stay sharp at any zoom
 const HOW_ART = {
   plot: () => {
-    const s = svg("svg", { viewBox: "310 300 400 300", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true" },
-      svg("image", { href: "img/sat/daule.jpg", x: 0, y: 0, width: 1800, height: 640 }),
-      svg("polygon", { points: SAT_LOT, class: "lot" }));
-    return [s, h("span", { class: "how-chip" }, icon("i-pin"), C().ds.howArt.lot), h("span", { class: "how-src mono" }, "Esri World Imagery")];
+    const g = svg("svg", { viewBox: "0 0 320 200", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true" },
+      svg("defs", {}, svg("pattern", { id: "how-dots", width: 14, height: 14, patternUnits: "userSpaceOnUse" }, svg("circle", { cx: 2, cy: 2, r: 1.1, class: "dot" }))),
+      svg("rect", { width: 320, height: 200, fill: "url(#how-dots)" }),
+      svg("path", { d: "M-10 150 L330 92", class: "road" }), svg("path", { d: "M128 -10 L96 210", class: "road" }),
+      ...[[30, 40, 52, 34], [150, 26, 60, 40], [228, 24, 66, 30], [20, 168, 60, 26], [210, 140, 70, 44], [36, 92, 44, 30]].map(([x, y, w, ht]) => svg("rect", { x, y, width: w, height: ht, rx: 6, class: "field" })),
+      svg("polygon", { points: "150,96 214,84 226,124 160,136", class: "lot" }));
+    return [g, h("span", { class: "how-chip" }, icon("i-pin"), C().ds.howArt.lot)];
   },
   climate: () => {
-    const A = C().ds.howArt, chart = h("div", { class: "how-rain" }), box = [h("span", { class: "mono" }, A.rain), chart,
-      h("ol", { class: "how-cover" }, ...A.cover.map((c, i) => h("li", { class: c === "bare" ? "off" : "on" }, h("i"), h("span", {}, S().monthsLong[i].charAt(0).toUpperCase())))),
-      h("div", { class: "legend" }, h("span", {}, h("i", { class: "sw on" }), A.covered), h("span", {}, h("i", { class: "sw off" }), A.bare)),
-      h("span", { class: "how-src mono" }, "NASA POWER · 1991–2020")];
+    const A = C().ds.howArt, chart = h("div", { class: "how-rain" });
     fetch("data/daule.json").then(ok).then((z) => chart.append(rainArea(z.climatology_1991_2020.rain_mm))).catch(() => {});
-    return box;
+    return [chart, h("ol", { class: "how-cover" }, ...A.cover.map((c) => h("li", { class: c === "bare" ? "off" : "on" })))];
   },
-  plans: () => {
-    const A = C().ds.howArt, N = C().ds.names;
-    return [h("span", { class: "mono" }, A.example),
-      h("ul", { class: "how-plans" }, ...A.plans.map(([k, steps, n]) => h("li", { class: k === "today" ? "today" : "" },
-        h("b", {}, N[k]), h("ol", { class: "rt-steps" }, ...steps.map(([id, a, b]) => miniStep(id, a, b))),
-        h("p", { class: "how-n" }, h("strong", {}, n), h("span", {}, A.of44)))))];
-  },
+  plans: () => h("ul", { class: "how-plans" }, ...C().ds.howArt.plans.map(([k, steps, n]) => h("li", { class: k === "today" ? "today" : "" },
+    h("span", { class: "crops" }, ...steps.map(([id]) => tile(id))),
+    h("span", { class: "bar" }, h("i", { style: { width: `${(n / 44) * 100}%` } })), h("b", {}, n)))),
   agent: () => {
-    const A = C().ds.howArt, mk = h("span", { class: "mk" }); mk.innerHTML = MARK;
-    return [h("div", { class: "chat-top" }, mk, h("b", {}, "Rooti"), h("span", {}, "WhatsApp")),
-      h("p", { class: "msg me" }, A.ask),
-      h("p", { class: "msg me voice" }, icon("i-play"), h("span", { class: "wave" }, ..."3586472958463725".split("").map((v) => h("i", { style: { height: `${v * 2 + 4}px` } }))), "0:12"),
-      h("div", { class: "msg rooti" }, h("p", {}, A.reply), h("ol", { class: "rt-steps" }, miniStep("rice", 12, 4), miniStep("soybean", 5, 8)), h("span", { class: "chat-btn" }, A.open))];
+    const A = C().ds.howArt;
+    return [h("p", { class: "msg me voice" }, icon("i-play"), h("span", { class: "wave" }, ..."3586472958463".split("").map((v) => h("i", { style: { height: `${v * 2 + 4}px` } }))), "0:12"),
+      h("div", { class: "msg rooti" }, ...[["rice", 12, 4], ["soybean", 5, 8]].map(([id]) => h("span", { class: "blk", style: { "--c": look(id).color } }, tile(id), cropName(id))))];
   },
 };
 function rainArea(mm) {
-  const W = 320, H = 120, top = 22, max = Math.max(...mm) * 1.1, x = (i) => 10 + i * ((W - 20) / 11), y = (v) => top + (H - top - 4) * (1 - v / max);
-  const line = smooth(mm.map((v, i) => [x(i), y(v)])), peak = mm.indexOf(Math.max(...mm));
-  return svg("svg", { viewBox: `0 0 ${W} ${H}`, "aria-hidden": "true" },
-    svg("path", { d: `${line}L${x(11)},${H}L${x(0)},${H}Z`, class: "ra" }), svg("path", { d: line, class: "rl" }),
-    svg("circle", { cx: x(peak), cy: y(mm[peak]), r: 4, class: "rp" }),
-    svg("text", { x: x(peak) + 8, y: y(mm[peak]) - 4, class: "rv" }, `${Math.round(mm[peak])} mm`));
+  const W = 320, H = 110, max = Math.max(...mm) * 1.1, x = (i) => 6 + i * ((W - 12) / 11), y = (v) => 8 + (H - 8) * (1 - v / max);
+  const line = smooth(mm.map((v, i) => [x(i), y(v)]));
+  return svg("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", "aria-hidden": "true" },
+    svg("path", { d: `${line}L${x(11)},${H}L${x(0)},${H}Z`, class: "ra" }), svg("path", { d: line, class: "rl", "vector-effect": "non-scaling-stroke" }));
 }
 // Cards lean toward the pointer on desktop; CSS eases the vars so each move stays short.
 function tilt(cards) {
