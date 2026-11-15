@@ -67,7 +67,7 @@ def test_phone_neighbors_read_as_a_thread_with_faces(app_url, browser):
     # The answer hangs from the post, with its own face
     expect(estero.locator(".vh-reps li")).to_contain_text("En el recinto de nosotros igual")
     expect(post(page, "Sembré maíz en diciembre").locator(".vh-report")).to_contain_text("Se perdió")
-    expect(page.locator(".vh-fine")).to_contain_text("generadas con IA")
+    expect(page.locator(".vh-fine")).to_contain_text("fotos están generadas con IA")
     # Once the page has risen in, nothing scrolls sideways
     page.wait_for_function("document.documentElement.scrollWidth <= innerWidth", timeout=5_000)
 

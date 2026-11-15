@@ -1549,7 +1549,7 @@ function loadVecinos(pl = state.plan?.place, fresh = false) {
   return (VEC.load = (async () => {
     if (z) try { const d = await vecApi(`?zone=${encodeURIComponent(z)}`); VEC.posts = d.posts || []; VEC.server = true; return; } catch { /* no server: examples and this phone */ }
     VEC.server = false;
-    try { const d = await fetch("data/vecinos.json?v=2").then(ok); VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true })); } catch { VEC.posts = []; }
+    try { const d = await fetch("data/vecinos.json?v=2").then(ok); VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true, replies: (p.replies || []).map((x) => ({ ...x, example: true })) })); } catch { VEC.posts = []; }
   })());
 }
 const zoneKey = (pl) => nearPilot(pl) || `pt:${pl.lat.toFixed(1)},${pl.lon.toFixed(1)}`;
@@ -1636,7 +1636,7 @@ function vecCard(p, redraw) {
         h("button", { class: "vh-act same", "aria-pressed": String(mine), onclick: () => { store.set("vecSame1", mine ? same.filter((x) => x !== p.id) : [...same, p.id]); redraw(); } }, V.same, n ? h("b", {}, String(n)) : null),
         h("button", { class: "link quiet", onclick: () => { store.set("vecHidden1", [...store.get("vecHidden1", []), p.id]); if (VEC.server && !p.local) vecApi(`/${encodeURIComponent(p.id)}/report`, { device: vecDevice() }).catch(() => {}); redraw(); } }, V.report)),
       p.replies.length ? h("ul", { class: "vh-reps", "aria-label": V.replies(p.replies.length) }, ...p.replies.map((x) => h("li", { class: x.role === "tecnico" ? "tech" : "" },
-        vecAvatar(x, x.example || p.example, "m"), h("div", {}, vecWho(x, V), h("p", {}, vecText(x)))))) : null,
+        vecAvatar(x, x.example, "m"), h("div", {}, vecWho(x, V), h("p", {}, vecText(x)))))) : null,
       replyBox));
 }
 function vecForm(P, done) {
@@ -1683,7 +1683,7 @@ async function viewVecinos(arg) {
   const draw = () => {
     const all = vecPosts(P.place), cropsIn = [...new Set(all.filter((p) => p.crop).map((p) => p.crop))];
     const list = all.filter((p) => (state.vecType === "all" || p.type === state.vecType) && (!state.vecCrop || p.crop === state.vecCrop));
-    const people = [...new Map(all.filter((p) => !p.hidden).flatMap((p) => [p, ...p.replies.map((x) => ({ ...x, example: x.example || p.example }))]).map((x) => [x.author, x])).values()];
+    const people = [...new Map(all.filter((p) => !p.hidden).flatMap((p) => [p, ...p.replies]).map((x) => [x.author, x])).values()];
     put(side,
       h("div", { class: "res-title" }, h("h1", { class: "display" }, z ? V.group(cap(z)) : V.groupFar), h("p", {}, z ? V.lead(cap(z)) : V.leadFar)),
       people.length ? h("div", { class: "vh-members" }, h("span", { class: "vh-stack" }, ...people.slice(0, 5).map((x) => vecAvatar(x, x.example, "s"))), h("span", {}, V.members(people.length))) : null,
