@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
-import { COPY } from "./copy.js?v=48";
+import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
+import { COPY } from "./copy.js?v=49";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -22,11 +22,15 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem("rooti:" + k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem("rooti:" + k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
-const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const iso = (d) => `${String(d.getFullYear()).padStart(4, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const firstNextMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 1); };
 const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 0);
+const supportedLang = (lang) => lang === "es" || lang === "en";
+const browserLang = (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en";
+const query = new URLSearchParams(location.search);
+const savedLang = store.get("lang", browserLang);
 const state = {
-  lang: store.get("lang", (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en"),
+  lang: supportedLang(query.get("lang")) ? query.get("lang") : supportedLang(savedLang) ? savedLang : browserLang,
   plan: store.get("plan3", null),
   pick: null,
   mode: "all",
@@ -43,18 +47,6 @@ const demoData = {};
 const loadDemo = (k) => (demoData[k] ||= fetch(`data/demo/${k}.json?v=2`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }));
 const demoPlan = (k) => { const s = firstNextMonth(), D = DEMOS[k]; return { place: D.place, start: iso(s), end: iso(addMonths(s, 12)), crops: D.crops, current: D.current, irrigation: false, area: D.area, unit: D.unit || "ha", waterlog: null }; };
 const EXAMPLE = () => ({ place: { name: "Daule", admin: "Guayas, Ecuador", lat: -1.86, lon: -79.98 }, start: iso(firstNextMonth()), end: iso(addMonths(firstNextMonth(), 12)), crops: ["maize", "soybean", "mulch"], irrigation: false, area: 5.2, unit: "ha" });
-// A plan can come in the link: ?lat=-1.86&lon=-79.98&place=Daule&from=2026-12-01&to=2027-11-30&crops=maize+soybean&area=5
-{
-  const q = new URLSearchParams(location.search);
-  if (q.get("lat") && q.get("crops")) {
-    state.plan = {
-      place: { name: q.get("place") || `${(+q.get("lat")).toFixed(2)}, ${(+q.get("lon")).toFixed(2)}`, lat: +q.get("lat"), lon: +q.get("lon") },
-      start: q.get("from") || iso(firstNextMonth()), end: q.get("to") || iso(addMonths(firstNextMonth(), 12)),
-      crops: q.get("crops").split(/[+ ,]/).filter(Boolean), irrigation: q.get("irr") === "1", area: +(q.get("area") || 1), unit: q.get("unit") || "ha", current: (q.get("now") || "").split(/[+ ,]/).filter(Boolean), waterlog: q.get("wl") || null
-    };
-  }
-  if (q.get("lang")) state.lang = q.get("lang");
-}
 const DATA = { crops: null, econ: null, outlook: null, fires: {}, clim: {}, terrain: {}, zone: {} };
 const desktop = () => matchMedia("(min-width: 1024px)").matches;
 const C = () => COPY[state.lang];
@@ -110,7 +102,49 @@ function fracParts(x) { let best = [1, 2], err = 1; for (let n = 2; n <= 10; n++
 // 0.83 -> "5 de cada 6": plain fractions instead of percentages.
 const frac = (x) => (x <= 0.001 ? C().none : x >= 0.999 ? (es() ? "Todos" : "All") : C().kOf(...fracParts(x)));
 const nearPilot = (pl) => Object.entries(PILOTS).find(([, [la, lo]]) => Math.hypot(la - pl.lat, lo - pl.lon) * 111 < 40)?.[0] || null;
-const monthsIn = (P) => Math.round((new Date(P.end) - new Date(P.start)) / (30.44 * 864e5));
+function parseDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(value + "T12:00:00");
+  return date.getFullYear() > 0 && iso(date) === value ? date : null;
+}
+function monthsIn(P) {
+  const start = parseDate(P.start), end = parseDate(P.end);
+  if (!start || !end || end < start) return 0;
+  return (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1;
+}
+const hasCrop = (crops) => crops.some((id) => id !== "mulch" && Object.hasOwn(DATA.crops, id));
+const validArea = (area) => Number.isFinite(area) && area > 0;
+
+function readSharedPlan() {
+  if (!["lat", "lon", "crops"].some((key) => query.has(key))) return;
+  state.sharedLink = true;
+  const lat = Number(query.get("lat")?.trim() || NaN), lon = Number(query.get("lon")?.trim() || NaN);
+  const place = Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+    ? { name: query.get("place") || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, lat, lon } : null;
+  const cropIds = (key) => [...new Set((query.get(key) || "").split(/[+ ,]/).filter(Boolean))];
+  const requested = cropIds("crops");
+  const crops = requested.filter((id) => id === "mulch" || Object.hasOwn(DATA.crops, id));
+  const current = cropIds("now").filter((id) => Object.hasOwn(DATA.crops, id));
+  const start = query.get("from") ?? iso(firstNextMonth());
+  const startDate = parseDate(start);
+  const end = query.get("to") ?? (startDate ? iso(addMonths(startDate, 12)) : "");
+  const area = Number(query.get("area") ?? 1), unit = query.get("unit") ?? "ha";
+  const waterlog = query.get("wl");
+  const plan = {
+    place, start: startDate ? start : "", end: parseDate(end) ? end : "", crops, current,
+    irrigation: query.get("irr") === "1", area: validArea(area) ? area : 1,
+    unit: Object.hasOwn(UNITS, unit) ? unit : "ha",
+    waterlog: ["yes", "sometimes", "no"].includes(waterlog) ? waterlog : null,
+  };
+  if (place && !dateErr(plan) && hasCrop(crops) && crops.length === requested.length && validArea(area) && Object.hasOwn(UNITS, unit)) {
+    state.plan = plan;
+  } else {
+    state.plan = null;
+    state.draft = plan;
+    state.linkError = true;
+    if (!location.hash) history.replaceState(null, "", "#/planear");
+  }
+}
 
 /* ---------------- data ---------------- */
 async function loadBase() {
@@ -144,11 +178,27 @@ function siteOf(t, P) {
 const memo = new Map();
 async function results(P = state.plan, mode = state.mode, priority = "soil") {
   const [c, tr] = await Promise.all([climate(P.place), terrain(P.place)]), key = JSON.stringify([P, mode, priority]);
-  if (!memo.has(key)) { const site = siteOf(tr, P); memo.set(key, { clim: c, P, terrain: tr, site, ...runPlanner(c, DATA.crops, P.crops, { start: P.start.slice(0, 7), end: P.end.slice(0, 7), irrigation: P.irrigation, priority, mode, site, current: P.current || [] }) }); }
+  if (!memo.has(key)) {
+    const site = siteOf(tr, P);
+    const start = P.start.slice(0, 7), end = P.end.slice(0, 7);
+    const ninoOffset = ninoNow(P) ? CURRENT_NINO_ONSET - Number(start.slice(0, 4)) : 0;
+    memo.set(key, { clim: c, P, terrain: tr, site, ninoOffset, ...runPlanner(c, DATA.crops, P.crops, { start, end, irrigation: P.irrigation, priority, mode, ninoOffset, site, current: P.current || [] }) });
+  }
   return memo.get(key);
 }
 async function fireData(z) { if (!(z in DATA.fires)) DATA.fires[z] = await fetch(`data/fires_${z}.json`).then(ok).catch(() => null); return DATA.fires[z]; }
-const setPlan = (P) => { state.plan = P; store.set("plan3", P); state.custom = null; };
+const setPlan = (P) => {
+  state.plan = P;
+  store.set("plan3", P);
+  state.custom = null;
+  state.linkError = false;
+  if (state.sharedLink) {
+    const url = new URL(location.href);
+    for (const key of ["lat", "lon", "place", "from", "to", "crops", "irr", "area", "unit", "now", "wl"]) url.searchParams.delete(key);
+    history.replaceState(null, "", url);
+    state.sharedLink = false;
+  }
+};
 
 /* ---------------- voice and sheets ---------------- */
 function speak(text) {
@@ -316,8 +366,9 @@ function periodStrip(d) {
   return h("div", { class: "period", "aria-hidden": "true" }, ...Array.from({ length: n }, (_, i) => h("i", { class: (a.getMonth() + i) % 12 < 5 ? "w" : "s" })));
 }
 const quickDates = (d, redo) => h("div", { class: "row wrap", style: { gap: "8px" } }, ...C().quick.map(([k, l]) => {
-  const s = new Date(d.start + "T12:00:00");
-  return h("button", { class: "chip", "aria-pressed": String(monthsIn(d) === +k), onclick: () => { d.end = iso(addMonths(s, +k)); redo(); } }, l);
+  const start = parseDate(d.start);
+  const end = start && iso(addMonths(start, +k));
+  return h("button", { class: "chip", disabled: !parseDate(end), "aria-pressed": String(monthsIn(d) === +k), onclick: () => { d.end = end; redo(); } }, l);
 }));
 const dateFields = (d, redo) => h("div", { class: "dates" }, ...[["start", C().from], ["end", C().to]].map(([k, l]) =>
   h("label", { class: "date" }, h("small", {}, l), h("input", { type: "date", value: d[k], onchange: (e) => { d[k] = e.target.value; redo(); } }))));
@@ -368,13 +419,13 @@ function viewPlanear(stepArg) {
   } else if (n === 2) {
     body = [title(c.whenQ, c.whenHelp), dateFields(d, redo), quickDates(d, redo), h("div", { class: "card", style: { gap: "8px", padding: "16px" } }, h("b", {}, c.months(Math.max(0, monthsIn(d)))), periodStrip(d)), err ? h("p", { class: "err" }, err) : null, h("div", { class: "spacer" }), nextBtn(c.next, !err, () => go("planear/3"))];
   } else if (n === 3) {
-    body = [title(c.whatQ, c.whatHelp), ...cropTiles(d, redo, 6), h("div", { class: "spacer" }), nextBtn(d.crops.length ? c.nextCrops(d.crops.length) : c.pickCrop, d.crops.length > 0, () => go("planear/4"))];
+    body = [title(c.whatQ, c.whatHelp), ...cropTiles(d, redo, 6), h("div", { class: "spacer" }), nextBtn(hasCrop(d.crops) ? c.nextCrops(d.crops.length) : c.pickCrop, hasCrop(d.crops), () => go("planear/4"))];
   } else {
-    const ready = d.place && d.crops.length && !err;
+    const ready = d.place && hasCrop(d.crops) && !err;
     body = [title(c.landQ, c.landHelp), areaBox(d, redo), h("div", { class: "q" }, h("b", {}, c.irrigQ), irrigOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.wlQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), waterlogOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo)), h("div", { class: "spacer" }),
     nextBtn(ready ? c.seePlan : !d.place ? c.pickPlace : err || c.pickCrop, true, () => (ready ? submitPlan() : go(!d.place ? "planear/1" : err ? "planear/2" : "planear/3")))];
   }
-  put($("#view"), h("div", { class: "step" }, head, ...body));
+  put($("#view"), h("div", { class: "step" }, head, state.linkError ? h("p", { class: "err", role: "status" }, c.invalidPlanLink) : null, ...body));
 }
 // Computer: the map fills the screen; one floating panel with four sections, one open at a time.
 function planDesktop(d) {
@@ -382,13 +433,13 @@ function planDesktop(d) {
   const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); updateMap(pl, null); };
   state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
   put($("#map-overlay"), state.drawing ? null : h("div", { class: "map-hint" }, icon("i-pointer"), d.place ? c.lot.clickMore : c.clickMap));
-  const done = { 1: !!d.place, 2: !err, 3: d.crops.length > 0, 4: true };
+  const done = { 1: !!d.place, 2: !err, 3: hasCrop(d.crops), 4: true };
   if (state.sec == null) state.sec = !d.place ? 1 : !d.crops.length ? 3 : 0;
   const months = monthsIn(d);
   const summary = {
     1: d.place ? `${d.place.name}${d.place.admin ? " · " + d.place.admin : ""}` : c.pickPlace,
     2: err || `${fmtDate(d.start)} – ${fmtDate(d.end)} · ${c.months(months)}`,
-    3: d.crops.length ? d.crops.map((id) => cap(cropName(id))).join(", ") : c.pickCrop,
+    3: done[3] ? d.crops.map((id) => cap(cropName(id))).join(", ") : c.pickCrop,
     4: `${(d.area || 1).toLocaleString(state.lang)} ${c.units[d.unit || "ha"]}${d.lot?.length >= 3 ? " · " + c.lot.fromMap : ""} · ${d.irrigation ? c.irrig.yes : c.irrig.no}`,
   };
   const body = {
@@ -403,9 +454,9 @@ function planDesktop(d) {
       h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo))],
   };
   const titles = { 1: c.where, 2: c.when, 3: c.what, 4: c.landShort };
-  const okAll = d.place && d.crops.length && !err;
+  const okAll = done[1] && done[2] && done[3];
   put($("#view"), h("div", { class: "plan-float" },
-    h("div", { class: "pf-head" }, h("h1", { class: "display" }, c.planTitle), h("p", { class: "small" }, c.planLead2)),
+    h("div", { class: "pf-head" }, h("h1", { class: "display" }, c.planTitle), h("p", { class: "small" }, c.planLead2), state.linkError ? h("p", { class: "err", role: "status" }, c.invalidPlanLink) : null),
     h("div", { class: "pf-secs" }, ...[1, 2, 3, 4].map((n) => {
       const open = state.sec === n;
       return h("section", { class: `pf-sec${open ? " open" : ""}${done[n] ? " done" : ""}` },
@@ -575,7 +626,8 @@ function countUp(el, to, ms) {
 // One dot per real year; same plan size recolours the dots in place so the change is visible
 function yearDots(el, r, f) {
   const coast = COAST(state.plan.place), D = C().ds, per = f.per;
-  const cls = (x) => yearLv(x) + (coast && NINO_ONSET.includes(x.base) ? " n" : "");
+  const isNino = (base) => coast && NINO_ONSET.includes(base + r.ninoOffset);
+  const cls = (x) => yearLv(x) + (isNino(x.base) ? " n" : "");
   el._f = f;
   const dots = el.querySelectorAll("i");
   if (dots.length === per.length) { dots.forEach((d, i) => { d.className = cls(per[i]); }); return; }
@@ -585,7 +637,9 @@ function yearDots(el, r, f) {
   const show = (d) => {
     const i = +d.dataset.i, x = el._f.per[i], y = x.base;
     el.querySelectorAll("i.on").forEach((q) => q.classList.remove("on")); d.classList.add("on");
-    put(tip, h("b", {}, `${y}–${String(y + 1).slice(2)}${coast && NINO_ONSET.includes(y) ? ` · ${D.legend.n}` : ""}`), D.yearTip[yearLv(x)]);
+    const end = y + r.period.at(-1).y - r.period[0].y;
+    const period = y === end ? String(y) : `${y}–${String(end).slice(2)}`;
+    put(tip, h("b", {}, period + (isNino(y) ? ` · ${D.legend.n}` : "")), D.yearTip[yearLv(x)]);
     tip.style.left = d.offsetLeft + d.offsetWidth / 2 + "px"; tip.style.top = d.offsetTop + "px"; tip.classList.add("on");
   };
   el.onpointerover = (e) => { if (e.target.dataset.i) show(e.target); };
@@ -768,14 +822,20 @@ function viewPlan() {
 
 /* ---------- why, risks, what we don't know, questions for the agronomist ---------- */
 const COAST = (pl) => pl.lat > -5 && pl.lat < 2 && pl.lon > -81.5 && pl.lon < -78.5;
+const CURRENT_NINO_ONSET = 2026;
 // A strong El Niño is under way (NOAA/ERFEN, data/outlook.json): on the Pacific coast, a plan for the coming rainy
 // season is tested by default on the seasons that followed past strong El Niños, not on all years alike.
-const ninoNow = (P) => !!P && DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place) && P.start.slice(0, 7) <= "2027-04" && P.end >= iso(new Date());
+const ninoNow = (P) => !!P && DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place) && P.start.slice(0, 7) <= `${CURRENT_NINO_ONSET + 1}-04` && P.end >= iso(new Date());
 const defaultMode = (P) => (ninoNow(P) ? "nino" : "all");
-const seasonsOf = (r) => r.samples.filter((s) => s.base != null).map((s) => `${s.base}-${String(s.base + 1).slice(2)}`);
+const seasonsOf = (r) => r.samples.filter((s) => s.base != null).map((s) => s.base + r.ninoOffset);
 function ninoBanner(r) {
   const c = C(), P = state.plan;
-  if (state.mode === "nino" && seasonsOf(r).length) return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, h("b", {}, c.ninoOnTitle), " ", c.ninoOn(andList(seasonsOf(r)))), h("button", { class: "link", onclick: () => { state.mode = "all"; render(); } }, c.ninoSeeAll));
+  if (state.mode === "nino") {
+    const years = seasonsOf(r);
+    if (!years.length || !years.every((year) => NINO_ONSET.includes(year))) return null;
+    const seasons = years.map((year) => `${year}-${String(year + 1).slice(2)}`);
+    return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, h("b", {}, c.ninoOnTitle), " ", c.ninoOn(andList(seasons))), h("button", { class: "link", onclick: () => { state.mode = "all"; render(); } }, c.ninoSeeAll));
+  }
   if (ninoNow(P)) return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, c.ninoOff), h("button", { class: "link", onclick: () => { state.mode = "nino"; render(); } }, c.ninoTest));
   return null;
 }
@@ -1148,7 +1208,7 @@ function viewProbar() {
 }
 
 /* ---------- compare: build your own ---------- */
-const customFrom = (f) => f.parcels.map((pc) => ({ area: +(pc.share * (state.plan.area || 1)).toFixed(state.plan.unit === "m2" ? 0 : 1), steps: pc.d.steps.map((s) => ({ crop: s.crop, t0: s.t0 })) }));
+const customFrom = (f) => f.parcels.map((pc) => ({ area: +(pc.share * state.plan.area).toPrecision(8), steps: pc.d.steps.map((s) => ({ crop: s.crop, t0: s.t0 })) }));
 function money(f) {
   if (!nearPilot(state.plan.place) || !DATA.econ) return null;
   const A = (state.plan.area || 1) * UNITS[state.plan.unit || "ha"];
@@ -1169,15 +1229,19 @@ function viewComparar() {
     const mine = r.evalFarm(K.map((pc) => ({ share: (+pc.area || 0) / (P.area || 1), steps: pc.steps })), { noMulch: !state.customStraw });
     const choices = [...new Set([...P.crops.filter((id) => id !== "mulch"), ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id])])];
     const used = K.reduce((x, pc) => x + (+pc.area || 0), 0);
+    const exceedsArea = used > P.area * (1 + 1e-7);
+    const hasPlanting = mine.parcels.some((pc) => pc.share > 0 && pc.d.steps.length);
+    const compareError = exceedsArea ? c.compareAreaError : mine.errors.length ? c.comparePlantingError : !hasPlanting ? c.compareEmpty : null;
     const freeT = (pc) => pc.steps.reduce((e, s) => Math.max(e, s.t0 + r.monthsOf(s.crop)), 0);
+    const fittingCrop = (t) => choices.find((id) => r.monthsOf(id) + t <= N);
     const plots = K.map((pc, k) => {
-      const ev = mine.parcels[k];
+      const ev = mine.parcels[k], next = freeT(pc), nextCrop = fittingCrop(next);
       return h("div", { class: "card plot" },
         h("div", { class: "plot-head" }, h("b", {}, `${c.plot} ${String.fromCharCode(65 + k)}`),
-          h("label", { class: "plot-area" }, h("input", { type: "number", min: "0", step: "any", value: String(pc.area), onchange: (e) => { pc.area = Math.max(0, parseFloat(e.target.value) || 0); redo(); } }), c.units[P.unit || "ha"]),
+          h("label", { class: "plot-area" }, h("input", { type: "number", min: "0", step: "any", value: String(pc.area), onchange: (e) => { const area = e.target.valueAsNumber; pc.area = validArea(area) ? area : 0; redo(); } }), c.units[P.unit || "ha"]),
           K.length > 1 ? h("button", { class: "link", style: { fontSize: "14px" }, onclick: () => { K.splice(k, 1); redo(); } }, c.remove) : null),
         ...pc.steps.map((st, j) => {
-          const s = ev?.d.steps.find((x) => x.t0 === st.t0 && x.crop === st.crop), er = ev?.errors.find((x) => x.t0 === st.t0 && x.crop === st.crop);
+          const s = ev?.d.steps.find((x) => x.t0 === st.t0 && x.crop === st.crop), er = ev?.errors.find((x) => x.index === j);
           const lv = s ? (s.fail >= 0.5 ? "danger" : s.fail > 0.15 || s.yld < 0.6 ? "care" : "good") : "danger";
           return h("div", { class: "pl-step" },
             h("select", { "aria-label": c.what, onchange: (e) => { st.crop = e.target.value; redo(); } }, ...choices.map((id) => h("option", { value: id, selected: id === st.crop || null }, cap(cropName(id))))),
@@ -1185,7 +1249,7 @@ function viewComparar() {
             h("span", { class: `res-txt v-${lv}` }, er ? (er.why === "overlap" ? c.overlap : c.noTime) : s ? `→ ${ym(r.period[s.t1 - 1])} · ${outcomeShort({ fail: s.fail, yld: s.yld }, s.n)}` : ""),
             h("button", { class: "x", "aria-label": c.remove, onclick: () => { pc.steps.splice(j, 1); redo(); } }, "✕"));
         }),
-        freeT(pc) < N - 1 ? h("button", { class: "link", style: { alignSelf: "flex-start", fontSize: "14px" }, onclick: () => { pc.steps.push({ crop: choices[0], t0: freeT(pc) }); redo(); } }, c.addPlanting) : null);
+        nextCrop ? h("button", { class: "link", style: { alignSelf: "flex-start", fontSize: "14px" }, onclick: () => { pc.steps.push({ crop: nextCrop, t0: next }); redo(); } }, c.addPlanting) : null);
     });
     const mR = money(rec), mM = money(mine), $$ = (x) => `${x < 0 ? "−" : "+"}$${Math.abs(x).toLocaleString(state.lang)}`;
     const rows = [
@@ -1207,31 +1271,36 @@ function viewComparar() {
         h("div", { class: "res-title" }, h("h1", { class: "display" }, c.build), h("p", {}, c.buildLead)),
         ...plots,
         h("div", { class: "row wrap", style: { gap: "14px" } },
-          h("button", { class: "btn", onclick: () => { K.push({ area: Math.max(0, +((P.area || 1) - used).toFixed(2)), steps: [{ crop: choices[0], t0: 0 }] }); redo(); } }, c.addPlot),
+          h("button", { class: "btn", onclick: () => { K.push({ area: Math.max(0, +(P.area - used).toPrecision(8)), steps: [{ crop: fittingCrop(0), t0: 0 }] }); redo(); } }, c.addPlot),
           h("button", { class: "link", onclick: () => { state.custom = customFrom(rec); state.customStraw = P.crops.includes("mulch"); redo(); } }, c.reset)),
         P.crops.includes("mulch") ? h("label", { class: "row", style: { gap: "8px", fontSize: "15px" } }, h("input", { type: "checkbox", checked: state.customStraw || null, onchange: (e) => { state.customStraw = e.target.checked; redo(); } }), c.keepStraw) : null,
-        h("p", { class: used > (P.area || 1) + 1e-6 ? "err" : "small" }, c.uses(fmtArea(used / (P.area || 1)), fmtArea(1)))),
+        h("p", { class: exceedsArea ? "err" : "small" }, c.uses(fmtArea(used / P.area), fmtArea(1)))),
       h("div", { class: "col-right" },
         h("h2", { class: "display phone-only", style: { fontSize: "22px" } }, c.cmpTitle),
-        // Swaps only the calendar so the pressed button keeps keyboard focus.
-        h("div", { class: "seg cmp-seg" }, ...[["rec", recName], ["mine", c.mine]].map(([k, l]) => h("button", { "aria-pressed": String((state.cmpView || "rec") === k), onclick: (e) => {
-          const seg = e.currentTarget.parentElement, from = activeRect(seg, '[aria-pressed="true"]'), d = k === "rec" ? -1 : 1;
-          state.cmpView = k;
-          for (const bt of seg.querySelectorAll("button")) bt.setAttribute("aria-pressed", String(bt === e.currentTarget));
-          slidePill(seg, from, '[aria-pressed="true"]');
-          put($("#cmpCal"), k === "rec" ? calCard(recName, rec) : calCard(c.mine, mine));
-          if (MOTION()) $("#cmpCal").animate([{ opacity: 0, transform: `translateX(${d * 12}px)` }, { opacity: 1, transform: "none" }], { duration: 200, easing: EASE_OUT });
-        } }, l))),
-        h("div", { id: "cmpCal" }, (state.cmpView || "rec") === "rec" ? calCard(recName, rec) : calCard(c.mine, mine)),
-        h("section", { class: "card cmp-bars" }, h("div", { class: "cmp-key" }, h("span", {}, h("i", { class: "a" }), recName), h("span", {}, h("i", { class: "b" }), c.mine)),
-          ...rows.map(([l, a, b, va, vb, up]) => {
-            const w = better(va, vb, up), mx = Math.max(Math.abs(va), Math.abs(vb), 1e-9), bars = va >= 0 && vb >= 0;
-            const line = (cls, who, txt, v, win) => h("div", { class: `cb-line ${cls}${win ? " win" : ""}` }, h("span", { class: `cb-track${bars ? "" : " empty"}`, "aria-hidden": "true" }, bars ? h("i", { style: { width: `${Math.max(3, (Math.abs(v) / mx) * 100)}%` } }) : null),
-              h("b", {}, h("span", { class: "sr-only" }, `${who}: `), txt, win ? h("span", { class: "sr-only" }, es() ? " (mejor)" : " (better)") : null), win ? icon("i-check") : h("span", { class: "cb-tick" }));
-            return h("div", { class: "cb-row", role: "group", "aria-label": l }, h("span", { class: "cb-label", "aria-hidden": "true" }, l), line("a", recName, a, va, w < 0), line("b", c.mine, b, vb, w > 0));
-          })),
-        mR != null && mM != null ? h("p", { class: "small" }, c.moneyNote) : null,
-        h("div", { class: `conclusion ${score > 0 ? "good" : "even"}` }, icon(score < 0 ? "i-info" : "i-check"), h("span", {}, score < 0 ? (why || c.recBetter) : score > 0 ? c.mineBetter : c.tie)))));
+        compareError ? [
+          h("p", { class: "err", role: "status" }, compareError),
+          calCard(recName, rec),
+        ] : [
+          // Swaps only the calendar so the pressed button keeps keyboard focus.
+          h("div", { class: "seg cmp-seg" }, ...[["rec", recName], ["mine", c.mine]].map(([k, l]) => h("button", { "aria-pressed": String((state.cmpView || "rec") === k), onclick: (e) => {
+            const seg = e.currentTarget.parentElement, from = activeRect(seg, '[aria-pressed="true"]'), d = k === "rec" ? -1 : 1;
+            state.cmpView = k;
+            for (const bt of seg.querySelectorAll("button")) bt.setAttribute("aria-pressed", String(bt === e.currentTarget));
+            slidePill(seg, from, '[aria-pressed="true"]');
+            put($("#cmpCal"), k === "rec" ? calCard(recName, rec) : calCard(c.mine, mine));
+            if (MOTION()) $("#cmpCal").animate([{ opacity: 0, transform: `translateX(${d * 12}px)` }, { opacity: 1, transform: "none" }], { duration: 200, easing: EASE_OUT });
+          } }, l))),
+          h("div", { id: "cmpCal" }, (state.cmpView || "rec") === "rec" ? calCard(recName, rec) : calCard(c.mine, mine)),
+          h("section", { class: "card cmp-bars" }, h("div", { class: "cmp-key" }, h("span", {}, h("i", { class: "a" }), recName), h("span", {}, h("i", { class: "b" }), c.mine)),
+            ...rows.map(([l, a, b, va, vb, up]) => {
+              const w = better(va, vb, up), mx = Math.max(Math.abs(va), Math.abs(vb), 1e-9), bars = va >= 0 && vb >= 0;
+              const line = (cls, who, txt, v, win) => h("div", { class: `cb-line ${cls}${win ? " win" : ""}` }, h("span", { class: `cb-track${bars ? "" : " empty"}`, "aria-hidden": "true" }, bars ? h("i", { style: { width: `${Math.max(3, (Math.abs(v) / mx) * 100)}%` } }) : null),
+                h("b", {}, h("span", { class: "sr-only" }, `${who}: `), txt, win ? h("span", { class: "sr-only" }, es() ? " (mejor)" : " (better)") : null), win ? icon("i-check") : h("span", { class: "cb-tick" }));
+              return h("div", { class: "cb-row", role: "group", "aria-label": l }, h("span", { class: "cb-label", "aria-hidden": "true" }, l), line("a", recName, a, va, w < 0), line("b", c.mine, b, vb, w > 0));
+            })),
+          mR != null && mM != null ? h("p", { class: "small" }, c.moneyNote) : null,
+          h("div", { class: `conclusion ${score > 0 ? "good" : "even"}` }, icon(score < 0 ? "i-info" : "i-check"), h("span", {}, score < 0 ? (why || c.recBetter) : score > 0 ? c.mineBetter : c.tie)),
+        ])));
   });
 }
 
@@ -1478,7 +1547,7 @@ async function viewVecinos(arg) {
 /* ================= router ================= */
 function route() {
   const [r = "", arg] = location.hash.replace(/^#\/?/, "").split("/");
-  if (RESULTS.includes(r) && !state.plan) return { r: "planear" };
+  if (RESULTS.includes(r) && !state.plan) return { r: "planear", arg: state.linkError && state.draft.place && dateErr(state.draft) ? "2" : undefined };
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
   return { r: ["", "planear", "bootcamp", ...RESULTS].includes(r) ? r : "", arg };
 }
@@ -1546,6 +1615,7 @@ async function start() {
   document.addEventListener("click", () => document.querySelectorAll('.source[aria-expanded="true"]').forEach((b) => b.setAttribute("aria-expanded", "false")));
   put($("#view"), loading());
   try { await loadBase(); } catch { put($("#view"), errorCard(C().climateError, start)); return; }
+  readSharedPlan();
   if (state.plan) state.mode = defaultMode(state.plan);
   addEventListener("hashchange", () => { state.drawing = false; document.body.classList.remove("drawing"); state.addCorner = null; render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
   let w = desktop(); addEventListener("resize", () => { if (desktop() !== w) { w = desktop(); if (viewer) { viewer.destroy(); viewer = null; lotEntity = null; pickBound = false; } render(); } });
