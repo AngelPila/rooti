@@ -1,7 +1,8 @@
-"""The pages farmers open from WhatsApp: the web app itself (app/, served at /app/) signed in as one farmer, plus the
-small API it talks to. Mounted on the call server (call_server.app), which already has the public HTTPS address.
+"""Rooti's website and the pages farmers open from WhatsApp: the web app itself (app/, served at the root) signed in
+as one farmer, plus the small API it talks to. Mounted on the call server (call_server.app), so the website, the API
+and the call page (/llamada) share one address.
 
-- GET  /app/data/bot.json   where this API is and Rooti's number, for the app's WhatsApp buttons
+- GET  /data/bot.json       where this API is and Rooti's number, for the app's WhatsApp buttons
 - GET  /api/lot             the farmer's lot as the app keeps it, the plan they picked, the alert the link answers
 - PUT  /api/lot             the lot drawn or corrected on the page: saved, its plan computed, Rooti confirms in the chat
 - POST /api/choice          the plan picked on the page: saved, Rooti confirms in the chat
@@ -79,6 +80,7 @@ def mount(api: FastAPI) -> None:
     # Only the handoff is called from another site (the public website); the rest is the app on this same origin.
     api.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["POST"], allow_headers=["Content-Type"])
 
+    @api.get("/data/bot.json")
     @api.get("/app/data/bot.json")
     async def bot_config():
         return JSONResponse({"url": "", "whatsapp": config.whatsapp_number()}, headers={"Cache-Control": "no-store"})
@@ -133,4 +135,9 @@ def mount(api: FastAPI) -> None:
         number = config.whatsapp_number()
         return {"code": store.add_handoff(fields), "whatsapp": number}
 
-    api.mount("/app", StaticFiles(directory=config.REPO / "app", html=True), name="app")
+    # Links sent before the website moved to the root still open
+    api.mount("/app", StaticFiles(directory=config.REPO / "app", html=True), name="app-old")
+
+
+def mount_site(api: FastAPI) -> None:
+    api.mount("/", StaticFiles(directory=config.REPO / "app", html=True), name="app")

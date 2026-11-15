@@ -56,7 +56,7 @@ rooti-llamada ── call/ page ── WebRTC (Pipecat) ── Groq Whisper → 
 
   Each alert is a voice note followed by the call button. If nobody opens the call within 4 hours, a short reminder
   follows.
-- **The pages** (`src/rooti_bot/web.py`): the buttons open the web app itself, served at `/app/` next to the call
+- **The pages** (`src/rooti_bot/web.py`): the buttons open the web app itself, served at the root next to the call
   page, signed in as that farmer by the same kind of signed link. There is one lot, in `rooti.db`: what the farmer
   marks on the map, Rooti knows in the chat and confirms there; the plan they pick on the page reaches the chat and
   the model's context. An alert's «Ver el aviso» opens the coming days' rain and the call button. The other way
@@ -76,7 +76,7 @@ repo root). Set these variables:
 | `DEEPSEEK_API_KEY` | The model (default `deepseek` / `deepseek-chat`; change with `ROOTI_PROVIDER`, `ROOTI_MODEL`) |
 | `GROQ_API_KEY` | Speech to text for voice notes and calls (free tier) |
 | `ROOTI_CALL_SECRET` | Optional: signs the call links. Without it, Rooti makes one in the volume on first use |
-| `ROOTI_CALL_URL` | The public HTTPS address of port 7860 (the call page; browsers allow the microphone only on HTTPS) |
+| `ROOTI_CALL_URL` | Rooti's public HTTPS address (port 7860): the website at `/`, its pages and the call at `/llamada` (browsers allow the microphone only on HTTPS) |
 | `ROOTI_OPERATOR` | Optional: your number, for Hermes' own deliveries |
 | `ROOTI_WHATSAPP` | Optional: Rooti's number for the pages' WhatsApp buttons; by default the number the bridge is linked to |
 | `ROOTI_ICE_SERVERS` | Optional: STUN/TURN servers as JSON (see the limits below) |

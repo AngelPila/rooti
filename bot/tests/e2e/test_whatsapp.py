@@ -12,7 +12,7 @@ are stand-ins (fakes.py). One farmer in Daule:
 7. opening that call (a WebRTC offer, as the page sends: call_probe.py) is answered and marks the alert opened,
    so no reminder follows.
 
-The pages farmers open from those buttons (the web app at /app/, bot/src/rooti_bot/web.py), as the app calls them:
+The pages farmers open from those buttons (the web app at the root, bot/src/rooti_bot/web.py), as the app calls them:
 8. «Marcar mi lote» and «Ver mi plan» arrive as buttons signed for this farmer; the page reads the lot, saves the plot
    drawn on the map, and Rooti confirms in the chat with the plan button; picking a plan reaches the chat and the
    next turn's context;
@@ -279,19 +279,20 @@ def test_farmer_on_whatsapp(tmp_path):
 
         # 4. The call button, with a link signed for this farmer.
         button = button_reply("mejor quiero hablar con usted")
-        assert button["buttonText"] == "📞 Hablar con Rooti" and button["url"].startswith(env["ROOTI_CALL_URL"] + "/#t=")
+        assert button["buttonText"] == "📞 Hablar con Rooti" and button["url"].startswith(env["ROOTI_CALL_URL"] + "/llamada#t=")
 
         # 8. The pages: «Marcar mi lote» and «Ver mi plan», signed for this farmer.
         site = env["ROOTI_CALL_URL"]
         mark_btn = button_reply("¿cómo le mando mi lote?")
-        assert mark_btn["buttonText"] == "Marcar mi lote" and mark_btn["url"].startswith(f"{site}/app/#t=")
+        assert mark_btn["buttonText"] == "Marcar mi lote" and mark_btn["url"].startswith(f"{site}/#t=")
         assert mark_btn["url"].endswith("&r=planear/1"), "the signed link rides in the fragment, never in a log"
         plan_btn = button_reply("mándeme el plan")
         assert plan_btn["buttonText"] == "Ver mi plan" and plan_btn["url"].endswith("&r=plan")
         page_token = token_of(plan_btn["url"])
-        status, html = http("GET", f"{site}/app/")
+        status, html = http("GET", f"{site}/")
         assert status == 200 and 'src="main.js' in html, "the page is the web app itself"
-        assert http("GET", f"{site}/app/data/bot.json")[1] == {"url": "", "whatsapp": FakeWhatsApp.BOT.split("@")[0]}
+        assert http("GET", f"{site}/llamada")[0] == 200 and http("GET", f"{site}/app/")[0] == 200
+        assert http("GET", f"{site}/data/bot.json")[1] == {"url": "", "whatsapp": FakeWhatsApp.BOT.split("@")[0]}
         assert http("GET", f"{site}/api/lot", token=page_token[:-2] + "xx")[0] == 403, "an edited link opens nothing"
         status, page = http("GET", f"{site}/api/lot", token=page_token)
         assert status == 200 and page["plan"]["place"]["lat"] == DAULE[0] and page["plan"]["crops"] == ["rice", "maize", "soybean"]
@@ -350,7 +351,7 @@ def test_farmer_on_whatsapp(tmp_path):
         token = token_of(alert_msgs[1]["url"])
         status, page = http("GET", f"{site}/api/lot", token=token)
         assert status == 200 and page["alert"]["kind"] == "heavy_rain" and page["alert"]["key"] == rain_day
-        assert page["call"].startswith(f"{site}/#t=")
+        assert page["call"].startswith(f"{site}/llamada#t=")
         assert db.execute("SELECT call_opened_at FROM alerts WHERE phone = ?", (FARMER,)).fetchone()[0] is not None
         db.execute("UPDATE alerts SET call_opened_at = NULL")  # so the call below is what marks it again
         db.commit()

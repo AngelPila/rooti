@@ -158,7 +158,7 @@ def app() -> FastAPI:
     api = FastAPI()
     handler = SmallWebRTCRequestHandler(ice_servers=[IceServer(**server) for server in ICE])
 
-    @api.get("/")
+    @api.get("/llamada")
     async def page():
         return FileResponse(PAGE / "index.html")
 
@@ -194,6 +194,7 @@ def app() -> FastAPI:
 
     web.mount(api)
     api.mount("/static", StaticFiles(directory=PAGE), name="static")
+    web.mount_site(api)  # last: the web app answers every path the routes above do not
     return api
 
 
