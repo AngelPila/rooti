@@ -5,6 +5,7 @@ import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
+import { createRooti } from "./rooti.js?v=1";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -217,7 +218,7 @@ function sheet(...kids) {
   put(d, h("div", { class: "sheet-body" }, ...kids, h("button", { class: "btn block", onclick: () => d.close() }, C().close)));
   d.showModal();
 }
-const langBtn = () => h("button", { class: "pill", "aria-label": "Idioma / Language", onclick: () => { state.lang = es() ? "en" : "es"; store.set("lang", state.lang); render(); } }, es() ? "ES | EN" : "EN | ES");
+const langBtn = () => h("button", { class: "pill", "aria-label": "Idioma / Language", onclick: () => { state.lang = es() ? "en" : "es"; store.set("lang", state.lang); render(); rooti.lang(); } }, es() ? "ES | EN" : "EN | ES");
 // The Mosaico mark: four modules, four plots
 const MARK = '<svg viewBox="0 0 100 100" aria-hidden="true"><path class="m1" d="M14 0H32V36H50V53H0V14A14 14 0 0 1 14 0Z"/><path class="m2" d="M37 0H86A14 14 0 0 1 100 14V47H74V31H37Z"/><path class="m3" d="M55 52H100V86A14 14 0 0 1 86 100H70V70H55Z"/><path class="m4" d="M0 58H27V75H65V100H14A14 14 0 0 1 0 86Z"/></svg>';
 const lockup = (light) => { const mk = h("span", { class: "mk" }); mk.innerHTML = MARK; return h("a", { class: `lockup${light ? " light" : ""}`, href: "#/", "aria-label": "Rooti" }, mk, h("span", { class: "wordmark" }, "rooti")); };
@@ -623,7 +624,7 @@ function routeEl(r, f) {
   const N = r.period.length, D = C().ds, long = N > 12, all = !long || state.routeAll, vseen = new Set();
   const box = h("div", { class: "route" }, ...plotsOf(f).map(({ pc, name }) => h("div", { class: "rt-plot" }, h("span", { class: "rt-lab" }, `${name} · ${fmtArea(pc.share)}`),
     h("ol", { class: "rt-steps" }, ...runsOf(pc, N).filter((ru) => all || ru.t0 < 12).map((ru) =>
-      h("li", { class: ru.c === "bare" ? "bare" : "", style: { "--c": look(ru.c).color } }, tile(ru.c), h("p", {}, h("b", {}, cropLabel(ru.c)), h("span", {}, monthsText(r, ru)))))),
+      h("li", { class: ru.c === "bare" ? "bare" : "", style: { "--c": look(ru.c).color }, "data-rooti": `crop-${ru.c}` }, tile(ru.c), h("p", {}, h("b", {}, cropLabel(ru.c)), h("span", {}, monthsText(r, ru)))))),
     vecChips(r, pc, all, vseen))));
   if (long) box.append(h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { state.routeAll = !all; box.replaceWith(routeEl(r, f)); } },
     all ? D.routeFirst : D.routeAll(Math.ceil(N / 12))));
@@ -762,7 +763,7 @@ function unknownChips(r, f) {
   if (!nearPilot(state.plan.place)) items.push(["i-income", D.unk.prices, c.unkPrices]);
   items.push(["i-agronomist", D.unk.local, D.localWhy]);
   const toggle = (e) => { const b = e.currentTarget; b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true")); };
-  return h("div", { class: "unk" }, ...items.map(([ic, t, txt]) => h("button", { class: "unk-chip", "aria-expanded": "false", onclick: toggle },
+  return h("div", { class: "unk", "data-rooti": "unknowns" }, ...items.map(([ic, t, txt]) => h("button", { class: "unk-chip", "aria-expanded": "false", onclick: toggle },
     h("span", { class: "top" }, icon(ic), t, h("span", { class: "plus" })), h("span", { class: "more" }, h("div", {}, h("p", {}, txt))))));
 }
 function sourceNote(r, f) {
@@ -779,7 +780,7 @@ function viewPlan() {
     if (!plans.length) { put($("#view"), h("div", { class: "res" }, resHead(P), h("div", { class: "card" }, h("p", {}, c.noPlans), h("a", { class: "btn dark", href: "#/planear" }, c.changeData)))); return; }
     if (!plans.some((x) => x.key === state.pick)) state.pick = plans[0].key;
     const cur = () => plans.find((x) => x.key === state.pick);
-    const head = h("div", { class: "pv-block", id: "pvHead" }), routeBox = h("div"), stat = h("div"), dots = h("div", { class: "dots" }), coverLab = h("b"), squares = h("div", { class: "squares" }), cal = h("div", { class: "pcal" });
+    const head = h("div", { class: "pv-block", id: "pvHead" }), routeBox = h("div", { "data-rooti": "route" }), stat = h("div", { "data-rooti": "years" }), dots = h("div", { class: "dots", "data-rooti": "years" }), coverLab = h("b"), squares = h("div", { class: "squares", "data-rooti": "cover" }), cal = h("div", { class: "pcal", "data-rooti": "calendar" });
     const isSaved = () => state.saved && JSON.stringify(state.saved.plan) === JSON.stringify(P);
     const saveBtn = h("button", { class: "round", "aria-label": c.save, title: c.save, onclick: () => { state.saved = { plan: P, at: Date.now() }; store.set("saved3", state.saved); put(saveBtn, icon("i-check")); } }, icon(isSaved() ? "i-check" : "i-bookmark"));
     const show = (anim) => {
@@ -798,7 +799,7 @@ function viewPlan() {
       if (anim) [head, routeBox, stat, cal].forEach((x) => { x.classList.remove("swap"); void x.offsetWidth; x.classList.add("swap"); });
       bar?.redraw();
     };
-    const cards = h("div", { class: "strats", role: "radiogroup", "aria-label": D.names.safe, style: { "--k": plans.length } });
+    const cards = h("div", { class: "strats", "data-rooti": "plans", role: "radiogroup", "aria-label": D.names.safe, style: { "--k": plans.length } });
     const pickPlan = (key) => {
       state.pick = key;
       cards.querySelectorAll(".strat").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.id === key)));
@@ -817,7 +818,7 @@ function viewPlan() {
     put($("#view"), h("div", { class: "res pv" },
       resHead(P),
       linked() ? lotSyncEl() : null,
-      ninoBanner(r),
+      tagged(ninoBanner(r), "nino"),
       h("section", { class: "pv-panel" },
         h("div", { class: "pv-body" },
           h("div", { class: "pv-left" },
@@ -1254,18 +1255,18 @@ async function ideas(r) {
     } catch { return null; }
   };
   const cand = [];
-  for (const s of r.substitutes || []) { const a = s.alts[0]; if (a) cand.push({ icon: "i-wheat", title: c.idInstead(cap(cropName(a.id)), cropName(s.id)), why: c.idInsteadWhy(cap(cropName(s.id))), P2: { ...P, crops: [...P.crops.filter((x) => x !== s.id), a.id] } }); }
-  if (!P.irrigation) cand.push({ icon: "i-drops", title: c.idIrr, why: c.idIrrWhy, P2: { ...P, irrigation: true } });
+  for (const s of r.substitutes || []) { const a = s.alts[0]; if (a) cand.push({ kind: "instead", icon: "i-wheat", title: c.idInstead(cap(cropName(a.id)), cropName(s.id)), why: c.idInsteadWhy(cap(cropName(s.id))), P2: { ...P, crops: [...P.crops.filter((x) => x !== s.id), a.id] } }); }
+  if (!P.irrigation) cand.push({ kind: "irrigation", icon: "i-drops", title: c.idIrr, why: c.idIrrWhy, P2: { ...P, irrigation: true } });
   if (!P.crops.some((id) => DATA.crops[id]?.n_fixing)) {
     const leg = Object.values(r.windows).filter((w) => DATA.crops[w.id]?.n_fixing && !GREEN.has(w.id) && !P.crops.includes(w.id)).sort((a, b) => (b.best?.value ?? 0) - (a.best?.value ?? 0))[0];
-    if (leg && (leg.best?.value ?? 0) >= 0.5) cand.push({ icon: "i-leaf", title: c.idLegume(cropName(leg.id)), why: c.idLegumeWhy, P2: { ...P, crops: [...P.crops, leg.id] } });
+    if (leg && (leg.best?.value ?? 0) >= 0.5) cand.push({ kind: "legume", icon: "i-leaf", title: c.idLegume(cropName(leg.id)), why: c.idLegumeWhy, P2: { ...P, crops: [...P.crops, leg.id] } });
   }
-  if (!P.crops.includes("mulch") && P.crops.some((id) => CEREALS.has(id)) && f.covered < 0.85) cand.push({ icon: "i-sprout", title: c.idStraw, why: c.idStrawWhy, P2: { ...P, crops: [...P.crops, "mulch"] } });
+  if (!P.crops.includes("mulch") && P.crops.some((id) => CEREALS.has(id)) && f.covered < 0.85) cand.push({ kind: "straw", icon: "i-sprout", title: c.idStraw, why: c.idStrawWhy, P2: { ...P, crops: [...P.crops, "mulch"] } });
   for (const it of cand) { const eff = await effect(it.P2); if (eff) out.push({ ...it, eff, apply: () => { state.undo = { plan: P, mode: state.mode }; setPlan(it.P2); render(); } }); }
   if (state.mode === "all") {
-    if (ninoNow(P)) out.unshift({ icon: "i-rain", title: c.idNino, why: c.idNinoWhy, eff: c.yearsLike.nino, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "nino"; render(); } });
-    out.push({ icon: "i-cloud-sun", title: c.idDry, why: c.idDryWhy, eff: c.idDryEff, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "dry"; render(); } });
-  } else out.unshift({ icon: "i-cloud-sun", title: c.idAll, why: c.idAllWhyBy[state.mode] || c.idAllWhy, eff: c.yearsLike[state.mode], apply: () => { state.mode = "all"; state.undo = null; render(); } });
+    if (ninoNow(P)) out.unshift({ kind: "nino", icon: "i-rain", title: c.idNino, why: c.idNinoWhy, eff: c.yearsLike.nino, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "nino"; render(); } });
+    out.push({ kind: "dry", icon: "i-cloud-sun", title: c.idDry, why: c.idDryWhy, eff: c.idDryEff, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "dry"; render(); } });
+  } else out.unshift({ kind: "all", icon: "i-cloud-sun", title: c.idAll, why: c.idAllWhyBy[state.mode] || c.idAllWhy, eff: c.yearsLike[state.mode], apply: () => { state.mode = "all"; state.undo = null; render(); } });
   return out;
 }
 function viewProbar() {
@@ -1286,9 +1287,9 @@ function viewProbar() {
       resHead(P),
       h("div", { class: "res-title" }, h("h1", { class: "display" }, c.tryTitle), h("p", {}, c.tryLead)),
       state.undo ? h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { setPlan(state.undo.plan); state.mode = state.undo.mode; state.undo = null; render(); } }, icon("i-undo"), " ", c.undo) : null,
-      list.length ? h("div", { class: "ideas row-ideas" }, ...list.map((it) => h("div", { class: `idea${it.on ? " on" : ""}` }, h("span", { class: "ic" }, icon(it.icon)), h("div", { class: "grow" }, h("b", {}, it.title), h("p", {}, it.why), h("em", {}, it.eff)),
+      list.length ? h("div", { class: "ideas row-ideas" }, ...list.map((it) => h("div", { class: `idea${it.on ? " on" : ""}`, "data-rooti": `idea-${it.kind}` }, h("span", { class: "ic" }, icon(it.icon)), h("div", { class: "grow" }, h("b", {}, it.title), h("p", {}, it.why), h("em", {}, it.eff)),
         h("button", { class: "btn dark", onclick: it.apply }, it.on ? c.undo : c.tryBtn)))) : h("p", {}, c.noIdeas),
-      h("section", { class: "card sow-card" },
+      h("section", { class: "card sow-card", "data-rooti": "sow" },
         h("div", { class: "row between wrap" }, h("b", { class: "card-h" }, c.sowTitle),
           h("div", { class: "legend" }, ...[["good", c.sowGood], ["care", c.sowCare], ["danger", c.sowBad], ["none", c.sowNone]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l)))),
         h("p", { class: "small" }, c.sowLead),
@@ -1633,6 +1634,124 @@ async function viewVecinos(arg) {
   put($("#view"), h("div", { class: "res vec" }, resHead(P), h("div", { class: "vec-grid" }, side, feed)));
 }
 
+/* ================= Rooti, the in-app assistant ================= */
+const tagged = (el, key) => { el?.setAttribute("data-rooti", key); return el; };
+const ROOTI_SCREENS = { plan: "plan", plot: "terreno", try: "probar", compare: "comparar", past: "pasado", neighbors: "vecinos", planner: "planear", course: "bootcamp" };
+const MODE_WORDS = { all: "every real run of years since 1981", nino: "only the rainy seasons after strong El Niños", dry: "only dry years", wet: "only wet years" };
+// Opening a screen it is already on does not change the address, so it draws again instead
+const goOrRender = (r) => (route().r === r ? render() : go(r));
+function rootiName(r) {
+  const n = C().nav, name = { "": es() ? "la portada" : "the home page", planear: es() ? "Planear" : "the planner", bootcamp: C().ctaBootcamp, plan: n.plan, terreno: n.plot, probar: n.try,
+    comparar: n.compare, pasado: n.past, vecinos: n.neighbors, pasaporte: es() ? "el pasaporte del suelo" : "the soil passport", aviso: es() ? "el aviso" : "the alert" }[r ?? ""] || r;
+  return es() ? `«${name}»` : `“${name}”`;
+}
+const rootiPlot = (P) => `${P.place ? `${P.place.name}${P.place.admin ? `, ${P.place.admin}` : ""}` : "place not given yet"}; ${P.area} ${C().units[P.unit || "ha"]}; from ${P.start} to ${P.end}; crops the plan may use: ${P.crops.map(cropName).join(", ") || "none yet"}; grows today: ${(P.current || []).map(cropName).join(", ") || "not said"}; irrigation: ${P.irrigation ? "yes" : "no"}; floods: ${P.waterlog || "not said"}.`;
+// What the farmer has on screen, in words the model can answer from
+async function rootiContext() {
+  const { r: scr } = route(), P = state.plan;
+  const out = [`Screen: ${scr || "landing"} (${rootiName(scr)}). Today: ${iso(new Date())}.`,
+    `Crop ids: ${CROP_ORDER.filter((id) => id === "mulch" || DATA.crops?.[id]).map((id) => `${id} = ${cropName(id)}`).join(", ")}.`];
+  if (!P) { out.push(state.draft ? `The farmer is filling in the plot, no plan yet: ${rootiPlot(state.draft)}` : "No plot yet."); return out.join("\n"); }
+  out.push(`Plot: ${rootiPlot(P)}`, `The plan is tested on ${MODE_WORDS[state.mode] || MODE_WORDS.all}.`);
+  if (ninoNow(P)) out.push("A strong El Niño is expected this rainy season (NOAA, ERFEN).");
+  try {
+    const res = await results();
+    if (!res.farm) { out.push("No plan works for these dates and crops."); return out.join("\n"); }
+    const plans = await namedPlans(), N = res.period.length;
+    out.push(`Plan months: ${ym(res.period[0])} to ${ym(res.period[N - 1])}.`);
+    for (const it of plans) {
+      const f = it.f, good = f.per.filter((x) => yearLv(x) === "g").length, lost = f.per.filter((x) => yearLv(x) === "x").length;
+      out.push(`Plan "${C().ds.names[it.key]}"${it.key === state.pick ? " (the one on screen)" : ""}: ${routeWords(res, f)}. Of ${f.per.length} real runs of years it went well in ${good} and lost more than half the harvest in ${lost}. Soil covered ${coveredMonths(f, N).filter(Boolean).length} of ${N} months.`);
+    }
+    const win = P.crops.filter((id) => res.windows[id]?.best).map((id) => `${cropName(id)}: ${ym(res.period[res.windows[id].best.t])}`);
+    if (win.length) out.push(`Best month to sow each crop: ${win.join("; ")}.`);
+    const soil = describeSoil(res.terrain?.soil), slope = res.terrain?.slopePct;
+    out.push(`The land: ${soil ? `${C().texture[soil.texture]}, pH ${num(soil.ph)}` : "soil unknown"}; slope ${slope != null ? `${num(slope)} %` : "unknown"}; floods ${res.site.wl >= 0.6 ? "often" : res.site.wl >= 0.35 ? "sometimes" : "rarely"}.`);
+    const ids = await ideas(res);
+    if (ids.length) out.push(`Ideas on the Try screen (kind: idea, effect): ${ids.map((x) => `${x.kind}: ${x.title}, ${x.eff}`).join("; ")}.`);
+  } catch { out.push("The plan could not be computed right now."); }
+  return out.join("\n");
+}
+async function rootiChangePlot(a) {
+  const before = { plan: state.plan, mode: state.mode, draft: state.draft && JSON.parse(JSON.stringify(state.draft)) };
+  const P = JSON.parse(JSON.stringify(state.plan || draft())), U = C().units, said = [];
+  const L = es() ? { place: "Lugar", area: "Tierra", crops: "Cultivos", current: "Siembra hoy", irr: "Riego", floods: "Se encharca", dates: "Fechas", yes: "sí", no: "no", sometimes: "a veces" }
+    : { place: "Place", area: "Land", crops: "Crops", current: "Grows today", irr: "Irrigation", floods: "Floods", dates: "Dates", yes: "yes", no: "no", sometimes: "sometimes" };
+  const crops = (list) => [...new Set((list || []).filter((id) => id === "mulch" || DATA.crops[id]))];
+  if (a.place) {
+    const r = await fetch(`${GEO}?name=${encodeURIComponent(a.place)}&count=5&language=${state.lang}&format=json`).then(ok).catch(() => null);
+    // Rooti's farmers are on the coast of Ecuador: a town with the same name elsewhere comes second
+    const x = (r?.results || []).sort((p, q) => (q.country_code === "EC") - (p.country_code === "EC"))[0];
+    if (!x) return { error: `No place called "${a.place}" was found; ask for a nearby town or to mark it on the map` };
+    P.place = { name: x.name, admin: [x.admin1, x.country].filter(Boolean).join(", "), lat: x.latitude, lon: x.longitude };
+    delete P.lot;
+    said.push(`${L.place}: ${x.name}`);
+  }
+  if (a.area > 0) {
+    const unit = UNITS[a.unit] ? a.unit : P.unit || "ha", from = `${num(P.area)} ${U[P.unit || "ha"]}`;
+    P.area = +(+a.area).toFixed(2); P.unit = unit;
+    said.push(`${L.area}: ${state.plan ? `${from} → ` : ""}${num(P.area)} ${U[unit]}`);
+  }
+  if (a.crops) { const c = crops(a.crops); if (!c.length) return { error: "None of those crop ids exist; use the ids in the page context" }; P.crops = c; said.push(`${L.crops}: ${c.map(cropName).join(", ")}`); }
+  if (a.current) { P.current = crops(a.current); said.push(`${L.current}: ${P.current.map(cropName).join(", ") || "—"}`); }
+  if (typeof a.irrigation === "boolean") { P.irrigation = a.irrigation; said.push(`${L.irr}: ${a.irrigation ? L.yes : L.no}`); }
+  if (["yes", "sometimes", "no"].includes(a.floods)) { P.waterlog = a.floods; said.push(`${L.floods}: ${L[a.floods]}`); }
+  const month = (v) => /^\d{4}-(0[1-9]|1[0-2])$/.test(v || "");
+  if (month(a.start)) P.start = `${a.start}-01`;
+  if (month(a.end)) { const [y, m] = a.end.split("-").map(Number); P.end = iso(new Date(y, m, 0)); }
+  if (month(a.start) || month(a.end)) said.push(`${L.dates}: ${fmtDate(P.start)} – ${fmtDate(P.end)}`);
+  if (!said.length) return { error: "Nothing to change: pass only what the farmer said" };
+  const err = dateErr(P);
+  if (P.place && P.crops.length && !err) {
+    setPlan(P); state.draft = null; state.undo = null; state.mode = defaultMode(P); memo.clear(); syncLot();
+    goOrRender("plan");
+  } else {
+    state.draft = P;
+    goOrRender("planear");
+  }
+  const missing = [!P.place && "where the plot is", !P.crops.length && "which crops", err].filter(Boolean);
+  return {
+    changed: said.join(" · "), mark: state.plan === P ? "route" : null,
+    now: missing.length ? `Saved. Still missing before the plan: ${missing.join(", ")}.` : `Plan recomputed for: ${rootiPlot(P)}`,
+    undo: () => {
+      if (before.plan) { setPlan(before.plan); syncLot(); } else { state.plan = null; store.set("plan3", null); }
+      state.mode = before.mode; state.draft = before.draft; state.undo = null; memo.clear(); render();
+    },
+  };
+}
+async function rootiTryIdea(kind) {
+  if (!state.plan) return { error: "There is no plan yet" };
+  const res = await results();
+  if (!res.farm) return { error: "No plan works for these dates" };
+  const it = (await ideas(res)).find((x) => x.kind === kind);
+  if (!it) return { error: `That idea does not apply to this plan or would not do better (${kind})` };
+  goOrRender("probar");
+  return { title: it.title, why: it.why, effect: it.eff, label: `${es() ? "Aplicar" : "Apply"}: ${it.title}`,
+    apply: () => {
+      const b = { plan: state.plan, mode: state.mode };
+      it.apply();
+      return () => { setPlan(b.plan); state.mode = b.mode; state.undo = null; memo.clear(); render(); };
+    } };
+}
+function rootiWhatsApp() {
+  const W = C().wa;
+  if (linked() && hasWhatsApp()) return { label: W.back, go: () => { location.href = waUrl(); } };
+  if (canHandoff() && state.plan) return { label: W.go, go: async () => { try { location.href = waUrl(W.goMsg(await handoff(state.plan))); } catch { /* the card on the plan screen offers it again */ } } };
+  return null;
+}
+const rooti = createRooti({
+  h, icon, motion: MOTION, lang: () => state.lang, screenName: rootiName, context: rootiContext,
+  speak, stopSpeaking: () => window.speechSynthesis?.cancel(),
+  show(screen) {
+    const r = ROOTI_SCREENS[screen];
+    if (!r) return `Unknown screen ${screen}`;
+    if (RESULTS.includes(r) && !state.plan) return "There is no plan yet: the farmer has to give the plot first";
+    goOrRender(r);
+    return null;
+  },
+  changePlot: rootiChangePlot, tryIdea: rootiTryIdea, whatsapp: rootiWhatsApp,
+});
+
 /* ================= router ================= */
 function route() {
   const [r = "", arg] = location.hash.replace(/^#\/?/, "").split("/");
@@ -1697,6 +1816,7 @@ async function render() {
   shownRoute = r;
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
+  rooti.route(r);
   const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
   try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
@@ -1726,5 +1846,6 @@ async function start() {
   addEventListener("hashchange", () => { if (location.hash.startsWith("#t=")) return location.reload(); state.drawing = false; document.body.classList.remove("drawing"); state.addCorner = null; render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
   let w = desktop(); addEventListener("resize", () => { if (desktop() !== w) { w = desktop(); if (viewer) { viewer.destroy(); viewer = null; lotEntity = null; pickBound = false; } render(); } });
   render();
+  rooti.start();
 }
 start();

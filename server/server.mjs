@@ -1,6 +1,7 @@
 // Rooti web: serves the static app and a small API for Vecinos, backed by Postgres.
 // Env: DATABASE_URL (Postgres), PORT (default 3000), APP_DIR (default ../app), TRUST_PROXY=1 behind Coolify's proxy,
 // ROOTI_BOT_URL and ROOTI_WHATSAPP (Rooti on WhatsApp: its public address and number) for «Continuar en WhatsApp».
+// Rooti, the in-app assistant (rooti.mjs): DEEPSEEK_API_KEY, GROQ_API_KEY, ROOTI_PERSONA (default ../bot/hermes/rooti/SOUL.md).
 // Without DATABASE_URL the API answers 503 and the app falls back to its example posts and this phone's storage.
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
@@ -8,6 +9,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import * as rooti from "./rooti.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP = path.resolve(process.env.APP_DIR || path.join(HERE, "..", "app"));
@@ -128,6 +130,29 @@ async function api(req, res, url) {
   return send(res, 404, { error: "not found" });
 }
 
+async function readBody(req, limit) {
+  let size = 0; const chunks = [];
+  for await (const c of req) { size += c.length; if (size > limit) throw Object.assign(new Error("too large"), { code: 413 }); chunks.push(c); }
+  return Buffer.concat(chunks);
+}
+async function rootiApi(req, res, url) {
+  if (req.method === "GET" && url.pathname === "/api/rooti") return send(res, 200, rooti.status());
+  if (req.method !== "POST") return send(res, 405, { error: "method" });
+  const ip = clientIp(req);
+  // A conversation turn takes a few calls (one per tool round), so the limit counts calls, not questions
+  if (url.pathname === "/api/rooti") {
+    if (!allowed("a:" + ip, 80, 10 * 60e3)) return send(res, 429, { error: "slow down" });
+    const r = await rooti.chat(await readJson(req, 96 * 1024));
+    return send(res, r.status, r.body);
+  }
+  if (url.pathname === "/api/rooti/voice") {
+    if (!allowed("v:" + ip, 30, 10 * 60e3)) return send(res, 429, { error: "slow down" });
+    const r = await rooti.transcribe(await readBody(req, 4 * 1024 * 1024), String(req.headers["content-type"] || ""), url.searchParams.get("lang"));
+    return send(res, r.status, r.body);
+  }
+  return send(res, 404, { error: "not found" });
+}
+
 /* ---------- static app ---------- */
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
@@ -154,6 +179,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === "/healthz") return send(res, 200, { ok: true, db: !!db });
     if (url.pathname.startsWith("/api/vecinos")) return await api(req, res, url);
+    if (url.pathname === "/api/rooti" || url.pathname.startsWith("/api/rooti/")) return await rootiApi(req, res, url);
     if (url.pathname === "/data/bot.json" && process.env.ROOTI_BOT_URL) return send(res, 200, { url: process.env.ROOTI_BOT_URL, whatsapp: (process.env.ROOTI_WHATSAPP || "").replace(/\D/g, "") });
     if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); return res.end(); }
     return await serveStatic(req, res, url);
@@ -163,6 +189,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+await rooti.loadPersona(process.env.ROOTI_PERSONA || rooti.defaultPersona(HERE));
 CROPS = new Set(Object.keys(JSON.parse(await readFile(path.join(APP, "data", "crops.json"), "utf8")).crops || {}));
 if (db) {
   for (let i = 1; ; i++) {
