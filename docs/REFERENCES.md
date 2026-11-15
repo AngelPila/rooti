@@ -41,7 +41,7 @@
 
 - [DeepSeek API](https://api-docs.deepseek.com/) (`deepseek-chat`): the model behind Rooti, the same one as on WhatsApp.
 - [Groq](https://console.groq.com/docs/speech-to-text) Whisper large-v3-turbo: speech to text for what the farmer says into the microphone.
-- The browser's own speech synthesis (Web Speech API) reads Rooti's answers aloud.
+- The browser's own speech synthesis (Web Speech API) reads Rooti's answers aloud only where the server has no voice (the Node server); the bot's server speaks them with edge-tts.
 
 ## WhatsApp agent (`bot/`)
 
@@ -59,6 +59,7 @@
 - Visual direction inspired by [overstory.com](https://www.overstory.com/) (layout, palette structure, motion). No code, fonts or images copied.
 - Fonts from Google Fonts (SIL Open Font License): Geist, Geist Mono, Funnel Display, Instrument Serif, Space Grotesk.
 - Crop illustrations (maize, rice, soybean, straw mulch) generated with AI (OpenAI image generation through Codex). Each carries a visible "IMAGEN GENERADA CON IA" watermark. The app uses the same files on the landing page (`app/img/illu/`).
+- "How it works" illustrations on the landing page (plot on the map, climate reading, plan comparison, Rooti on WhatsApp) generated with AI (OpenAI image generation through Codex), each with a visible "IMAGEN GENERADA CON IA" watermark. Files and exact prompts: `app/img/how/` and `app/img/how/PROMPTS.md`.
 - Icons and the vector logo mark were drawn by hand for this project.
 - Agent skills in `.claude/skills/` (learn-taste, mobile-native, break-ui, remove-animations, find-animation-opportunities, choreograph, prototype) copied from [emilkowalski/skills](https://github.com/emilkowalski/skills) (MIT), commit 0f2e23b. License in `.claude/skills/EMIL-SKILLS-LICENSE`.
 
@@ -75,6 +76,6 @@
 ## Su terreno in 3D (`app/soil3d.js`, mocks in `prototypes/soil3d/`)
 - [three.js](https://threejs.org/) 0.160.0 (MIT), loaded from jsDelivr: the 3D scene and orbit controls.
 - Esri World Imagery tiles: the satellite photo draped on the terrain.
-- [Terrain Tiles on AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Terrarium encoding, mostly NASA SRTM): the relief, exaggerated on purpose and labelled as such.
-- Plant height on the surface is estimated from the photo's excess-green index; it is a visual aid, not a measurement.
+- [Terrain Tiles on AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Terrarium encoding, mostly NASA SRTM): in the app, only which ground is lowest, where the month's water is drawn; the prototypes also draw it as exaggerated relief.
+- In the app, houses are raised where the photo shows roofs (little green, busy texture, in clusters); in the prototypes, plant height comes from the photo's excess-green index. Both are visual aids, not measurements.
 - Soil, soil water, rain and greenness come from `app/data/daule.json` (ISRIC SoilGrids, NASA GLDAS, NASA POWER, NASA MODIS NDVI).

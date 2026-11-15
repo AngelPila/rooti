@@ -45,15 +45,28 @@ Rules learned from design reviews. Each one comes from a correction the product 
   <!-- 2026-11-15 -->
 
 ## Icons and images
-- **UI icons are hand-drawn SVG symbols on a 24 grid, filled shapes with cuts like the logo, using `currentColor`. Never AI-generated raster icons.** AI images are only for large illustrations, and each one carries a visible "IMAGEN GENERADA CON IA" watermark (competition rule).
+- **UI icons are hand-drawn SVG symbols on a 24 grid, filled shapes with cuts like the logo, using `currentColor`. Never AI-generated raster icons, except the seven hero badges (`img/badges/`), which the owner chose over SVG; they are declared in the footer credits and `img/badges/PROMPTS.md`.** AI images are only for large illustrations, and each one carries a visible "IMAGEN GENERADA CON IA" watermark (competition rule).
   Why: confirmed choice ("ok lo recomendado"): icons must stay sharp at 16px, recolor with the theme, and a watermark cannot fit on an icon.
+  <!-- 2026-11-15 -->
+
+- **"How it works" is four small cards in one row: an AI illustration with no text inside (same family as the demo cards), the step number and title, two lines of text. Never AI screenshots of the UI, and never schematic diagrams drawn in code.** The "Generada con IA" mark is an HTML label over the image, so it stays sharp.
+  Why: "se ve feo y aparte las capturas se ven borrosas"; "ocupa mucho"; "los assets son horribles... usa las imagenes" (reference: startuparena.gg "How it works").
   <!-- 2026-11-15 -->
 
 ## Motion
 Applied from the `remove-animations`, `choreograph` and `mobile-native` skills at the owner's request ("instala esos y aplicalos").
 - **Nothing fades in on scroll, numbers count only when their value changes, and no loop runs on a persistent element (the loader is the exception).**
 - **UI transitions stay under 300ms (`--t-fast` 150ms, `--t-base` 250ms); only drawings that explain something (the rain curve, the hero lines) take longer, once.**
+- **The hero's lines carry four weather words (Lluvia, Sol, Suelo, El Niño) into the headline and three crops out of it. The left side draws once on load; on a computer a short scroll (60svh) sends a dot down each line and draws the crops, and runs backwards with it. One or two words per chip, no dataset names: "Cómo funciona" already explains the data.**
+  Why: the first version (dataset names, hub, four plans, 140svh) "no se entiende"; the owner asked for short words, a few seconds, little scroll, on the hero.
+  <!-- 2026-11-15 -->
 - **Hover styles live inside `@media (hover: hover) and (pointer: fine)`; every tappable element has an `:active` state instead.**
+
+## Layout
+- **On a computer, app screens use the full width up to 1920px with the same 24px side margin as the topbar; past 1920px the topbar insets to that same column so the edges line up.**
+  This covers the landing, the results tabs and the bootcamp. Long text keeps its own reading width (about 75ch) inside the wide column instead of narrowing the whole page.
+  Why: "estos espacios entre los lados no se ven bien" (bare cream bands beside a 1440px column on a wide screen).
+  <!-- 2026-11-15 -->
 
 ## Working on UI
 - **Do UI work in a single agent thread; do not fan out subagents for design work.**

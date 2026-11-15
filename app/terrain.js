@@ -30,7 +30,8 @@ function parseSoil(j) {
   return Object.keys(out).length ? out : null;
 }
 async function soilAt(lat, lon) {
-  const q = (la, lo) => getJSON(`${SG}?lon=${lo.toFixed(4)}&lat=${la.toFixed(4)}&${PROPS.map((p) => "property=" + p).join("&")}&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean`, 15000).then(parseSoil).catch(() => null);
+  // SoilGrids takes 6-9 s a query and answers parallel ones in a queue (four take ~35 s): 15 s cut most of them off.
+  const q = (la, lo) => getJSON(`${SG}?lon=${lo.toFixed(4)}&lat=${la.toFixed(4)}&${PROPS.map((p) => "property=" + p).join("&")}&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean`, 30000).then(parseSoil).catch(() => null);
   const first = await q(lat, lon);
   if (first) return { ...first, offsetKm: 0 };
   for (const km of [3, 6]) {
@@ -43,11 +44,12 @@ async function soilAt(lat, lon) {
 }
 
 export async function fetchTerrain(lat, lon, pilotSoil = null) {
-  const key = `rooti:terrain:v1:${lat.toFixed(3)},${lon.toFixed(3)}`;
+  const key = `rooti:terrain:v2:${lat.toFixed(3)},${lon.toFixed(3)}`;
   try { const c = JSON.parse(localStorage.getItem(key)); if (c) return c; } catch { /* no cache */ }
   const [topo, soil] = await Promise.all([elevationAndSlope(lat, lon).catch(() => null), pilotSoil ? Promise.resolve({ ...pilotSoil, offsetKm: 0, source: "pilot" }) : soilAt(lat, lon)]);
   const t = { ...(topo || {}), soil };
-  if (topo || soil) try { localStorage.setItem(key, JSON.stringify(t)); } catch { /* quota */ }
+  // Kept only with its soil: a soil query that timed out once would otherwise stay missing for good.
+  if (soil) try { localStorage.setItem(key, JSON.stringify(t)); } catch { /* quota */ }
   return t;
 }
 

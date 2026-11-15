@@ -4,7 +4,8 @@ sends the prompt and tools in hermes/rooti (WEB.md, web-tools.json), shared with
 
 - GET  /api/rooti        whether Rooti can answer here (a model key) and hear voice (a Groq key)
 - POST /api/rooti        one model call: the farmer's conversation and the page context in, Rooti's message out
-- POST /api/rooti/voice  a recorded voice note in, its text out"""
+- POST /api/rooti/voice  a recorded voice note in, its text out
+- POST /api/rooti/say    a reply in, Rooti saying it out loud (mp3, the Edge voice it has on WhatsApp)"""
 import json
 import logging
 import os
@@ -14,9 +15,10 @@ import time
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from rooti_bot import config
+from rooti_bot.voice import VOICE, speakable
 
 log = logging.getLogger("rooti.web_agent")
 PROMPTS = config.REPO / "bot" / "hermes" / "rooti"
@@ -26,7 +28,8 @@ STT_URL = os.environ.get("ROOTI_STT_URL", "https://api.groq.com/openai/v1/audio/
 LANGUAGE = {"es": "Spanish, always with «usted».", "en": "English. Keep the same warmth, without the coastal Spanish slang."}
 # Place and crop names Whisper otherwise mishears ("Daule" came back as "dable")
 VOCABULARY = "Daule, Babahoyo, Quevedo, Salitre, Vinces, Los Ríos, Guayas, cuadras, hectáreas, arroz, maíz, soya, maní, fréjol, riego, invierno, verano, El Niño, Rooti."
-LIMITS = {"chat": 80, "voice": 30}  # per address every 10 minutes; a question takes one call per tool round
+SPEAKERS = {"es": VOICE, "en": "en-US-AndrewNeural"}
+LIMITS = {"chat": 80, "voice": 30, "say": 80}  # per address every 10 minutes; a question takes one call per tool round
 _hits: dict[str, list[float]] = {}
 _lock = threading.Lock()
 
@@ -77,7 +80,9 @@ def _messages(items) -> list | None:
             out.append({"role": "tool", "tool_call_id": _clean(m.get("tool_call_id"), 80), "content": _clean(m.get("content"), 3000)})
         else:
             return None
-    return out if out and out[0]["role"] == "user" else None
+    # The cut at 40 can land inside a turn; the model only accepts a history that starts with the farmer
+    first = next((i for i, m in enumerate(out) if m["role"] == "user"), None)
+    return out[first:] if first is not None else None
 
 
 def _ip(request: Request) -> str:
@@ -87,7 +92,7 @@ def _ip(request: Request) -> str:
 def mount(api: FastAPI) -> None:
     @api.get("/api/rooti")
     async def status():
-        return JSONResponse({"on": bool(os.environ.get("DEEPSEEK_API_KEY")), "voice": bool(os.environ.get("GROQ_API_KEY"))},
+        return JSONResponse({"on": bool(os.environ.get("DEEPSEEK_API_KEY")), "voice": bool(os.environ.get("GROQ_API_KEY")), "say": True},
                             headers={"Cache-Control": "no-store"})
 
     @api.post("/api/rooti")
@@ -101,20 +106,26 @@ def mount(api: FastAPI) -> None:
         if not msgs:
             raise HTTPException(400, "messages")
         lang = "en" if body.get("lang") == "en" else "es"
-        # The last round of a turn must answer in words, so a model that keeps calling tools still says something
         payload = {"model": config.model()[1], "temperature": 0.4, "max_tokens": 400, "tools": TOOLS,
-                   "tool_choice": "none" if body.get("final") else "auto",
                    "messages": [{"role": "system", "content": _system(lang, _clean(body.get("context"), 8000))}, *msgs]}
+        # The last round of a turn must answer in words, so a model that keeps calling tools still says something.
+        # DeepSeek now and then answers with neither words nor tools: ask again, then insist on words.
         async with httpx.AsyncClient(timeout=40) as http:
-            r = await http.post(CHAT_URL, json=payload, headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"})
-        if r.status_code != 200:
-            log.error("model %s: %s", r.status_code, r.text[:300])
-            raise HTTPException(502, "model")
-        m = (r.json().get("choices") or [{}])[0].get("message") or {}
-        out = {"role": "assistant", "content": m.get("content") or ""}
-        if m.get("tool_calls"):
-            out["tool_calls"] = m["tool_calls"]
-        return {"message": out}
+            for choice in ["none"] if body.get("final") else ["auto", "auto", "none"]:
+                r = await http.post(CHAT_URL, json={**payload, "tool_choice": choice},
+                                    headers={"Authorization": f"Bearer {os.environ['DEEPSEEK_API_KEY']}"})
+                if r.status_code != 200:
+                    log.error("model %s: %s", r.status_code, r.text[:300])
+                    raise HTTPException(502, "model")
+                c = (r.json().get("choices") or [{}])[0]
+                m = c.get("message") or {}
+                if (m.get("content") or "").strip() or m.get("tool_calls"):
+                    out = {"role": "assistant", "content": m.get("content") or ""}
+                    if m.get("tool_calls"):
+                        out["tool_calls"] = m["tool_calls"]
+                    return {"message": out}
+                log.warning("empty answer (%s, %s)", c.get("finish_reason"), choice)
+        return {"message": {"role": "assistant", "content": ""}}
 
     @api.post("/api/rooti/voice")
     async def voice(request: Request, lang: str = "es"):
@@ -136,3 +147,21 @@ def mount(api: FastAPI) -> None:
             log.error("voice %s: %s", r.status_code, r.text[:300])
             raise HTTPException(502, "voice")
         return {"text": str(r.json().get("text", "")).strip()[:1500]}
+
+    @api.post("/api/rooti/say")
+    async def say(request: Request):
+        import edge_tts
+
+        if not _allowed("say", _ip(request)):
+            raise HTTPException(429, "slow down")
+        body = await request.json()
+        text = speakable(str(body.get("text") or ""))[:1500]
+        if not text:
+            raise HTTPException(400, "text")
+        try:
+            speech = edge_tts.Communicate(text, SPEAKERS["en" if body.get("lang") == "en" else "es"])
+            mp3 = b"".join([c["data"] async for c in speech.stream() if c["type"] == "audio"])
+        except Exception as exc:
+            log.error("say: %s", exc)
+            raise HTTPException(502, "say")
+        return Response(mp3, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})

@@ -1,11 +1,11 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=52";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
+import { COPY } from "./copy.js?v=56";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=23";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
-import { createRooti } from "./rooti.js?v=2";
+import { createRooti } from "./rooti.js?v=4";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -88,6 +88,7 @@ function icon(id, cls = "icon") {
   return s;
 }
 const ok = (r) => { if (!r.ok) throw new Error(r.status); return r.json(); };
+const remoteJSON = (url, ms = 12000) => fetch(url, { signal: AbortSignal.timeout(ms) }).then(ok);
 const go = (r) => { location.hash = "#/" + r; };
 
 /* ---------------- words and numbers ---------------- */
@@ -231,13 +232,13 @@ const errorCard = (msg, retry) => h("div", { class: "errorcard", role: "alert" }
 const stepIcon = (ic) => icon(ic === "calendar" ? "i-calendar" : ic === "map-pin" ? "i-pin" : "i-sprout");
 const bootcamp = createBootcamp({ h, put, icon, tile: (id) => tile(id), store, speak });
 
-function viewBootcamp() {
+function viewBootcamp(section, courseId, lessonNumber) {
   const crops = CROP_ORDER.filter((id) => DATA.crops[id]).map((id) => ({
     id,
     name: cap(cropName(id)),
     months: cropMonths(DATA.crops[id]),
   }));
-  put($("#view"), bootcamp(state.lang, crops, C().cta, () => { state.draft = null; }));
+  put($("#view"), bootcamp(state.lang, crops, C().cta, () => { state.draft = null; }, section, courseId, lessonNumber));
 }
 
 /* ================= landing ================= */
@@ -251,25 +252,75 @@ function smooth(pts) {
   }
   return d;
 }
-// Curves that converge on the headline. Decoration: drawn once, inner lines first, with uneven gaps.
-function heroLines(svg, title) {
+const BADGES = { in: ["rain", "sun", "soil", "nino"], out: ["rice", "maize", "soy"] };
+// Weather words feed the headline and crops come out of it. The left side draws once on load; on a computer the scroll then
+// sends a dot down each line and draws the crops, running backwards with it. Reduced motion shows the finished drawing.
+function heroFlow(svg, title, stage, animate) {
   const art = svg.parentElement;
-  if (!art?.isConnected || getComputedStyle(art).display === "none") return;
-  const a = art.getBoundingClientRect(), t = title.getBoundingClientRect(), H = a.height, k = H / 860;
+  art.querySelectorAll(".hf-chip").forEach((el) => el.remove());
+  svg.innerHTML = "";
+  stage.classList.remove("flow");
+  if (!art.isConnected || getComputedStyle(art).display === "none") return;
+  const D = C().ds, a = art.getBoundingClientRect(), t = title.getBoundingClientRect(), H = a.height, motion = MOTION();
+  // The art box is 1440 wide and centered, so narrower screens cut its edges; without room beside the headline, draw nothing.
+  const vis = Math.max(0, 720 - innerWidth / 2) + 24, cy = t.top - a.top + t.height / 2, L = t.left - a.left - 20, R = t.right - a.left + 20;
+  if (L - vis < 220 || 1440 - vis - R < 220) return;
   svg.setAttribute("viewBox", `0 0 1440 ${H}`);
-  const ex = Math.min(560, t.left - a.left - 28), cy = t.top - a.top + t.height / 2, top = t.top - a.top - 90;
-  const L = [[[130, 186 * k], [ex, cy - 36]], [[40, 330 * k], [ex, cy - 12]], [[40, 520 * k], [ex, cy + 12]], [[120, 650 * k], [ex, cy + 36]]];
-  const curve = ([p, q]) => `M${p[0]},${p[1]} C${(p[0] + q[0]) / 2},${p[1]} ${(p[0] + q[0]) / 2 + 60},${q[1]} ${q[0]},${q[1]}`;
-  const all = [...L, ...L.map(([p, q]) => [[1440 - p[0], p[1]], [1440 - q[0], q[1]]])];
-  svg.innerHTML = all.map((l) => `<path d="${curve(l)}"/><circle cx="${l[0][0]}" cy="${l[0][1]}" r="3.5"/><circle cx="${l[1][0]}" cy="${l[1][1]}" r="3"/>`).join("") +
-    (top > 140 ? `<path d="M720,110 V${top}"/><circle cx="720" cy="${top}" r="3"/><circle cx="720" cy="110" r="3"/>` : "");
-  if (!MOTION()) return;
-  const AT = [90, 0, 30, 140];
-  svg.querySelectorAll("path").forEach((p, i) => {
-    const n = p.getTotalLength(); p.style.strokeDasharray = n;
-    p.animate([{ strokeDashoffset: n }, { strokeDashoffset: 0 }], { duration: 1100, delay: 200 + (AT[i % 4] ?? 60), easing: "cubic-bezier(.65,0,.35,1)", fill: "both" });
+  const chip = (badge, label, x, y, cls) => { const c = h("div", { class: `hf-chip ${cls}`, style: { left: `${x}px`, top: `${y}px` } }, h("img", { src: `img/badges/${badge}.webp`, alt: "" }), label); art.append(c); return c; };
+  const path = (d, cls) => { const p = document.createElementNS(SVGNS, "path"); p.setAttribute("d", d); if (cls) p.setAttribute("class", cls); svg.append(p); p.n = p.getTotalLength(); p.style.strokeDasharray = p.n; return p; };
+  const curve = (x0, y0, x1, y1) => `M${x0},${y0} C${(x0 + x1) / 2},${y0} ${(x0 + x1) / 2},${y1} ${x1},${y1}`;
+  const ins = D.flowIn.map((label, i) => {
+    const y = H * (.22 + i * .18), c = chip(BADGES.in[i], label, vis, y, "");
+    const p = path(curve(vis + c.offsetWidth + 6, y, L, cy + (i - 1.5) * 14));
+    const dot = document.createElementNS(SVGNS, "circle"); dot.setAttribute("r", 4); dot.setAttribute("class", "hf-dot"); dot.style.opacity = 0; svg.append(dot);
+    return { c, p, dot };
   });
-  svg.querySelectorAll("circle").forEach((c) => c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 1150, fill: "backwards" }));
+  const outs = D.flowOut.map((label, i) => {
+    const y = H * (.3 + i * .18), c = chip(BADGES.out[i], label, 1440 - vis, y, "out");
+    return { c, p: path(curve(R, cy + (i - 1) * 14, 1440 - vis - c.offsetWidth - 6, y), "out") };
+  });
+  if (!motion) return;
+  if (animate) ins.forEach(({ c, p }, i) => {
+    c.animate([{ clipPath: "inset(0 100% 0 0 round 999px)" }, { clipPath: "inset(0 0 0 0 round 999px)" }], { duration: 400, delay: 100 + i * 80, easing: "cubic-bezier(.16,1,.3,1)", fill: "backwards" });
+    p.animate([{ strokeDashoffset: p.n }, { strokeDashoffset: 0 }], { duration: 1000, delay: 250 + i * 80, easing: "cubic-bezier(.65,0,.35,1)", fill: "backwards" });
+  });
+  stage.classList.add("flow");
+  const hero = stage.firstElementChild;
+  const S = (p, from, to) => Math.max(0, Math.min(1, (p - from) / (to - from)));
+  const ease = (x) => (x < .5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2);
+  const draw = () => {
+    const r = stage.getBoundingClientRect(), p = S(-r.top, 0, r.height - hero.offsetHeight);
+    ins.forEach(({ p: line, dot }, i) => {
+      const k = S(p, i * .06, .5 + i * .06), q = line.getPointAtLength(line.n * k);
+      dot.setAttribute("cx", q.x); dot.setAttribute("cy", q.y); dot.style.opacity = k > 0 && k < 1 ? 1 : 0;
+    });
+    outs.forEach(({ c, p: line }, i) => {
+      line.style.strokeDashoffset = line.n * (1 - ease(S(p, .45 + i * .06, .8 + i * .06)));
+      const e = ease(S(p, .7 + i * .06, .88 + i * .06));
+      c.style.visibility = e > 0 ? "" : "hidden";
+      c.style.clipPath = `inset(0 0 0 ${(1 - e) * 100}% round 999px)`;
+    });
+  };
+  let raf = 0;
+  const onScroll = () => {
+    if (!stage.isConnected) return removeEventListener("scroll", onScroll);
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; draw(); });
+  };
+  addEventListener("scroll", onScroll, { passive: true });
+  stage.cleanup = () => removeEventListener("scroll", onScroll);
+  draw();
+}
+// Geometry depends on the window size and the stage only pins from 721px up, so a resize rebuilds it from scratch.
+function mountHero(svg, title) {
+  const stage = $(".hero-stage");
+  heroFlow(svg, title, stage, true);
+  let t = 0;
+  const onResize = () => {
+    if (!stage.isConnected) return removeEventListener("resize", onResize);
+    clearTimeout(t);
+    t = setTimeout(() => { stage.cleanup?.(); stage.cleanup = null; heroFlow(svg, title, stage, false); }, 150);
+  };
+  addEventListener("resize", onResize);
 }
 const MOTION = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
 const ILLU = { daule: "rice", quevedo: "maize", iowa: "soybean" };
@@ -279,22 +330,39 @@ function viewLanding() {
   const openDemo = (k) => { setPlan(demoPlan(k)); state.mode = defaultMode(state.plan); state.pick = null; memo.clear(); go("plan"); };
   const dot = (ic = "i-arrow-r") => h("span", { class: "dot" }, icon(ic));
   const art = document.createElementNS(SVGNS, "svg"), title = h("h1", { class: "display" }, c.heroTitle);
-  put($("#view"), h("div", { class: "landing" },
+  put($("#view"), h("div", { class: "landing" }, h("div", { class: "hero-stage" },
     h("header", { class: "hero" }, h("div", { class: "hero-img", style: { backgroundImage: "url(img/sat/daule.jpg)" } }), h("div", { class: "hero-art", "aria-hidden": "true" }, art),
       h("nav", { class: "l-nav" }, lockup(true),
         h("div", { class: "l-links" }, langBtn(), h("a", { class: "btn glass desk-only", href: "#/bootcamp" }, c.ctaBootcamp), h("button", { class: "btn lime desk-only", onclick: start }, c.cta, dot()))),
       h("div", { class: "hero-copy" }, h("span", { class: "pill-eyebrow glass mono" }, D.eyebrow), title, h("p", { class: "lead" }, c.heroLead),
         h("div", { class: "hero-actions" }, h("button", { class: "btn lime big", onclick: start }, c.cta, dot()), h("button", { class: "btn glass big", onclick: () => openDemo("daule") }, D.example, dot()))),
-      h("p", { class: "hero-source mono" }, D.source)),
+      h("p", { class: "hero-source mono" }, D.source))),
     h("section", { class: "l-sheet" }, h("div", { class: "l-wrap" },
-      h("div", { class: "l-how", id: "how" }, ...D.how.map(([ic, t, d]) => h("div", { class: "how" }, h("span", { class: "tile-i dark" }, icon(ic)), h("b", {}, t), h("p", {}, d)))),
+      h("div", { class: "l-stats" }, ...D.howStats.map(([n, t]) => h("div", { class: "l-stat" }, h("b", {}, n), h("span", {}, t)))),
+      h("h2", { class: "h2 l-how-head", id: "how" }, D.howTitle),
+      h("div", { class: "l-how" }, ...D.how.map(([art, t, d, alt], i) => h("article", { class: "how" },
+        h("div", { class: "how-img" }, h("img", { src: `img/how/${art}.webp`, alt, loading: "lazy" }), h("span", { class: "ai-mark mono" }, D.aiMark)),
+        h("b", {}, h("i", {}, `${i + 1}.`), " ", t), h("p", {}, d)))),
       h("h2", { class: "h2" }, D.examplesTitle),
-      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}.jpg?v=2`, alt: "", loading: "lazy" }),
+      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.png`, alt: "", loading: "lazy" }),
         h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),
       h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "tile-i" }, icon("i-agronomist")), h("span", {}, h("b", {}, D.bootTitle), h("p", {}, D.bootLead)), icon("i-arrow-r")),
       h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
     h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"))))));
-  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => heroLines(art, title));
+  tilt(document.querySelectorAll(".how"));
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => mountHero(art, title));
+}
+// Cards lean toward the pointer on desktop; CSS eases the vars so each move stays short.
+function tilt(cards) {
+  if (!MOTION() || !matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+  cards.forEach((el) => {
+    el.addEventListener("pointermove", (e) => {
+      const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+      el.style.setProperty("--rx", `${(-y * 5).toFixed(2)}deg`); el.style.setProperty("--ry", `${(x * 6).toFixed(2)}deg`);
+      el.style.setProperty("--mx", `${((x + .5) * 100).toFixed(1)}%`); el.style.setProperty("--my", `${((y + .5) * 100).toFixed(1)}%`);
+    });
+    el.addEventListener("pointerleave", () => { el.style.removeProperty("--rx"); el.style.removeProperty("--ry"); });
+  });
 }
 
 /* ================= planner ================= */
@@ -309,25 +377,27 @@ const dateErr = (d) => { const n = monthsIn(d); return !(n >= 2) ? C().tooShort 
 async function placeAt(lat, lon) {
   const base = { name: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, lat, lon };
   try {
-    const r = await fetch(`${REV}?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=${state.lang}`).then(ok);
+    const r = await remoteJSON(`${REV}?lat=${lat}&lon=${lon}&format=json&zoom=10&accept-language=${state.lang}`);
     const a = r.address || {};
     return { ...base, name: a.village || a.town || a.city || a.county || a.state || base.name, admin: [a.state, a.country].filter(Boolean).join(", ") };
   } catch { return base; }
 }
 function searchBox(onPick) {
   const results = h("div", { class: "geo" }), input = h("input", { type: "search", placeholder: C().search, "aria-label": C().search, autocomplete: "off" });
-  let timer;
+  let timer, request = 0;
   input.addEventListener("input", () => {
     clearTimeout(timer);
     const q = input.value.trim();
+    const current = ++request;
     if (q.length < 2) return put(results);
     timer = setTimeout(async () => {
       try {
-        const r = await fetch(`${GEO}?name=${encodeURIComponent(q)}&count=5&language=${state.lang}&format=json`).then(ok);
+        const r = await remoteJSON(`${GEO}?name=${encodeURIComponent(q)}&count=5&language=${state.lang}&format=json`);
+        if (current !== request) return;
         put(results, ...(r.results || []).map((x) => h("button", { onclick: () => onPick({ name: x.name, admin: [x.admin1, x.country].filter(Boolean).join(", "), lat: x.latitude, lon: x.longitude }) },
           icon("i-pin"), h("span", {}, h("b", {}, x.name), h("small", {}, [x.admin1, x.country].filter(Boolean).join(", "))))));
         if (!r.results?.length) put(results, h("p", { class: "small", style: { padding: "12px 14px" } }, C().noPlace));
-      } catch { put(results); }
+      } catch { if (current === request) put(results, h("p", { class: "small", role: "status", style: { padding: "12px 14px" } }, C().geoError)); }
     }, 300);
   });
   return [h("label", { class: "search" }, icon("i-search"), input), results];
@@ -1079,18 +1149,18 @@ function viewTerreno() {
     const bal = (m) => months[m].rain - months[m].et0;
     const wetOf = (m) => Math.max(0, Math.min(1, (bal(m) + 170) / 310)), floodOf = (m) => Math.max(0, Math.min(0.24, (bal(m) / 134) * 0.22 * (0.6 + 0.8 * wl)));
     const soilWord = (m) => (wetOf(m) >= 0.75 ? T.soilWet : wetOf(m) >= 0.4 ? T.soilMoist : T.soilDry);
-    const st = { m: months.reduce((b, x, i) => (x.rain > months[b].rain ? i : b), 0), ex: 3, mode: "foto", water: true, lifted: true };
+    const st = { m: months.reduce((b, x, i) => (x.rain > months[b].rain ? i : b), 0), mode: "foto", water: true, roofs: true, lifted: true };
     let scene = null;
     const hi = (key) => { scene?.highlight(key); document.querySelectorAll(".terreno .trow[data-k]").forEach((x) => x.classList.toggle("on", x.dataset.k === key)); };
 
     const hMonth = h("h2", {}), hSub = h("p", {}), labelsEl = h("div", { class: "s3-labels" }), note = h("div", { class: "s3-note", hidden: true });
     const segBtn = (lab, on, fn, dot) => h("button", { "aria-pressed": String(on), onclick: fn }, dot ? h("span", { class: "dot", style: { background: dot } }) : null, lab);
-    const relief = h("div", { class: "s3-seg", role: "group", "aria-label": T.reliefK }), tools = h("div", { class: "s3-seg", role: "group" });
+    const tools = h("div", { class: "s3-seg", role: "group" });
     const strip = h("div", { class: "s3-months" }), bars = h("div", { class: "clim-bars" });
     const stage = h("section", { class: "s3", "aria-label": T.from },
       labelsEl,
       h("div", { class: "s3-head" }, h("div", { class: "mono" }, T.from), hMonth, hSub),
-      h("div", { class: "s3-ctrl" }, relief, tools),
+      h("div", { class: "s3-ctrl" }, tools),
       drawn ? null : h("div", { class: "s3-example" }, icon("i-info"), T.example),
       h("div", { class: "s3-src" }, T.src),
       h("div", { class: "s3-foot" }, strip, h("div", { class: "s3-unk" }, ...T.unk.map(([lab, tx]) => h("button", { "aria-expanded": "false", onclick: (e) => {
@@ -1102,20 +1172,20 @@ function viewTerreno() {
       h("div", { class: "s3-loading" }, T.loading));
     const labels = () => {
       const f = st.water ? floodOf(st.m) : 0;
-      return { lot: T.lot, lotSub: T.lotSub, cut: T.cut, soil: d ? c.texture[d.texture] : c.noData, waterK: f > 0 ? T.lows : T.lowsK, waterV: f > 0 ? T.lowsPct(Math.round(floodOf(st.m) * 100)) : T.noLows };
+      return { lot: T.lot, lotSub: T.lotSub, cut: T.cut, soil: d ? c.texture[d.texture] : c.noData, waterK: f > 0 ? T.lows : T.lowsK, waterV: f > 0 ? T.lowsPct(Math.round(floodOf(st.m) * 100)) : T.noLows, roofsK: T.roofsK, roofsV: T.roofsV };
     };
     const paint = (rebuild = true) => {
       const m = st.m, x = months[m];
       hMonth.textContent = cap(S().monthsLong[m]);
       hSub.textContent = `${x.rain >= x.et0 * 0.8 ? T.rainy : x.rain < 0.5 * x.et0 ? T.drySeason : T.between} · ${soilWord(m)}`;
-      put(relief, ...[[1, T.real], [3, T.relief(3)], [10, "×10"]].map(([ex, lab]) => segBtn(lab, st.ex === ex, () => { st.ex = ex; paint(); })));
       put(tools, segBtn(T.photo, st.mode === "foto", () => { st.mode = "foto"; paint(); }),
         segBtn(T.green, st.mode === "verdor", () => { st.mode = "verdor"; paint(); }, "linear-gradient(90deg,#CDBF8C,#549A5C,#C8FF9E)"),
         segBtn(T.water, st.water, () => { st.water = !st.water; paint(); }, "var(--rain)"),
+        segBtn(T.roofs, st.roofs, () => { st.roofs = !st.roofs; paint(); }, "#E9E3D3"),
         segBtn(T.lift, st.lifted, () => { st.lifted = !st.lifted; scene?.lift(st.lifted); paint(false); }));
       put(strip, ...months.map((y, i) => h("button", { "aria-pressed": String(i === m), "aria-label": cap(S().monthsLong[i]), onclick: () => { st.m = i; paint(); } }, h("i", { class: y.rain >= y.et0 * 0.8 ? "wet" : y.rain >= 0.5 * y.et0 ? "mid" : "" }), mon(i + 1))));
       bars.querySelectorAll(".cb").forEach((b, i) => b.setAttribute("aria-pressed", String(i === m)));
-      if (rebuild) scene?.update({ month: m, ex: st.ex, mode: st.mode, water: st.water, lifted: st.lifted, wet: wetOf(m), flood: floodOf(m) });
+      if (rebuild) scene?.update({ mode: st.mode, water: st.water, roofs: st.roofs, lifted: st.lifted, wet: wetOf(m), flood: floodOf(m) });
     };
     put(bars, ...months.map((x, i) => h("button", { class: "cb", "aria-label": cap(S().monthsLong[i]), onclick: () => { st.m = i; paint(); stage.scrollIntoView({ behavior: "smooth", block: "nearest" }); } },
       h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1]))));
@@ -1147,7 +1217,7 @@ function viewTerreno() {
 
     // The 3D loads after the page; without WebGL or the network the flat satellite map stays
     const [lon, lat] = lotCenter(pts);
-    import("./soil3d.js?v=1").then((m) => m.mountSoil3d(stage, labelsEl, { lat, lon, lot: pts, labels })).then((s) => {
+    import("./soil3d.js?v=2").then((m) => m.mountSoil3d(stage, labelsEl, { lat, lon, lot: pts, labels })).then((s) => {
       if (!s) return;
       scene = s; stage.classList.add("ready"); paint();
     }).catch(() => { if (stage.isConnected) stage.replaceWith(plotMap(r, picked)); });
@@ -1336,7 +1406,7 @@ async function viewPasaporte() {
   const seasonFire = (x) => x.lot_fires_by_month.slice(4).findIndex((n) => n > 0);
   const zoneBurn = yrs.filter(([, x]) => x.zone_fires_by_month.slice(4).some((n) => n > 0)).length;
   const last = yrs[yrs.length - 1], lastM = last ? seasonFire(last[1]) : -1;
-  put($("#view"), h("div", { class: "res", style: { flexDirection: "column", maxWidth: "760px" } },
+  put($("#view"), h("div", { class: "res", style: { flexDirection: "column" } },
     resHead(state.plan),
     h("div", { class: "res-title" }, h("h1", { class: "display" }, s.passportTitle), h("p", {}, state.plan.place.name)),
     last ? h("div", { class: `pp-answer ${lastM < 0 ? "good" : "danger"}` }, h("p", { class: "small" }, s.burnQ(last[0])), h("b", {}, lastM < 0 ? s.noBurn : s.burnIn(s.monthsLong[lastM + 4])), h("small", { class: "small" }, s.viaSat)) : h("p", {}, "—"),
@@ -1350,12 +1420,17 @@ function loadCesium() {
   if (window.Cesium) return Promise.resolve(window.Cesium);
   return (cesiumLoading ||= new Promise((res, rej) => {
     window.CESIUM_BASE_URL = CESIUM;
-    const s = document.createElement("script"); s.src = CESIUM + "Cesium.js"; s.onload = () => res(window.Cesium); s.onerror = rej; document.head.append(s);
+    const s = document.createElement("script"); s.src = CESIUM + "Cesium.js"; s.onload = () => window.Cesium ? res(window.Cesium) : rej(new Error("Cesium unavailable")); s.onerror = () => rej(new Error("Cesium failed to load")); document.head.append(s);
   }));
 }
 async function initCesium(container, { pick = false } = {}) {
   let Cz;
-  try { Cz = await loadCesium(); } catch { return; }
+  try { Cz = await Promise.race([loadCesium(), new Promise((_, reject) => setTimeout(() => reject(new Error("Cesium load timed out")), 15000))]); }
+  catch {
+    const overlay = $("#map-overlay");
+    if (overlay && !overlay.querySelector(".map-unavailable")) overlay.append(h("p", { class: "map-unavailable", role: "status" }, C().mapUnavailable));
+    return;
+  }
   if (!container.isConnected) return;
   if (viewer && viewer.container !== container) { viewer.destroy(); viewer = null; lotEntity = null; pickBound = false; }
   if (!viewer) {
@@ -1592,8 +1667,13 @@ async function rootiContext() {
     const soil = describeSoil(res.terrain?.soil), slope = res.terrain?.slopePct;
     out.push(`The land: ${soil ? `${C().texture[soil.texture]}, pH ${num(soil.ph)}` : "soil unknown"}; slope ${slope != null ? `${num(slope)} %` : "unknown"}; floods ${res.site.wl >= 0.6 ? "often" : res.site.wl >= 0.35 ? "sometimes" : "rarely"}.`);
     const ids = await ideas(res);
-    if (ids.length) out.push(`Ideas on the Try screen (kind: idea, effect): ${ids.map((x) => `${x.kind}: ${x.title}, ${x.eff}`).join("; ")}.`);
+    if (ids.length) out.push(`Ideas on the Try screen (kind: idea, effect): ${ids.map((x) => `${x.kind}: ${x.title}, ${x.eff}`).join("; ")}. An effect in land "of harvest" means as much more harvest as that much land fully harvested over the plan's months, not more land; say it like "como cosechar media cuadra más".`);
   } catch { out.push("The plan could not be computed right now."); }
+  try {
+    await loadVecinos();
+    const posts = vecPosts(P.place).filter((p) => !p.hidden), K = { aviso: "alert", pregunta: "question", asi_me_fue: "how it went" };
+    out.push(posts.length ? `Neighbors screen, posts from farmers near the plot${posts.some((p) => p.example) ? " (marked «Ejemplo»: sample posts that show how it will look)" : ""}: ${posts.slice(0, 6).map((p) => `${K[p.type] || p.type}, ${p.author}, ${p.date}${p.crop ? `, ${cropName(p.crop)}` : ""}${p.result ? `, went ${p.result}` : ""}: ${String(p.text_es || p.text_en || p.text || "").slice(0, 160)}`).join(" | ")}.` : "Neighbors screen: no posts near this plot yet.");
+  } catch { /* the feed is optional */ }
   return out.join("\n");
 }
 async function rootiChangePlot(a) {
@@ -1679,11 +1759,11 @@ const rooti = createRooti({
 
 /* ================= router ================= */
 function route() {
-  const [r = "", arg] = location.hash.replace(/^#\/?/, "").split("/");
+  const [r = "", arg, courseId, lessonNumber] = location.hash.replace(/^#\/?/, "").split("/");
   if (RESULTS.includes(r) && !state.plan) return { r: "planear", arg: state.linkError && state.draft.place && dateErr(state.draft) ? "2" : undefined };
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
   if (r === "aviso" && !(link.alert && state.plan)) return { r: state.plan ? "plan" : "planear" };
-  return { r: ["", "planear", "bootcamp", "aviso", ...RESULTS].includes(r) ? r : "", arg };
+  return { r: ["", "planear", "bootcamp", "aviso", ...RESULTS].includes(r) ? r : "", arg, courseId, lessonNumber };
 }
 const TAB_ORDER = ["plan", "terreno", "probar", "comparar", "vecinos"];
 const tabIx = (r) => TAB_ORDER.indexOf(r === "pasado" ? "plan" : r);
@@ -1736,13 +1816,13 @@ function revealPlan() {
   parts.forEach((el, i) => el.animate([{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 480, delay: Math.min(i, 8) * 55, easing: EASE_OUT, fill: "backwards" }));
 }
 async function render() {
-  const { r, arg } = route();
+  const { r, arg, courseId, lessonNumber } = route();
   const prev = shownRoute;
   shownRoute = r;
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
   rooti.route(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: () => viewBootcamp(arg, courseId, lessonNumber), plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
   try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {

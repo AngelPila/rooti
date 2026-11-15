@@ -50,7 +50,7 @@ export function et0Day({ t, tmax, tmin, rh, ws, rs }, lat, elev, m) {
 }
 
 async function getJSON(url) {
-  const r = await fetch(url);
+  const r = await fetch(url, { signal: AbortSignal.timeout(30000) });
   if (!r.ok) throw new Error(`POWER ${r.status}`);
   return r.json();
 }

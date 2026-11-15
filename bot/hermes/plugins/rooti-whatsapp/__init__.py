@@ -4,6 +4,8 @@ Rooti on WhatsApp, adapted from Vinci's vinci-whatsapp and vinci-botones plugins
 
 - Only private chats: a group message never reaches Rooti (a group is not one farmer's lot).
 - A forwarded audio or an .m4a is transcribed like a voice note (Hermes hears only voice notes on its own).
+- Rooti answers by voice only to a voice note, or once the farmer asks for voice («respóndame por voz»), until they
+  ask for text again («por escrito»). Hermes' own auto-TTS would speak every reply.
 - A question split across bubbles reaches the model as one (Vinci's endpointing): 3 s after a bubble that ends
   mid-clause, 0.3 s after «?» or «.», 1 s otherwise, never more than 20 s from the first one.
 - Only Rooti talks to a farmer, never Hermes: a message starting with «/» is plain chat, not a command; Hermes'
@@ -15,10 +17,12 @@ Rooti on WhatsApp, adapted from Vinci's vinci-whatsapp and vinci-botones plugins
 - «mi lote es RT-XXXX», the code the website's «Continuar en WhatsApp» writes, brings the lot made on the website
   into this chat (`rooti-bot canjear`) before the model reads the message.
 - Every turn starts with the farmer's lot (`rooti-bot contexto`), so the first answer needs no tool round trip.
+- A page button a tool asked for goes out right after Rooti's text (`rooti-bot botones`), so the farmer reads the
+  answer first and the link after it, as a person would send it; a tool runs before the turn's text exists.
 - How long each answer took, from the farmer's message to Rooti's first text and first voice note, goes to
   <ROOTI_DATA>/tiempos.jsonl (`rooti-bot tiempos` sums it up). The clock starts once the bubbles are joined, so
   the farmer also waits the 0.3–3 s of endpointing on top. The chat is kept only as a hash.
-Voice replies to voice notes are Hermes' own (voice.auto_tts), with Edge TTS's Ecuadorian voice.
+The voice notes are Hermes' own (voice.auto_tts), with Edge TTS's Ecuadorian voice.
 """
 import asyncio
 import hashlib
@@ -31,7 +35,8 @@ import time
 logger = logging.getLogger("rooti-whatsapp")
 
 BOT = "{{BOT}}"
-ENV = {"ROOTI_DATA": "{{DATA}}", "HOME": "{{HOME}}", "PATH": "/usr/local/bin:/usr/bin:/bin"}
+ENV = {"ROOTI_DATA": "{{DATA}}", "HOME": "{{HOME}}", "ROOTI_BRIDGE": "{{BRIDGE}}",
+       "PATH": "/usr/local/bin:/usr/bin:/bin"}
 MCP_TOOLS = ("mcp__rooti__", "mcp_rooti_")
 CHANNEL_ARG = "_canal"
 AUDIO = ("ptt", "audio")
@@ -46,6 +51,13 @@ APOLOGY = "Disculpe, ahorita no le pude responder. ¿Me escribe de nuevo en un r
 TIMES = "{{DATA}}/tiempos.jsonl"
 _HEARD = {}
 _TURNS = {}  # chat → the farmer's last message: when it arrived and whether it was a voice note
+# In memory: after a restart a farmer who asked for voice gets text until they ask again.
+_VOICE_CHATS = set()
+VOICE_ASK_RE = re.compile(r"\b(?:por|en|con)\s+(?:voz|audios?|notas? de voz)\b|\bnotas? de voz\b|"
+                          r"\b(?:m[aá]nde(?:me)?|env[ií]e(?:me)?|d[eé]jeme|h[aá]game)\s+(?:un\s+)?audio|\bh[aá]bleme\b",
+                          re.IGNORECASE)
+TEXT_ASK_RE = re.compile(r"\b(?:por|en)\s+(?:escrito|texto)\b|\bsin\s+audios?\b|\bno\s+(?:me\s+)?(?:mande|env[ií]e)s?\s+"
+                         r"(?:m[aá]s\s+)?audios?|\bya\s+no\s+(?:m[aá]s\s+)?audios?", re.IGNORECASE)
 
 
 def register(ctx):
@@ -67,8 +79,9 @@ async def _dispatch(event=None, **_):
     if getattr(source, "chat_type", "dm") == "group":
         return _skip("grupo")
     raw = getattr(event, "raw_message", None) or {}
-    _TURNS[str(getattr(source, "chat_id", ""))] = {"at": time.time(),
-                                                   "kind": "voz" if raw.get("mediaType") == "ptt" else "texto"}
+    chat = str(getattr(source, "chat_id", ""))
+    _TURNS[chat] = {"at": time.time(), "kind": "voz" if raw.get("mediaType") == "ptt" else "texto"}
+    _voice_preference(chat, str(getattr(event, "text", "") or ""))
     if raw.get("mediaType") == "sticker":
         return _skip("sticker")
     urls = getattr(event, "media_urls", None) or []
@@ -84,6 +97,13 @@ async def _dispatch(event=None, **_):
         note = await asyncio.to_thread(_redeem, str(getattr(source, "chat_id", "")), code.group(0).upper())
         return {"action": "rewrite", "text": f"{text}\n\n[{note}]"}
     return None
+
+
+def _voice_preference(chat, text):
+    if TEXT_ASK_RE.search(text):
+        _VOICE_CHATS.discard(chat)
+    elif VOICE_ASK_RE.search(text):
+        _VOICE_CHATS.add(chat)
 
 
 def _redeem(chat, code):
@@ -143,11 +163,53 @@ def _turn_context(**_):
         return None
 
 
+def _buttons_waiting(chat_id):
+    import sqlite3
+    try:
+        db = sqlite3.connect(f"file:{{DATA}}/rooti.db?mode=ro", uri=True, timeout=5)
+        try:
+            return db.execute("SELECT 1 FROM buttons WHERE phone = ? AND sent_at IS NULL LIMIT 1",
+                              (str(chat_id),)).fetchone() is not None
+        finally:
+            db.close()
+    except sqlite3.Error:  # no buttons table yet: nothing waits
+        return False
+
+
+async def _send_buttons(chat_id):
+    if not _buttons_waiting(chat_id):  # most texts carry no button: no process to start
+        return
+    try:
+        proc = await asyncio.create_subprocess_exec(BOT, "botones", "--chat", str(chat_id), env=ENV,
+                                                    stdout=asyncio.subprocess.DEVNULL,
+                                                    stderr=asyncio.subprocess.PIPE)
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+        if proc.returncode:
+            logger.warning("botones: %s", err.decode()[-300:])
+    except Exception as exc:  # the button's own timer still sends it
+        logger.warning("botones: %s", exc)
+
+
 def _wire(_native, adapter):
     _wire_burst(adapter)
     _no_commands(adapter)
     _quiet(adapter)
     _time_voice(adapter)
+    _voice_on_request(adapter)
+
+
+def _voice_on_request(adapter):
+    """Every Hermes path to a spoken reply (text or voice input, streamed or whole) asks the adapter first."""
+    if getattr(adapter, "_rooti_voice", False):
+        return
+    allowed = adapter._should_auto_tts_for_chat
+
+    def only_when_asked(chat_id):
+        turn = _TURNS.get(str(chat_id)) or {}
+        return bool(allowed(chat_id)) and (turn.get("kind") == "voz" or str(chat_id) in _VOICE_CHATS)
+
+    adapter._should_auto_tts_for_chat = only_when_asked
+    adapter._rooti_voice = True
 
 
 def _no_first_contact_note():
@@ -340,6 +402,7 @@ def _quiet(adapter):
             return await send(chat_id, APOLOGY, reply_to=reply_to, metadata=metadata, **kwargs)
         result = await send(chat_id, content, reply_to=reply_to, metadata=metadata, **kwargs)
         _note_reply(chat_id, "texto")
+        await _send_buttons(chat_id)
         return result
 
     adapter.send = quiet_send

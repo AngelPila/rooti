@@ -1,10 +1,21 @@
 """Rooti's tools, the same for the WhatsApp agent (mcp_server.py) and the live call (call_server.py). Each one acts
 on the farmer of the conversation, which the caller passes in; the model never names whose lot it is."""
+import contextvars
 import json
+import logging
+import threading
+import time
 from dataclasses import dataclass
 from typing import Callable
 
 from rooti_bot import calls, config, engine, store
+
+log = logging.getLogger("rooti.tools")
+ON_CHAT = contextvars.ContextVar("on_chat", default=False)  # a WhatsApp turn (mcp_server), not the live call
+WAIT_TEXT = "Déjeme revisar su lote con los datos de la NASA, un ratito 🌱"
+WAIT_EVERY_S = 300  # a second plan try right after a slow first one does not repeat the same sentence
+BUTTON_FALLBACK_S = 120  # a turn that ends without text still gets its button
+_waited: dict[str, float] = {}
 
 CROPS = json.loads((config.REPO / "app" / "data" / "crops.json").read_text(encoding="utf-8"))["crops"]
 CROP_IDS = sorted(CROPS) + ["mulch"]
@@ -61,9 +72,12 @@ def _missing(f: dict) -> list[str]:
 def my_lot(farmer_id: str, _args: dict) -> dict:
     f = _farmer(farmer_id)
     saved = store.saved_plan(farmer_id)
-    return {"lote": {k: f[k] for k in ("name", "place", "lat", "lon", "crops", "current", "area", "unit", "irrigation",
-                                       "waterlog", "priority", "alerts_ok", "notes")},
-            "falta_saber": _missing(f), "plan_listo": bool(saved)}
+    lot = {k: f[k] for k in ("name", "place", "lat", "lon", "crops", "current", "area", "unit", "irrigation", "waterlog",
+                             "alerts_ok", "notes")}
+    # «soil» is the default and nobody is asked for a priority (DESIGN.md): shown, the model takes it for the farmer's.
+    if f["priority"] != "soil":
+        lot["priority"] = f["priority"]
+    return {"lote": lot, "falta_saber": _missing(f), "plan_listo": bool(saved)}
 
 
 def _crops(values, field) -> list[str]:
@@ -73,6 +87,20 @@ def _crops(values, field) -> list[str]:
     if bad:
         raise ToolError(f"{field}: no conozco {', '.join(bad)}. Usa estos ids: {CROP_LIST}, mulch (dejar la paja).")
     return list(dict.fromkeys(values))
+
+
+def _plan(farmer: dict) -> dict:
+    """The saved plan; when it has to be computed (up to a minute and a half), the farmer hears so first: the model's
+    own words only go out once the turn is over."""
+    if (ON_CHAT.get() and farmer.get("lat") is not None and farmer.get("crops") and engine.cold(farmer)
+            and time.time() - _waited.get(farmer["phone"], 0) > WAIT_EVERY_S):
+        from rooti_bot import bridge
+        _waited[farmer["phone"]] = time.time()
+        try:
+            bridge.send_text(farmer["phone"], WAIT_TEXT)
+        except Exception as exc:
+            log.warning("no pude avisar que espere: %s", exc)
+    return engine.plan_for(farmer)
 
 
 def save_lot(farmer_id: str, args: dict) -> dict:
@@ -86,7 +114,7 @@ def save_lot(farmer_id: str, args: dict) -> dict:
     out = {"guardado": sorted(fields), "falta_saber": _missing(f)}
     if f.get("lat") is not None and f.get("crops"):
         try:
-            engine.plan_for(f)
+            _plan(f)
             out["plan"] = "listo"
         except engine.EngineError as exc:
             out["plan"] = f"no se pudo calcular todavía: {exc}"
@@ -95,15 +123,15 @@ def save_lot(farmer_id: str, args: dict) -> dict:
 
 def recommended_plan(farmer_id: str, _args: dict) -> dict:
     try:
-        r = engine.plan_for(_farmer(farmer_id))
+        r = _plan(_farmer(farmer_id))
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
-    return {k: r.get(k) for k in ("from", "to", "tested_on", "farm", "today", "soil", "limits")}
+    return {k: r.get(k) for k in ("from", "to", "tested_on", "why_these_years", "farm", "today", "soil", "limits")}
 
 
 def when_to_sow(farmer_id: str, args: dict) -> dict:
     try:
-        r = engine.plan_for(_farmer(farmer_id))
+        r = _plan(_farmer(farmer_id))
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
     sow = r.get("sow") or []
@@ -124,7 +152,7 @@ def try_change(farmer_id: str, args: dict) -> dict:
         raise ToolError(f"anios: usa uno de {', '.join(MODES)}.")
     try:
         trial = engine.plan_for(f, fresh=True, mode=mode)
-        base = engine.plan_for(_farmer(farmer_id))
+        base = _plan(_farmer(farmer_id))
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
     return {"probado_en": trial["tested_on"], "con_el_cambio": trial.get("farm"), "plan_actual": base.get("farm")}
@@ -149,12 +177,29 @@ def explain(_farmer_id: str, args: dict) -> dict:
 
 
 def _button(farmer_id: str, text: str, label: str, url_of) -> dict:
-    from rooti_bot import bridge
+    """A button goes after Rooti's answer, as a person sends a link after explaining: the plugin sends it once the
+    turn's text is out (rooti-bot botones), the timer when the turn ends without one."""
     try:
-        bridge.send_button(farmer_id, text, label, url_of())
+        url = url_of()
     except Exception as exc:
-        raise ToolError(f"No pude mandar el botón: {exc}") from None
-    return {"enviado": True, "nota": "El botón ya está en el chat: no repitas el enlace."}
+        raise ToolError(f"No pude armar el botón: {exc}") from None
+    button_id = store.queue_button(farmer_id, label, text, url)
+    timer = threading.Timer(BUTTON_FALLBACK_S, send_queued, (farmer_id, [button_id]))
+    timer.daemon = True
+    timer.start()
+    return {"enviado": True, "nota": "El botón le llega justo después de su respuesta: no pegues el enlace."}
+
+
+def send_queued(phone: str, ids: list[int] | None = None) -> int:
+    from rooti_bot import bridge
+    sent = 0
+    for button in store.claim_buttons(phone, ids):
+        try:
+            bridge.send_button(phone, button["text"], button["label"], button["url"], log=False)
+            sent += 1
+        except Exception as exc:
+            log.error("no pude mandar el botón %s: %s", button["label"], exc)
+    return sent
 
 
 def call_button(farmer_id: str, args: dict) -> dict:
@@ -209,25 +254,32 @@ TOOLS = [
     Tool("explicar", "Explica un término (evapotranspiración, humedad del suelo, NDVI, balance hídrico, El Niño…) en "
                      "palabras simples.", explain,
          {"termino": {"type": "string"}}, ("termino",)),
-    Tool("boton_llamada", "Manda al chat el botón «📞 Hablar con Rooti» para conversar en vivo, como una llamada. "
-                          "Úsalo cuando la pregunta es larga o el agricultor prefiere hablar.", call_button,
+    Tool("boton_llamada", "Manda, después de tu respuesta, el botón «📞 Hablar con Rooti» para conversar en vivo. "
+                          "Solo si el agricultor quiere hablar, o si la conversación se enreda por escrito.",
+         call_button,
          {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
-    Tool("boton_lote", "Manda al chat el botón «Marcar mi lote»: abre una página donde el agricultor marca su lote "
-                       "en el mapa y elige sus cultivos. Úsalo al empezar, en vez de preguntar todo por chat.",
+    Tool("boton_lote", "Manda, después de tu respuesta, el botón «Marcar mi lote»: una página donde marca el lote en "
+                       "el mapa y elige sus cultivos. Para un agricultor nuevo que todavía no te dio su lote, salvo "
+                       "que prefiera escribir.",
          lot_button, {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
-    Tool("boton_plan", "Manda al chat el botón «Ver mi plan»: abre su plan con los tres caminos, el calendario y los "
-                       "años en que habría ido bien o mal. Úsalo cuando el plan ya está listo.", plan_button,
+    Tool("boton_plan", "Manda, después de tu respuesta, el botón «Ver mi plan»: los tres caminos lado a lado, el "
+                       "calendario y los años, para elegir uno. Solo si quiere verlo, compararlo o elegir; nunca en "
+                       "lugar de explicarle tú.", plan_button,
          {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
 ]
 CHAT_ONLY = {"boton_llamada", "boton_lote", "boton_plan"}  # the live call has no chat to put a button in
 BY_NAME = {t.name: t for t in TOOLS}
 
 
-def call(name: str, farmer_id: str, args: dict) -> object:
+def call(name: str, farmer_id: str, args: dict, *, chat: bool = False) -> object:
     tool = BY_NAME.get(name)
     if tool is None:
         raise ToolError(f"No existe la herramienta «{name}».")
     unknown = set(args) - set(tool.properties)
     if unknown:
         raise ToolError(f"Argumentos desconocidos para {name}: {', '.join(sorted(unknown))}.")
-    return tool.handler(farmer_id, args)
+    token = ON_CHAT.set(chat)
+    try:
+        return tool.handler(farmer_id, args)
+    finally:
+        ON_CHAT.reset(token)

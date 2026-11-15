@@ -37,23 +37,30 @@ function messages(list) {
     } else if (m?.role === "tool") out.push({ role: "tool", tool_call_id: clean(m.tool_call_id, 80), content: clean(m.content, 3000) });
     else return null;
   }
-  return out.length && out[0].role === "user" ? out : null;
+  // The cut at 40 can land inside a turn; the model only accepts a history that starts with the farmer
+  const first = out.findIndex((m) => m.role === "user");
+  return first >= 0 ? out.slice(first) : null;
 }
 
 export async function chat(body) {
   if (!on()) return { status: 503, body: { error: "off" } };
   const lang = body.lang === "en" ? "en" : "es", msgs = messages(body.messages);
   if (!msgs) return { status: 400, body: { error: "messages" } };
-  const r = await fetch(CHAT_URL, {
-    method: "POST", signal: AbortSignal.timeout(40e3),
-    headers: { "content-type": "application/json", authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
-    // The last round of a turn must answer in words, so a model that keeps calling tools still says something
-    body: JSON.stringify({ model: MODEL, temperature: 0.4, max_tokens: 400, tools: TOOLS, tool_choice: body.final ? "none" : "auto",
-      messages: [{ role: "system", content: system(lang, clean(body.context, 8000)) }, ...msgs] }),
-  });
-  if (!r.ok) { console.error("rooti: model", r.status, (await r.text()).slice(0, 300)); return { status: 502, body: { error: "model" } }; }
-  const m = (await r.json()).choices?.[0]?.message || {};
-  return { status: 200, body: { message: { role: "assistant", content: m.content || "", ...(m.tool_calls?.length ? { tool_calls: m.tool_calls } : {}) } } };
+  const prompt = [{ role: "system", content: system(lang, clean(body.context, 8000)) }, ...msgs];
+  // The last round of a turn must answer in words, so a model that keeps calling tools still says something.
+  // DeepSeek now and then answers with neither words nor tools: ask again, then insist on words.
+  for (const choice of body.final ? ["none"] : ["auto", "auto", "none"]) {
+    const r = await fetch(CHAT_URL, {
+      method: "POST", signal: AbortSignal.timeout(40e3),
+      headers: { "content-type": "application/json", authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` },
+      body: JSON.stringify({ model: MODEL, temperature: 0.4, max_tokens: 400, tools: TOOLS, tool_choice: choice, messages: prompt }),
+    });
+    if (!r.ok) { console.error("rooti: model", r.status, (await r.text()).slice(0, 300)); return { status: 502, body: { error: "model" } }; }
+    const c = (await r.json()).choices?.[0] || {}, m = c.message || {};
+    if (m.content?.trim() || m.tool_calls?.length) return { status: 200, body: { message: { role: "assistant", content: m.content || "", ...(m.tool_calls?.length ? { tool_calls: m.tool_calls } : {}) } } };
+    console.warn("rooti: empty answer", c.finish_reason, choice);
+  }
+  return { status: 200, body: { message: { role: "assistant", content: "" } } };
 }
 
 export async function transcribe(audio, type, lang) {
