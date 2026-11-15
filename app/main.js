@@ -1497,12 +1497,15 @@ function loadVecinos(pl = state.plan?.place, fresh = false) {
     if (z) try {
       const q = `?zone=${encodeURIComponent(z)}`;
       let d = await vecApi(q);
-      // What was saved on this phone while there was no server goes up now, once, so the neighbors see it too
-      const sent = new Set();
-      for (const p of store.get("vecMine1", []).filter((x) => x.zone === z)) {
-        try { await vecApi("", { ...p, author: state.vecName || p.author }); sent.add(p.id); } catch { break; }
+      // What was saved on this phone while there was no server goes up now, once, so the neighbors see it too.
+      // One the server refuses (400, 413) would be refused forever: it stays on this phone and stops blocking the rest.
+      const sent = new Set(), refused = new Set();
+      for (const p of store.get("vecMine1", []).filter((x) => x.zone === z && !x.refused)) {
+        try { await vecApi("", { ...p, author: state.vecName || p.author }); sent.add(p.id); }
+        catch (e) { if (["400", "413"].includes(e.message)) refused.add(p.id); else break; }
       }
-      if (sent.size) { store.set("vecMine1", store.get("vecMine1", []).filter((x) => !sent.has(x.id))); d = await vecApi(q); }
+      if (sent.size || refused.size) store.set("vecMine1", store.get("vecMine1", []).filter((x) => !sent.has(x.id)).map((x) => refused.has(x.id) ? { ...x, refused: true } : x));
+      if (sent.size) d = await vecApi(q);
       VEC.posts = d.posts || []; VEC.server = true; return;
     } catch { /* no server: examples and this phone */ }
     VEC.server = false;

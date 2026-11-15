@@ -9,17 +9,17 @@ back to its example posts and the phone's own storage.
 - POST /api/vecinos/<id>/report         one report per device; 3 reports take a post off the feed
 
 A post never stores a phone number or coordinates: the author is a masked name, the place a zone key.
+The WhatsApp tools (tools.py) read and write the same tables from the gateway's venv, which has no FastAPI: the
+routes import it inside mount().
 """
 import json
+import math
 import re
 import secrets
 import sqlite3
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from rooti_bot import config
 
@@ -61,6 +61,7 @@ TYPES = {"asi_me_fue", "aviso", "pregunta"}
 RESULTS = {"bien", "regular", "perdio"}
 UNITS = {"ha", "cuadra", "acre", "m2"}
 ZONE = re.compile(r"^(daule|babahoyo|quevedo|pt:-?\d{1,2}\.\d,-?\d{1,3}\.\d)$")
+PILOTS = {"daule": (-1.86, -79.98), "babahoyo": (-1.80, -79.53), "quevedo": (-1.03, -79.46)}  # app/main.js PILOTS
 REPORTS_TO_HIDE = 3
 ECUADOR = timezone(timedelta(hours=-5))  # Guayaquil has no daylight saving
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -82,6 +83,12 @@ def connect():
         db.commit()
     finally:
         db.close()
+
+
+def zone_of(lat: float, lon: float) -> str:
+    """The app's zoneKey: the pilot zone within 40 km, else the 0.1° square, so WhatsApp and the app share a feed."""
+    near = next((k for k, (la, lo) in PILOTS.items() if math.hypot(la - lat, lo - lon) * 111 < 40), None)
+    return near or f"pt:{lat:.1f},{lon:.1f}"
 
 
 def _day(date: str) -> float:
@@ -166,7 +173,7 @@ def list_posts(zone: str) -> list[dict]:
     return out
 
 
-def add_post(body: dict) -> str:
+def add_post(body: dict, source: str = "web") -> str:
     kind, zone, text = body.get("type"), str(body.get("zone") or ""), clean(body.get("text"), 280)
     if kind not in TYPES or not ZONE.match(zone):
         raise ValueError("type or zone")
@@ -193,7 +200,7 @@ def add_post(body: dict) -> str:
         db.execute("INSERT INTO vec_posts (id, type, zone, crop, sow_month, sow_year, result, area, unit, text, author,"
                    " source, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (post_id, kind, zone, crop, month, year, result, area, unit, text or None,
-                    mask_name(body.get("author")), body.get("source", "web"), time.time()))
+                    mask_name(body.get("author")), source, time.time()))
     return post_id
 
 
@@ -236,12 +243,13 @@ def _allowed(key: str, most: int, window: float = 600) -> bool:
     return True
 
 
-def _ip(request: Request) -> str:
+def _ip(request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
     return (forwarded.split(",")[0] if forwarded else (request.client.host if request.client else "?")).strip()
 
 
-async def _json(request: Request) -> dict:
+async def _json(request) -> dict:
+    from fastapi import HTTPException
     raw = await request.body()
     if len(raw) > 4096:
         raise HTTPException(413, "too large")
@@ -254,7 +262,9 @@ async def _json(request: Request) -> dict:
     return body
 
 
-def mount(api: FastAPI) -> None:
+def mount(api) -> None:
+    from fastapi import HTTPException, Request
+    from fastapi.responses import JSONResponse
     no_store = {"Cache-Control": "no-store"}
 
     @api.get("/api/vecinos")
@@ -268,8 +278,7 @@ def mount(api: FastAPI) -> None:
         if not _allowed("w:" + _ip(request), 8):
             raise HTTPException(429, "slow down")
         body = await _json(request)
-        body.pop("source", None)  # only the bot itself writes posts that come from WhatsApp
-        try:
+        try:  # the web never sets the source: only the WhatsApp tool writes source="whatsapp"
             return JSONResponse({"id": add_post(body)}, status_code=201, headers=no_store)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
