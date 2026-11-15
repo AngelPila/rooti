@@ -1,0 +1,6 @@
+.git
+prototypes
+bot/.venv
+bot/.venv-call
+bot/tests
+**/__pycache__

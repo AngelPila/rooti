@@ -890,3 +890,31 @@ body.r-terreno .res.terreno.full { position: fixed; inset: 0; z-index: 1; paddin
 .p3-wx, .p3-hud { scrollbar-width: none; } .p3-wx::-webkit-scrollbar, .p3-hud::-webkit-scrollbar { display: none; }
 /* phone: the map's centre sits in the free band between the chips on top and the panel below */
 @media (max-width: 1023px) { .res.terreno.full .p3-map { bottom: 250px; } }
+
+/* Opened from WhatsApp (link.js): the lot reaching Rooti, the plan picked, the alert page */
+.wa-sync { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 16px; background: var(--parchment); color: var(--forest); font-size: 15px; font-weight: 500; }
+.wa-sync .icon { width: 20px; height: 20px; flex: none; }
+.wa-sync.saved { background: var(--forest); color: var(--cream); }
+.wa-sync.saved .icon { color: var(--lime); }
+.wa-sync.error { background: #F7DCD4; color: #7A2416; }
+.wa-sync .link { color: inherit; font-weight: 600; min-height: 44px; }
+.wa-bar { display: flex; flex-direction: column; gap: 8px; }
+.wa-done { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 16px; background: var(--forest); color: var(--cream); font-size: 16px; font-weight: 500; }
+.wa-done .icon { width: 20px; height: 20px; color: var(--lime); flex: none; }
+.wa-go .btn { align-self: flex-start; }
+.av-hero { background: var(--forest); color: var(--cream); border-radius: var(--r-card-l); padding: 24px 20px 26px; display: flex; flex-direction: column; gap: 14px; }
+.av-hero .h2 { font-size: 34px; }
+.av-hero p { font-size: 17px; line-height: 1.45; color: rgba(243, 240, 229, .82); }
+.av-acts { display: flex; flex-direction: column; gap: 10px; }
+.rain-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.rain-chart .ra { fill: var(--rain); opacity: .22; }
+.rain-chart .rl { fill: none; stroke: var(--rain); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.rain-chart .rh { stroke: var(--danger); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.rain-chart .rht { font: 500 10px var(--f-mono); letter-spacing: .04em; text-transform: uppercase; fill: var(--danger); }
+.rain-chart .rp { fill: var(--rain); stroke: var(--paper); stroke-width: 2; }
+.rain-chart .rp.heavy { fill: var(--danger); }
+.rain-chart .rv { font: 500 13px var(--f-body); fill: var(--forest); }
+.rain-chart .rv.heavy { fill: var(--danger); font-weight: 600; }
+.rain-chart .rd { font: 500 11px var(--f-mono); text-transform: uppercase; letter-spacing: .04em; fill: var(--lichen); }
+.rain-chart .rdn { font: 500 12px var(--f-body); fill: var(--forest); }
+@media (min-width: 721px) { .aviso { max-width: 720px; margin: 0 auto; width: 100%; } .av-acts { flex-direction: row; } .av-acts .btn { flex: 1; } }
