@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rooti · Suelo en 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..600&family=Geist+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --noche: #111B17; --noche-2: #1A2621; --noche-3: #22302A;
+  --crema: #F3F0E5; --crema-2: rgba(243,240,229,.62); --crema-3: rgba(243,240,229,.38);
+  --lima: #C8FF9E; --bosque: #153E32; --musgo: #AEC9AE; --paja: #CDBF8C;
+  --lluvia: #4A7FC1; --lluvia-2: #7FB0E8; --maiz: #E6AE2E; --cuidado: #C7860F;
+  --line: rgba(243,240,229,.10);
+  --f-body: "Geist", system-ui, sans-serif; --f-mono: "Geist Mono", ui-monospace, monospace;
+  --ease: cubic-bezier(.16,1,.3,1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--noche); color: var(--crema); font: 15px/1.4 var(--f-body); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.app { max-width: 1440px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; grid-template-rows: auto 1fr; }
+header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.logo { width: 40px; height: 40px; border-radius: 11px; background: var(--lima); color: var(--bosque); display: grid; place-items: center; font: 500 22px "Space Grotesk"; }
+.who b { display: block; font: 500 18px "Space Grotesk"; letter-spacing: -.01em; }
+.who span { font: 13px var(--f-mono); color: var(--crema-2); }
+.seg { margin-left: auto; display: flex; gap: 4px; padding: 4px; background: var(--noche-2); border-radius: 999px; }
+.seg button { border: 0; background: transparent; padding: 10px 18px; border-radius: 999px; color: var(--crema-2); font-weight: 500; min-height: 44px; transition: background .15s, color .15s; }
+.seg button[aria-pressed="true"] { background: var(--crema); color: var(--noche); }
+.seg button .k { font: 12px var(--f-mono); opacity: .7; margin-right: 6px; }
+main { display: grid; grid-template-columns: minmax(0,1fr) 380px; gap: 12px; min-height: 0; }
+.stage { position: relative; background: radial-gradient(120% 90% at 50% 30%, #1E2C26 0%, var(--noche) 70%); border-radius: 28px; overflow: hidden; min-height: 620px; border: 1px solid var(--line); }
+canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.hud { position: absolute; left: 20px; right: 20px; top: 16px; display: flex; justify-content: space-between; pointer-events: none; }
+.hud .mono { font: 12px var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--crema-2); }
+.hud .big { font-size: 34px; font-weight: 450; letter-spacing: -.04em; line-height: 1.05; margin-top: 2px; }
+.hud .r { text-align: right; }
+.tools { position: absolute; left: 16px; bottom: 16px; display: flex; gap: 6px; flex-wrap: wrap; }
+.tool { border: 1px solid var(--line); background: rgba(17,27,23,.72); backdrop-filter: blur(8px); border-radius: 999px; padding: 8px 14px; font: 12px var(--f-mono); color: var(--crema-2); min-height: 38px; display: inline-flex; align-items: center; gap: 8px; }
+.tool[aria-pressed="true"] { color: var(--noche); background: var(--lima); border-color: var(--lima); }
+.tool .sw { width: 10px; height: 10px; border-radius: 3px; }
+.hint { position: absolute; right: 18px; bottom: 20px; font: 11px var(--f-mono); color: var(--crema-3); pointer-events: none; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; font: 13px var(--f-mono); color: var(--crema-2); pointer-events: none; transition: opacity .25s; }
+.loading.done { opacity: 0; }
+.labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.lbl { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 0; white-space: nowrap; will-change: transform; }
+.lbl .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--crema); box-shadow: 0 0 0 3px rgba(17,27,23,.6); flex: none; transform: translateX(-4px); }
+.lbl .ln { width: 46px; height: 1px; background: var(--crema-2); flex: none; }
+.lbl .tx { padding-left: 8px; }
+.lbl .tx small { display: block; font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: .05em; color: var(--crema-2); }
+.lbl .tx b { font-weight: 500; font-size: 15px; }
+.lbl.water .dot { background: var(--lluvia-2); } .lbl.water b { color: var(--lluvia-2); }
+.lbl.lime .dot { background: var(--lima); } .lbl.lime b { color: var(--lima); }
+.lbl.left { flex-direction: row-reverse; } .lbl.left .tx { padding: 0 8px 0 0; text-align: right; } .lbl.left .dot { transform: translateX(4px); }
+aside { display: grid; gap: 10px; align-content: start; }
+.card { background: var(--noche-2); border-radius: 22px; padding: 16px 18px; border: 1px solid var(--line); }
+.eyebrow { font: 12px var(--f-mono); text-transform: uppercase; letter-spacing: .07em; color: var(--crema-2); margin-bottom: 10px; display: flex; justify-content: space-between; }
+.idea p { margin: 0; color: var(--crema-2); font-size: 14px; }
+.idea h2 { margin: 0 0 6px; font-weight: 450; font-size: 22px; letter-spacing: -.03em; }
+.months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
+.months button { border: 0; padding: 0; background: none; display: grid; gap: 4px; justify-items: center; }
+.months .bar { width: 100%; height: 54px; border-radius: 6px; background: var(--noche-3); position: relative; overflow: hidden; }
+.months .bar i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--lluvia); border-radius: 4px 4px 0 0; }
+.months span { font: 11px var(--f-mono); color: var(--crema-3); }
+.months button[aria-pressed="true"] .bar { outline: 2px solid var(--crema); outline-offset: 1px; }
+.months button[aria-pressed="true"] span { color: var(--crema); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat .n { font-size: 30px; font-weight: 450; letter-spacing: -.04em; line-height: 1.1; }
+.stat .n small { font-size: 14px; color: var(--crema-2); letter-spacing: 0; margin-left: 2px; }
+.stat p { margin: 4px 0 0; font-size: 13px; color: var(--crema-2); }
+.meter { height: 6px; background: var(--noche-3); border-radius: 99px; margin-top: 10px; overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 99px; transition: width .25s var(--ease); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 6px 12px; font-size: 13px; color: var(--crema-2); min-height: 34px; }
+.chip[aria-expanded="true"] { border-color: var(--crema-3); color: var(--crema); }
+.chipnote { font-size: 13px; color: var(--crema-2); margin: 8px 0 0; min-height: 0; }
+.src { font: 11px/1.5 var(--f-mono); color: var(--crema-3); }
+.range { display: flex; align-items: center; gap: 10px; font: 12px var(--f-mono); color: var(--crema-2); }
+.range input { flex: 1; accent-color: var(--lima); }
+.legend { display: flex; height: 8px; border-radius: 99px; overflow: hidden; margin-top: 8px; }
+.legend + .src { display: flex; justify-content: space-between; margin-top: 4px; }
+@media (hover: hover) and (pointer: fine) {
+  .seg button:not([aria-pressed="true"]):hover { color: var(--crema); }
+  .tool:not([aria-pressed="true"]):hover, .chip:hover { color: var(--crema); border-color: var(--crema-3); }
+}
+.seg button:active, .tool:active, .chip:active, .months button:active { transform: scale(.97); }
+@media (max-width: 960px) {
+  main { grid-template-columns: 1fr; }
+  .stage { min-height: 460px; }
+  .seg { margin-left: 0; width: 100%; } .seg button { flex: 1; padding: 10px 8px; }
+  .hud .big { font-size: 26px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">R</div>
+    <div class="who"><b>Rooti</b><span>Lote 3 · Daule, Guayas · 5,2 ha</span></div>
+    <div class="seg" role="group" aria-label="Alternativa">
+      <button data-alt="A" aria-pressed="true"><span class="k">A</span>Bloque del lote</button>
+      <button data-alt="B" aria-pressed="false"><span class="k">B</span>El lote sale del mapa</button>
+    </div>
+  </header>
+  <main>
+    <section class="stage" id="stage">
+      <canvas id="gl"></canvas>
+      <div class="labels" id="labels"></div>
+      <div class="hud">
+        <div><div class="mono">Su suelo en</div><div class="big" id="hudMonth">Febrero</div></div>
+        <div class="r"><div class="mono" id="hudStage">Época de lluvia</div><div class="mono" id="hudRelief" style="margin-top:6px">Relieve ×5</div></div>
+      </div>
+      <div class="tools" id="tools"></div>
+      <div class="hint">arrastre para girar · rueda para acercar</div>
+      <div class="loading" id="loading">Cargando foto satelital y relieve…</div>
+    </section>
+    <aside>
+      <div class="card idea" id="idea"></div>
+      <div class="card">
+        <div class="eyebrow"><span>Mes</span><span id="rainNote">lluvia de cada mes</span></div>
+        <div class="months" id="months"></div>
+      </div>
+      <div class="stats">
+        <div class="card stat"><div class="eyebrow">Lluvia</div><div class="n" id="sRain">238<small>mm</small></div><p id="sRainP"></p></div>
+        <div class="card stat"><div class="eyebrow">Agua en la raíz</div><div class="n" id="sWater">Húmedo</div><div class="meter"><i id="mWater" style="background:var(--lluvia-2)"></i></div></div>
+        <div class="card stat"><div class="eyebrow">Verdor</div><div class="n" id="sGreen">0,56</div><div class="meter"><i id="mGreen" style="background:var(--lima)"></i></div></div>
+        <div class="card stat"><div class="eyebrow">Tierra</div><div class="n" style="font-size:22px">Franco arcillo arenosa</div><p>arcilla 31 % · arena 47 % · pH 6,2</p></div>
+      </div>
+      <div class="card">
+        <div class="eyebrow"><span>Relieve</span><span id="exLbl">×5</span></div>
+        <div class="range"><span>real</span><input id="ex" type="range" min="1" max="20" value="5"><span>×20</span></div>
+        <p class="chipnote">Daule es casi plano (6 m sobre el mar). Lo levantamos para que se vean los bajos donde se junta el agua.</p>
+      </div>
+      <div class="card">
+        <div class="eyebrow">Lo que no sabemos</div>
+        <div class="chips" id="chips"></div>
+        <p class="chipnote" id="chipNote" hidden></p>
+      </div>
+      <div class="src">Foto: Esri World Imagery · Relieve: SRTM/Copernicus (Terrarium tiles) · Tierra: ISRIC SoilGrids 250 m · Agua del suelo: NASA GLDAS · Lluvia: NASA POWER · Verdor: NASA MODIS NDVI</div>
+    </aside>
+  </main>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+// Daule pilot zone, values from app/data/daule.json
+const LAT = -1.86, LON = -79.98;
+const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const RAIN = [136.25,238.29,240.69,153.65,58.81,15.98,8.05,4.12,6.94,7.25,22.33,44.12];
+const ROOT = [0.65,0.75,0.81,0.79,0.72,0.65,0.61,0.6,0.59,0.59,0.6,0.61];
+const NDVI = [0.544,0.561,0.568,0.585,0.574,0.572,0.571,0.513,0.472,0.499,0.508,0.495];
+const BAL = [0.21,134.08,128.11,39.33,-62.76,-111.31,-141.15,-163.29,-164.47,-166.78,-142.1,-116.99];
+
+const q = new URLSearchParams(location.search);
+const state = { alt: q.get("alt") || "A", month: +(q.get("m") ?? 1), ex: 5, mode: q.get("mode") || "foto", lifted: true, water: true };
+
+// ---------- tiles ----------
+const ESRI = (z, x, y) => `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+const DEM = (z, x, y) => `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${x}/${y}.png`;
+const mpp = (z) => 156543.03392 * Math.cos(LAT * Math.PI / 180) / 2 ** z;
+function toPx(z) { const n = 256 * 2 ** z, s = Math.sin(LAT * Math.PI / 180); return [(LON + 180) / 360 * n, (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n]; }
+async function bitmap(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return createImageBitmap(await r.blob()); }
+
+// Draws the tiles covering sizeM metres around the lot at native resolution, returns canvas + crop box.
+async function mosaic(z, sizeM, urlFn) {
+  const [cx, cy] = toPx(z), half = sizeM / 2 / mpp(z);
+  const x0 = cx - half, y0 = cy - half, x1 = cx + half, y1 = cy + half;
+  const tx0 = Math.floor(x0 / 256), ty0 = Math.floor(y0 / 256), tx1 = Math.floor(x1 / 256), ty1 = Math.floor(y1 / 256);
+  const c = document.createElement("canvas"); c.width = (tx1 - tx0 + 1) * 256; c.height = (ty1 - ty0 + 1) * 256;
+  const g = c.getContext("2d"), jobs = [];
+  for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++)
+    jobs.push(bitmap(urlFn(z, tx, ty)).then((b) => g.drawImage(b, (tx - tx0) * 256, (ty - ty0) * 256)));
+  await Promise.all(jobs);
+  return { c, sx: x0 - tx0 * 256, sy: y0 - ty0 * 256, sw: x1 - x0 };
+}
+
+async function loadArea(sizeM, zImg, outPx) {
+  const photo = document.createElement("canvas"); photo.width = photo.height = outPx;
+  const pg = photo.getContext("2d");
+  try {
+    const m = await mosaic(zImg, sizeM, ESRI);
+    pg.drawImage(m.c, m.sx, m.sy, m.sw, m.sw, 0, 0, outPx, outPx);
+  } catch {
+    const img = new Image(); img.src = "../../app/img/sat/daule.jpg"; await img.decode();
+    const s = Math.min(img.width, img.height); pg.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, outPx, outPx);
+  }
+  let dem = () => 0, dmin = 0, dmax = 0;
+  try {
+    const m = await mosaic(14, sizeM, DEM);
+    const d = m.c.getContext("2d").getImageData(0, 0, m.c.width, m.c.height).data, W = m.c.width, Hh = m.c.height;
+    // Terrarium has spike pixels (water, towers); clip to the 3rd-97th percentile and smooth twice.
+    let z = new Float32Array(W * Hh); for (let i = 0; i < W * Hh; i++) z[i] = d[i * 4] * 256 + d[i * 4 + 1] + d[i * 4 + 2] / 256 - 32768;
+    const sorted = Float32Array.from(z).sort(), lo = sorted[Math.floor(sorted.length * .03)], hi = sorted[Math.floor(sorted.length * .97)];
+    z = z.map((v) => Math.min(hi, Math.max(lo, v)));
+    for (let pass = 0; pass < 2; pass++) { const o = new Float32Array(z.length); for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) { let s = 0, n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < W && yy < Hh) { s += z[yy * W + xx]; n++; } } o[y * W + x] = s / n; } z = o; }
+    const h = (x, y) => z[Math.min(Hh - 1, Math.max(0, y)) * W + Math.min(W - 1, Math.max(0, x))];
+    dem = (u, v) => { const x = m.sx + u * m.sw - .5, y = m.sy + v * m.sw - .5, X = Math.floor(x), Y = Math.floor(y), fx = x - X, fy = y - Y;
+      return h(X, Y) * (1 - fx) * (1 - fy) + h(X + 1, Y) * fx * (1 - fy) + h(X, Y + 1) * (1 - fx) * fy + h(X + 1, Y + 1) * fx * fy; };
+    dmin = Infinity; dmax = -Infinity;
+    for (let i = 0; i <= 40; i++) for (let j = 0; j <= 40; j++) { const z = dem(i / 40, j / 40); dmin = Math.min(dmin, z); dmax = Math.max(dmax, z); }
+  } catch { /* flat fallback */ }
+
+  // Plant height estimated from how green each pixel is (excess-green index), smoothed.
+  const VR = 256, sm = document.createElement("canvas"); sm.width = sm.height = VR;
+  const sg = sm.getContext("2d"); sg.drawImage(photo, 0, 0, VR, VR);
+  const px = sg.getImageData(0, 0, VR, VR).data, raw = new Float32Array(VR * VR), veg = new Float32Array(VR * VR);
+  for (let i = 0; i < VR * VR; i++) { const r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2]; const exg = (2 * g - r - b) / (r + g + b + 1); raw[i] = Math.min(1, Math.max(0, (exg - .03) / .22)) * (1 - Math.max(0, (r + g + b) / 3 - 150) / 105); }
+  for (let y = 0; y < VR; y++) for (let x = 0; x < VR; x++) { let s = 0, n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < VR && yy < VR) { s += raw[yy * VR + xx]; n++; } } veg[y * VR + x] = s / n; }
+  const vegAt = (u, v) => { const x = Math.min(VR - 1, Math.max(0, u * (VR - 1))), y = Math.min(VR - 1, Math.max(0, v * (VR - 1))), X = Math.floor(x), Y = Math.floor(y), X1 = Math.min(VR - 1, X + 1), Y1 = Math.min(VR - 1, Y + 1), fx = x - X, fy = y - Y;
+    return veg[Y * VR + X] * (1 - fx) * (1 - fy) + veg[Y * VR + X1] * fx * (1 - fy) + veg[Y1 * VR + X] * (1 - fx) * fy + veg[Y1 * VR + X1] * fx * fy; };
+
+  // False-colour "verdor" map: straw for bare soil, moss to lime for vigorous plants.
+  const green = document.createElement("canvas"); green.width = green.height = outPx;
+  const gg = green.getContext("2d"), pd = pg.getImageData(0, 0, outPx, outPx), od = gg.createImageData(outPx, outPx);
+  const ramp = [[0, [120, 96, 66]], [.25, [205, 191, 140]], [.5, [174, 201, 174]], [.75, [84, 150, 92]], [1, [200, 255, 158]]];
+  for (let i = 0; i < outPx * outPx; i++) {
+    const r = pd.data[i * 4], g = pd.data[i * 4 + 1], b = pd.data[i * 4 + 2];
+    const t = Math.min(1, Math.max(0, ((2 * g - r - b) / (r + g + b + 1) + .05) / .3));
+    let k = 0; while (k < ramp.length - 2 && t > ramp[k + 1][0]) k++;
+    const [a0, c0] = ramp[k], [a1, c1] = ramp[k + 1], f = (t - a0) / (a1 - a0), lum = .55 + .45 * (r + g + b) / 765;
+    for (let c = 0; c < 3; c++) od.data[i * 4 + c] = (c0[c] + (c1[c] - c0[c]) * f) * lum;
+    od.data[i * 4 + 3] = 255;
+  }
+  gg.putImageData(od, 0, 0);
+  return { photo, green, dem, dmin, dmax, vegAt };
+}
+
+// ---------- soil wall texture ----------
+function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+function soilCanvas(waterT) {
+  const W = 512, H = 512, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d"), r = rng(7);
+  const band = (t0, t1, a, b) => { const gr = g.createLinearGradient(0, t0 * H, 0, t1 * H); gr.addColorStop(0, a); gr.addColorStop(1, b); g.fillStyle = gr; g.fillRect(0, t0 * H, W, (t1 - t0) * H + 1); };
+  band(0, .12, "#2A1D14", "#3A2919");   // dark, organic-rich top
+  band(.12, .3, "#4E3622", "#6A4A2E");  // rest of the measured 0-30 cm
+  band(.3, 1, "#7A5636", "#94714A");    // subsoil, estimated
+  for (let i = 0; i < 1400; i++) { const y = r() * H, x = r() * W; g.fillStyle = `rgba(${y < H * .3 ? "20,12,6" : "60,40,22"},${.25 + r() * .3})`; g.beginPath(); g.ellipse(x, y, 1 + r() * 2.5, .8 + r() * 1.6, r() * 3, 0, 7); g.fill(); }
+  for (let i = 0; i < 26; i++) { const x = r() * W, y = H * (.4 + r() * .55); g.fillStyle = "rgba(40,28,18,.55)"; g.beginPath(); g.ellipse(x, y, 4 + r() * 6, 3 + r() * 4, 0, 0, 7); g.fill(); }
+  g.strokeStyle = "rgba(226,208,170,.55)"; g.lineCap = "round";
+  for (let i = 0; i < 34; i++) { let x = r() * W, y = 0; const len = H * (.12 + r() * .26); g.lineWidth = 1 + r() * 1.4; g.beginPath(); g.moveTo(x, y); while (y < len) { y += 6; x += (r() - .5) * 5; g.lineTo(x, y); } g.stroke(); }
+  if (waterT < 1) {
+    const gr = g.createLinearGradient(0, waterT * H, 0, H); gr.addColorStop(0, "rgba(74,127,193,.35)"); gr.addColorStop(.25, "rgba(74,127,193,.62)"); gr.addColorStop(1, "rgba(52,96,160,.8)");
+    g.fillStyle = gr; g.fillRect(0, waterT * H, W, H);
+    g.strokeStyle = "#9CC4F0"; g.lineWidth = 3; g.beginPath();
+    for (let x = 0; x <= W; x += 8) g.lineTo(x, waterT * H + Math.sin(x / 26) * 3); g.stroke();
+  }
+  g.setLineDash([10, 8]); g.strokeStyle = "rgba(243,240,229,.55)"; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(0, .3 * H); g.lineTo(W, .3 * H); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; return t;
+}
+const waterT = (m) => 1 - Math.min(1, Math.max(0, (ROOT[m] - .55) / .3)) * .72;
+
+// ---------- three ----------
+const canvas = document.getElementById("gl"), stage = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 1, 20000);
+const controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.maxPolarAngle = 1.32; controls.enablePan = false;
+scene.add(new THREE.HemisphereLight(0xf3f0e5, 0x2a1d14, 1.15));
+const sun = new THREE.DirectionalLight(0xfff4e0, 1.9); sun.position.set(-600, 900, 300); scene.add(sun);
+let root = new THREE.Group(); scene.add(root);
+
+// Surface + soil walls for the uv window [u0,u1]x[v0,v1] of an area S metres wide.
+function block({ area, S, u0, u1, v0, v1, R, depth, hf, map, soil, skip }) {
+  const g = new THREE.Group(), w = (u1 - u0) * S;
+  const pos = [], uv = [], idx = [];
+  for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
+    const u = u0 + (u1 - u0) * i / (R - 1), v = v0 + (v1 - v0) * j / (R - 1);
+    pos.push((u - .5) * S, hf(u, v), (v - .5) * S); uv.push(u, 1 - v);
+  }
+  for (let j = 0; j < R - 1; j++) for (let i = 0; i < R - 1; i++) {
+    if (skip && skip(i, j)) continue;
+    const a = j * R + i, b = a + 1, c = a + R, d = c + 1; idx.push(a, c, b, b, c, d);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  g.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map, roughness: .95 })));
+  const edges = [[[u0, v1], [u1, v1]], [[u1, v1], [u1, v0]], [[u1, v0], [u0, v0]], [[u0, v0], [u0, v1]]];
+  for (const e of edges) g.add(wall(e, S, R, depth, hf, soil));
+  const bottom = new THREE.Mesh(new THREE.PlaneGeometry(w, w), new THREE.MeshBasicMaterial({ color: 0x1a120c }));
+  bottom.rotation.x = Math.PI / 2; bottom.position.set(((u0 + u1) / 2 - .5) * S, -depth, ((v0 + v1) / 2 - .5) * S); g.add(bottom);
+  return g;
+}
+function wall([[ua, va], [ub, vb]], S, R, depth, hf, soil, inward = false) {
+  const pos = [], uv = [], idx = [], len = Math.hypot(ub - ua, vb - va) * S;
+  for (let i = 0; i < R; i++) {
+    const f = i / (R - 1), u = ua + (ub - ua) * f, v = va + (vb - va) * f, x = (u - .5) * S, z = (v - .5) * S;
+    pos.push(x, hf(u, v), z, x, -depth, z); uv.push(f * len / depth, 1, f * len / depth, 0);
+  }
+  for (let i = 0; i < R - 1; i++) { const a = i * 2, b = a + 1, c = a + 2, d = a + 3; inward ? idx.push(a, c, b, b, c, d) : idx.push(a, b, c, b, d, c); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: soil, roughness: 1, side: THREE.DoubleSide }));
+}
+function shadow(size, y) {
+  const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d");
+  const gr = g.createRadialGradient(64, 64, 10, 64, 64, 64); gr.addColorStop(0, "rgba(0,0,0,.55)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.y = y; return m;
+}
+
+// ---------- labels ----------
+const labelsEl = document.getElementById("labels");
+let labels = [];
+function setLabels(list) {
+  labelsEl.innerHTML = ""; labels = list.map((l) => {
+    const el = document.createElement("div"); el.className = "lbl " + (l.cls || "");
+    el.innerHTML = `<span class="dot"></span><span class="ln"></span><span class="tx"><small>${l.k}</small><b>${l.v}</b></span>`;
+    labelsEl.appendChild(el); return { ...l, el };
+  });
+}
+const tmp = new THREE.Vector3();
+function placeLabels() {
+  const W = stage.clientWidth, H = stage.clientHeight;
+  for (const l of labels) {
+    tmp.copy(typeof l.pos === "function" ? l.pos() : l.pos); if (l.group) tmp.add(l.group.position);
+    tmp.project(camera);
+    const x = (tmp.x + 1) / 2 * W, y = (1 - tmp.y) / 2 * H;
+    const left = l.cls?.includes("left");
+    l.el.style.transform = `translate(${left ? x - l.el.offsetWidth : x}px, ${y - l.el.offsetHeight / 2}px)`;
+    l.el.style.opacity = tmp.z < 1 ? 1 : 0;
+  }
+}
+
+// ---------- the two alternatives ----------
+let areaA, areaB, built = {};
+const tex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+const growth = (m) => .35 + Math.max(0, (NDVI[m] - .46) / .13);
+
+function buildA() {
+  const S = 360, D = 120, a = areaA;
+  const hf = (u, v) => (a.dem(u, v) - a.dmin) * state.ex + a.vegAt(u, v) * 4 * growth(state.month);
+  const g = block({ S, u0: 0, u1: 1, v0: 0, v1: 1, R: 180, depth: D, hf, map: built.photoA ??= tex(a.photo), soil: soilCanvas(waterT(state.month)) });
+  g.add(shadow(S * 2.1, -D - 2));
+  const wt = waterT(state.month), wy = (h) => h - wt * (h + D);
+  const hEdge = hf(1, .5);
+  setLabels([
+    { k: "Foto satelital real", v: "Así se ve su lote desde arriba", pos: new THREE.Vector3(-S * .25, hf(.25, .2) + 6, -S * .3), cls: "lime" },
+    { k: "0–12 cm · tierra con más vida", v: "Carbono 33,7 g/kg", pos: new THREE.Vector3(S / 2, hEdge - .06 * (hEdge + D), S * .1) },
+    { k: "Lo medido llega a 30 cm", v: "Franco arcillo arenosa", pos: new THREE.Vector3(S / 2, hEdge - .3 * (hEdge + D), S * .25) },
+    { k: "Agua del suelo · " + MONTHS[state.month].toLowerCase(), v: waterWord(state.month), pos: new THREE.Vector3(S / 2, Math.min(wy(hEdge), hEdge - .5 * (hEdge + D)) - 10, S * .38), cls: "water" },
+    { k: "Raíces", v: "hasta ~35 cm", pos: new THREE.Vector3(-S * .1, hf(.4, 1) - .2 * (hf(.4, 1) + D), S / 2), cls: "left" },
+  ]);
+  return g;
+}
+
+function buildB() {
+  const S = 1600, R = 241, cells = R - 1, a = areaB;
+  const half = 17, i0 = cells / 2 - half, i1 = cells / 2 + half; // 34 cells ≈ 227 m ≈ 5.2 ha
+  const lu0 = i0 / cells, lu1 = i1 / cells;
+  const hf = (u, v) => (a.dem(u, v) - a.dmin) * state.ex + a.vegAt(u, v) * 9 * growth(state.month);
+  const map = state.mode === "verdor" ? (built.greenB ??= tex(a.green)) : (built.photoB ??= tex(a.photo));
+  const soil = soilCanvas(waterT(state.month));
+  const g = new THREE.Group();
+  const field = block({ S, u0: 0, u1: 1, v0: 0, v1: 1, R, depth: 40, hf, map, soil, skip: (i, j) => i >= i0 && i < i1 && j >= i0 && j < i1 });
+  g.add(field);
+  // pit left behind where the lot was lifted out
+  const pd = 70;
+  for (const e of [[[lu0, lu0], [lu1, lu0]], [[lu1, lu0], [lu1, lu1]], [[lu1, lu1], [lu0, lu1]], [[lu0, lu1], [lu0, lu0]]]) g.add(wall(e, S, 60, pd, hf, soil, true));
+  const pit = new THREE.Mesh(new THREE.PlaneGeometry((lu1 - lu0) * S, (lu1 - lu0) * S), new THREE.MeshBasicMaterial({ color: 0x140d08 }));
+  pit.rotation.x = -Math.PI / 2; pit.position.y = -pd + .5; g.add(pit);
+  const lot = block({ S, u0: lu0, u1: lu1, v0: lu0, v1: lu1, R: 136, depth: pd, hf, map, soil });
+  lot.position.y = state.lifted ? 110 : 0; lot.userData.target = lot.position.y; g.add(lot);
+  const pts = [[lu0, lu0], [lu1, lu0], [lu1, lu1], [lu0, lu1]].flatMap(([u, v], k, arr) => {
+    const [u2, v2] = arr[(k + 1) % 4]; return Array.from({ length: 40 }, (_, s) => { const f = s / 40, uu = u + (u2 - u) * f, vv = v + (v2 - v) * f; return new THREE.Vector3((uu - .5) * S, hf(uu, vv) + 2, (vv - .5) * S); });
+  });
+  lot.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0), 320, 2.6, 6, true), new THREE.MeshBasicMaterial({ color: 0xc8ff9e })));
+  // water fills the lowest ground first; in wet months it covers more of it
+  const frac = Math.max(0, Math.min(.24, BAL[state.month] / 134 * .22 + .02 * (RAIN[state.month] > 100)));
+  const hs = []; for (let i = 0; i <= 60; i++) for (let j = 0; j <= 60; j++) hs.push((a.dem(i / 60, j / 60) - a.dmin) * state.ex);
+  hs.sort((x, y) => x - y);
+  if (state.water && frac > 0) {
+    const level = hs[Math.floor(frac * (hs.length - 1))] + .4;
+    const w = new THREE.Mesh(new THREE.PlaneGeometry(S, S), new THREE.MeshStandardMaterial({ color: 0x4a7fc1, transparent: true, opacity: .62, roughness: .2, metalness: .1 }));
+    w.rotation.x = -Math.PI / 2; w.position.y = level; g.add(w);
+  }
+  g.add(shadow(S * 1.9, -42));
+  const lc = (lu0 + lu1) / 2, top = hf(lu1, lc);
+  setLabels([
+    { k: "Su lote · 5,2 ha", v: "sacado de la foto satelital", pos: () => new THREE.Vector3((lu1 - .5) * S, top + lot.position.y + 10, 0), cls: "lime" },
+    { k: "Corte de su tierra", v: "Franco arcillo arenosa", pos: () => new THREE.Vector3((lu1 - .5) * S, lot.position.y - pd * .35, (lu1 - .5) * S * .4) },
+    { k: frac > 0 ? "Bajos que se encharcan" : "Agua en los bajos", v: frac > 0 ? `~${Math.round(frac * 100)} % del terreno en ${MONTHS[state.month].toLowerCase()}` : "No se encharca este mes", pos: new THREE.Vector3(-S * .3, (hs[Math.floor(.1 * hs.length)] || 0) + 2, S * .28), cls: "water left" },
+  ]);
+  built.lot = lot;
+  return g;
+}
+const waterWord = (m) => ROOT[m] >= .75 ? "Bien mojada" : ROOT[m] >= .65 ? "Húmeda" : "Se está secando";
+
+const cams = { A: [[620, 420, 660], [0, -45, 0]], B: [[1650, 1150, 1750], [0, -20, 0]] };
+function rebuild(resetCam) {
+  root.traverse((o) => { o.geometry?.dispose(); if (o.material && o.material.map && !Object.values(built).includes(o.material.map)) o.material.map.dispose(); o.material?.dispose?.(); });
+  scene.remove(root); root = state.alt === "A" ? buildA() : buildB(); scene.add(root);
+  if (resetCam) { camera.position.set(...cams[state.alt][0]); controls.target.set(...cams[state.alt][1]); controls.update(); }
+}
+
+// ---------- UI ----------
+const IDEA = {
+  A: ["Un pedazo de su lote, cortado como torta", "Arriba la foto satelital real con su relieve; a los lados, la tierra por dentro. El agua sube y baja según el mes."],
+  B: ["El lote sale del mapa", "Todo el campo de alrededor en relieve, y su lote levantado para verle la tierra por debajo. El agua llena primero los bajos."],
+};
+const CHIPS = [
+  ["Foto de un solo día", "La foto satelital es de una sola fecha. Las plantas crecen o bajan según el verdor promedio de cada mes, no según una foto nueva."],
+  ["Altura de plantas estimada", "La altura de lo verde sale del color de la foto, no de una medición. Sirve para ver dónde hay monte o cultivo, no cuánto mide."],
+  ["Tierra de 30 cm para abajo", "Solo hay datos de los primeros 30 cm. Lo de más abajo es un dibujo para ubicarse; un análisis de suelo lo confirma."],
+  ["Agua de la zona", "El agua del suelo es un promedio de unos 25 km. Su lote puede estar más seco o más mojado."],
+];
+function renderUI() {
+  document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.alt === state.alt));
+  const [h, p] = IDEA[state.alt]; document.getElementById("idea").innerHTML = `<div class="eyebrow">Alternativa ${state.alt}</div><h2>${h}</h2><p>${p}</p>`;
+  const m = state.month;
+  document.getElementById("hudMonth").textContent = MONTHS[m];
+  document.getElementById("hudStage").textContent = RAIN[m] > 100 ? "Época de lluvia" : RAIN[m] > 30 ? "Cambio de época" : "Época seca";
+  document.getElementById("hudRelief").textContent = state.ex === 1 ? "Relieve real" : `Relieve ×${state.ex}`;
+  document.getElementById("exLbl").textContent = state.ex === 1 ? "real" : `×${state.ex}`;
+  document.querySelectorAll("#months button").forEach((b, i) => b.setAttribute("aria-pressed", i === m));
+  document.getElementById("sRain").innerHTML = `${Math.round(RAIN[m])}<small>mm</small>`;
+  document.getElementById("sRainP").textContent = RAIN[m] > 100 ? "llueve casi todos los días" : RAIN[m] > 30 ? "lluvias sueltas" : "casi nada";
+  document.getElementById("sWater").textContent = waterWord(m);
+  document.getElementById("mWater").style.width = Math.round((ROOT[m] - .5) / .35 * 100) + "%";
+  document.getElementById("sGreen").textContent = NDVI[m].toFixed(2).replace(".", ",");
+  document.getElementById("mGreen").style.width = Math.round((NDVI[m] - .4) / .25 * 100) + "%";
+  const tools = document.getElementById("tools");
+  tools.innerHTML = state.alt === "A" ? "" :
+    `<button class="tool" data-t="foto" aria-pressed="${state.mode === "foto"}">Foto</button>
+     <button class="tool" data-t="verdor" aria-pressed="${state.mode === "verdor"}"><span class="sw" style="background:linear-gradient(90deg,#CDBF8C,#549A5C,#C8FF9E)"></span>Verdor</button>
+     <button class="tool" data-t="water" aria-pressed="${state.water}"><span class="sw" style="background:var(--lluvia)"></span>Agua en los bajos</button>
+     <button class="tool" data-t="lift" aria-pressed="${state.lifted}">Levantar lote</button>`;
+}
+const monthsEl = document.getElementById("months"), maxR = Math.max(...RAIN);
+monthsEl.innerHTML = MONTHS.map((n, i) => `<button aria-label="${n}"><div class="bar"><i style="height:${Math.max(4, RAIN[i] / maxR * 100)}%"></i></div><span>${n[0]}</span></button>`).join("");
+monthsEl.querySelectorAll("button").forEach((b, i) => b.onclick = () => { state.month = i; renderUI(); rebuild(false); });
+document.querySelectorAll(".seg button").forEach((b) => b.onclick = () => { if (state.alt === b.dataset.alt) return; state.alt = b.dataset.alt; renderUI(); rebuild(true); });
+document.getElementById("ex").oninput = (e) => { state.ex = +e.target.value; renderUI(); rebuild(false); };
+document.getElementById("tools").onclick = (e) => {
+  const t = e.target.closest(".tool")?.dataset.t; if (!t) return;
+  if (t === "lift") { state.lifted = !state.lifted; built.lot.userData.target = state.lifted ? 110 : 0; renderUI(); return; }
+  if (t === "water") state.water = !state.water; else state.mode = t;
+  renderUI(); rebuild(false);
+};
+const chipsEl = document.getElementById("chips"), noteEl = document.getElementById("chipNote");
+chipsEl.innerHTML = CHIPS.map(([c], i) => `<button class="chip" data-i="${i}" aria-expanded="false">${c}</button>`).join("");
+chipsEl.onclick = (e) => {
+  const b = e.target.closest(".chip"); if (!b) return; const open = b.getAttribute("aria-expanded") !== "true";
+  chipsEl.querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-expanded", "false"));
+  b.setAttribute("aria-expanded", open); noteEl.hidden = !open; noteEl.textContent = CHIPS[b.dataset.i][1];
+};
+
+function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(stage);
+function loop() {
+  requestAnimationFrame(loop); controls.update();
+  const lot = built.lot; if (state.alt === "B" && lot && Math.abs(lot.position.y - lot.userData.target) > .1) lot.position.y += (lot.userData.target - lot.position.y) * .14;
+  renderer.render(scene, camera); placeLabels();
+}
+
+renderUI();
+[areaA, areaB] = await Promise.all([loadArea(360, 17, 1024), loadArea(1600, 16, 2048)]);
+resize(); rebuild(true); loop();
+document.getElementById("loading").classList.add("done");
+</script>
+</body>
+</html>
