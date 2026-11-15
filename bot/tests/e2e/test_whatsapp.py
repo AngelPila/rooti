@@ -317,7 +317,7 @@ def test_farmer_on_whatsapp(tmp_path):
         last_turn = "\n".join(text_of(m) for m in [r for r in llm.requests if r.get("tools")][-1]["messages"])
         assert "Botones que ya le llegaron hoy" in last_turn and "«Marcar mi lote»" in last_turn, \
             "the turn knows which pages the farmer already has"
-        assert plan_btn["buttonText"] == "Ver mi plan" and plan_btn["url"].endswith("&r=plan")
+        assert plan_btn["buttonText"] == "Ver mi plan" and plan_btn["url"].endswith("&r=resumen")
         page_token = token_of(plan_btn["url"])
         status, html = http("GET", f"{site}/")
         assert status == 200 and 'src="main.js' in html, "the page is the web app itself"

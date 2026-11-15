@@ -229,7 +229,7 @@ def plan_button(farmer_id: str, args: dict) -> dict:
     if not store.saved_plan(farmer_id):
         raise ToolError("Todavía no hay plan: primero guarda la ubicación y los cultivos del lote.")
     return _button(farmer_id, args.get("texto") or "Aquí tiene su plan, con los tres caminos para comparar.",
-                   "Ver mi plan", lambda: calls.page(farmer_id, "plan"))
+                   "Ver mi plan", lambda: calls.page(farmer_id, "resumen"))
 
 
 LOT_PROPS = {
@@ -275,8 +275,8 @@ TOOLS = [
                        "el mapa y elige sus cultivos. Para un agricultor nuevo que todavía no te dio su lote, salvo "
                        "que prefiera escribir.",
          lot_button, {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
-    Tool("boton_plan", "Manda, después de tu respuesta, el botón «Ver mi plan»: los tres caminos lado a lado, el "
-                       "calendario y los años, para elegir uno. Solo si quiere verlo, compararlo o elegir; nunca en "
+    Tool("boton_plan", "Manda, después de tu respuesta, el botón «Ver mi plan»: lo que toca sembrar ahora, la ruta "
+                       "del año y los caminos para elegir uno. Solo si quiere verlo, compararlo o elegir; nunca en "
                        "lugar de explicarle tú.", plan_button,
          {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
 ]
