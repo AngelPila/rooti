@@ -50,7 +50,8 @@ rooti-llamada ── call/ page ── WebRTC (Pipecat) ── Groq Whisper → 
 - **The planner** is the web app's own code (`app/planner.js`, `climate.js`, `terrain.js`), run headless by
   `engine/rooti.mjs`. The first plan for a plot takes up to a minute and a half (three at most), mostly waiting on SoilGrids, and on
   WhatsApp the farmer is told Rooti is checking before that wait. After that it is read from the database until the
-  plot changes, so an answer never waits on NASA. The page and the chat asking for the same new plan compute it once.
+  plot changes, so an answer never waits on NASA. The page and the chat asking for the same new plan compute it once. A plan saved without soil, because
+  SoilGrids did not answer, asks for it again after a day.
 - **Voice.** Speech to text is Groq's Whisper. Rooti's voice is Edge TTS with Vinci's Ecuadorian voice. Hermes
   replies to a voice note with a voice note on its own (`voice.auto_tts`).
 - **Alerts** (`src/rooti_bot/alerts.py`) run without the model, every 30 minutes. They go only to farmers who said

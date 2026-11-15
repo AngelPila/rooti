@@ -4,12 +4,14 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 from contextlib import contextmanager
 
 from rooti_bot import config, store
 
 ENGINE = config.BOT_DIR / "engine" / "rooti.mjs"
-PLAN_FORMAT = 2  # bump when rooti.mjs changes what a plan says, so saved plans are computed again
+SOIL_RETRY_S = 86400  # a plan saved without soil asks SoilGrids again after this long
+PLAN_FORMAT = 3  # bump when a plan's content changes (rooti.mjs, the soil fetch), so saved plans are computed again
 
 
 class EngineError(Exception):
@@ -33,10 +35,15 @@ def run(request: dict, timeout: int = 180) -> dict:
     return out
 
 
+def _reusable(saved, inputs: dict) -> bool:
+    return bool(saved) and saved[0] == inputs and (saved[1].get("soil") is not None
+                                                     or time.time() - saved[2] < SOIL_RETRY_S)
+
+
 def cold(farmer: dict) -> bool:
     """True when the lot's plan is not saved yet, so asking for it means waiting on NASA."""
-    saved = store.saved_plan(farmer["phone"])
-    return not saved or saved[0] != {**store.lot_inputs(farmer), "mode": "auto", "format": PLAN_FORMAT}
+    inputs = {**store.lot_inputs(farmer), "mode": "auto", "format": PLAN_FORMAT}
+    return not _reusable(store.saved_plan(farmer["phone"]), inputs)
 
 
 @contextmanager
@@ -62,7 +69,7 @@ def plan_for(farmer: dict, *, fresh: bool = False, mode: str = "auto") -> dict:
     inputs = {**store.lot_inputs(farmer), "mode": mode, "format": PLAN_FORMAT}
     with _one_at_a_time(farmer["phone"]):
         saved = store.saved_plan(farmer["phone"])
-        if saved and saved[0] == inputs:
+        if _reusable(saved, inputs):
             return saved[1]
         result = run({"cmd": "plan", "lot": store.lot_inputs(farmer), "mode": mode})
         store.save_plan(farmer["phone"], inputs, result)

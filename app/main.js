@@ -1,7 +1,7 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
 import { COPY } from "./copy.js?v=55";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=23";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
