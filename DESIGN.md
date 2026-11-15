@@ -49,6 +49,10 @@ Rules learned from design reviews. Each one comes from a correction the product 
   Why: confirmed choice ("ok lo recomendado"): icons must stay sharp at 16px, recolor with the theme, and a watermark cannot fit on an icon.
   <!-- 2026-11-15 -->
 
+- **"How it works" visuals are drawn live from the real components and data (Esri satellite photo, NASA POWER rain, route blocks, chat), never AI screenshots of the UI.**
+  Why: "se ve feo y aparte las capturas se ven borrosas" (AI raster mockups with tiny upscaled text).
+  <!-- 2026-11-15 -->
+
 ## Motion
 Applied from the `remove-animations`, `choreograph` and `mobile-native` skills at the owner's request ("instala esos y aplicalos").
 - **Nothing fades in on scroll, numbers count only when their value changes, and no loop runs on a persistent element (the loader is the exception).**
