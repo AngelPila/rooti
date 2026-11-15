@@ -5,7 +5,7 @@ import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
-import { createRooti } from "./rooti.js?v=1";
+import { createRooti } from "./rooti.js?v=2";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
