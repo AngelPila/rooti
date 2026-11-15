@@ -1,0 +1,5 @@
+#!/command/with-contenv sh
+# Alerts Rooti sends first (alerts.py), outside the gateway and without the model: a pass every 30 minutes.
+export HOME=/opt/data
+cd /opt/data || exit 1
+exec s6-setuidgid hermes /opt/rooti/bot/.venv/bin/rooti-bot avisos --servicio --cada 1800

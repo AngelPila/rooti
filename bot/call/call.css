@@ -1,0 +1,21 @@
+/* Light only, like Vinci's webviews: it is read outdoors, in the sun (docs/UX_RESEARCH.md: contrast ≥ 7:1, text
+   ≥ 18px, targets ≥ 56px). */
+:root { --ink: #1f2a1f; --soft: #3d4a3d; --bg: #f6f4ec; --green: #1f7a3a; --red: #b3261e; --ease-out: cubic-bezier(.2, .8, .2, 1); }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 480px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); min-height: 100dvh; display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 8px; font-size: 22px; }
+.logo { font-size: 28px; }
+.panel { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 20px; text-align: center; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0; }
+p { margin: 0; color: var(--soft); }
+.mic-help { background: #fff; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.big { min-height: 64px; border: 0; border-radius: 32px; font: 600 22px/1 inherit; color: #fff; cursor: pointer; transition: transform 150ms var(--ease-out); -webkit-tap-highlight-color: transparent; }
+.big:active { transform: scale(.97); }
+.green { background: var(--green); }
+.red { background: var(--red); }
+.status { font-size: 24px; color: var(--ink); min-height: 2.6em; }
+.pulse { width: 140px; height: 140px; margin: 0 auto; border-radius: 50%; background: var(--green); opacity: .25; }
+.pulse.speaking { animation: pulse 900ms var(--ease-out) infinite alternate; opacity: .9; }
+@keyframes pulse { from { transform: scale(.85); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .pulse.speaking { animation: none; } .big { transition: none; } }

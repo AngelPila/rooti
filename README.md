@@ -90,6 +90,7 @@ How the global planner works (`app/climate.js`, `app/planner.js`):
   - Weak numbers are flagged in the app (soybean cost is from ~2015).
   - With 2024–2026 costs, typical rice and maize margins come out **negative** (about −800 and −480 USD/ha), in line with what growers' unions reported. Costs come from press statements and may include land rent.
 - `app/` is a static site: HTML, vanilla JS and **CesiumJS** (Esri World Imagery, OpenStreetMap fallback).
+- `bot/` is Rooti on WhatsApp: farmers ask by text or voice note and get answers from the same planner, plus opt-in alerts and a live voice call. See [`bot/README.md`](bot/README.md).
 - `data-pipeline/` holds the download scripts (NASA POWER, MODIS, SoilGrids, DEM, ONI) and their README with known caveats. `env/Dockerfile` is the reproducible Python environment they run in.
 
 ## Run locally

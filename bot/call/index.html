@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hablar con Rooti</title>
+<link rel="stylesheet" href="static/call.css?v=2">
+</head>
+<body>
+<main>
+  <header>
+    <span class="logo" aria-hidden="true">🌱</span>
+    <b>Rooti</b>
+  </header>
+
+  <section id="start" class="panel">
+    <h1>Hablemos de su lote</h1>
+    <p>Toque el botón verde y hable como en una llamada. Rooti le responde con su voz.</p>
+    <div class="mic-help" aria-hidden="true">
+      <svg viewBox="0 0 120 80" width="160" height="106">
+        <rect x="8" y="10" width="104" height="60" rx="10" fill="#fff" stroke="#1f2a1f" stroke-width="3"/>
+        <rect x="44" y="22" width="14" height="22" rx="7" fill="#1f7a3a"/>
+        <path d="M38 36a13 13 0 0 0 26 0M51 49v8" stroke="#1f7a3a" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <rect x="70" y="50" width="34" height="14" rx="7" fill="#1f7a3a"/>
+        <text x="87" y="60" font-size="9" text-anchor="middle" fill="#fff" font-family="sans-serif">Permitir</text>
+      </svg>
+      <p>Si el teléfono pregunta por el <b>micrófono</b>, toque <b>Permitir</b>. Sin eso, Rooti no le escucha.</p>
+    </div>
+    <button id="call" class="big green">📞 Hablar con Rooti</button>
+  </section>
+
+  <section id="live" class="panel" hidden>
+    <div id="pulse" class="pulse" aria-hidden="true"></div>
+    <p id="status" class="status" role="status">Conectando…</p>
+    <button id="hang" class="big red">Colgar</button>
+  </section>
+
+  <section id="end" class="panel" hidden>
+    <h1 id="end-title">Llamada terminada</h1>
+    <p id="end-text">Si le quedó una duda, escríbale a Rooti por WhatsApp o vuelva a llamar.</p>
+    <button id="again" class="big green">📞 Volver a llamar</button>
+  </section>
+</main>
+<audio id="voice" autoplay playsinline></audio>
+<script src="static/call.js?v=2"></script>
+</body>
+</html>

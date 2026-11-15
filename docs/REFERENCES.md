@@ -36,3 +36,14 @@
 - [IICA, Introduction to Regenerative Agriculture](https://agreg.iica.int/) and [SEED course catalog](https://seed.iica.int/). Free training on soil health, biodiversity, and soil cover.
 - [FAO, Climate-smart soil and land management](https://elearning.fao.org/course/view.php?id=435) and its [Spanish edition](https://elearning.fao.org/course/view.php?id=496&lang=es). Free training on soil, erosion, and water management.
 - [W.carter, Corn in a field by Myrstigen 1](https://commons.wikimedia.org/wiki/File:Corn_in_a_field_by_Myrstigen_1.jpg). Bootcamp header photo, CC BY-SA 4.0.
+
+## WhatsApp agent (`bot/`)
+
+- Rooti's WhatsApp agent is adapted from Vinci, the maintainer's own WhatsApp assistant (bridge patch, plugin patterns, deploy layout, E2E harness).
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent), Nous Research (MIT): the agent runtime, its WhatsApp bridge (Baileys, unofficial client) and its speech-to-text and voice-reply features.
+- [Pipecat](https://github.com/pipecat-ai/pipecat) 1.16 (BSD-2-Clause): the live call pipeline and its SmallWebRTC transport (aiortc).
+- [Silero VAD](https://github.com/snakers4/silero-vad) (MIT): detects when the farmer speaks during a call.
+- [Groq](https://console.groq.com/docs/speech-to-text) Whisper large-v3-turbo: speech to text for voice notes and calls.
+- [edge-tts](https://github.com/rany2/edge-tts) 7.3.1 (LGPL-3.0) with Microsoft Edge's `es-EC-LuisNeural` voice: Rooti's spoken answers.
+- [Open-Meteo Forecast API](https://open-meteo.com/en/docs) (CC BY 4.0): daily rain forecast for heavy-rain alerts. Forecasts are not NASA data.
+- The heavy-rain alert fires at 40 mm in a day. That threshold is a prototype choice, still to be checked against INAMHI's (Instituto Nacional de Meteorología e Hidrología) own warning levels.
