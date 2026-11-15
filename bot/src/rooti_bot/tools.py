@@ -123,7 +123,7 @@ def recommended_plan(farmer_id: str, _args: dict) -> dict:
         r = _plan(_farmer(farmer_id))
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
-    return {k: r.get(k) for k in ("from", "to", "tested_on", "farm", "today", "soil", "limits")}
+    return {k: r.get(k) for k in ("from", "to", "tested_on", "why_these_years", "farm", "today", "soil", "limits")}
 
 
 def when_to_sow(farmer_id: str, args: dict) -> dict:
