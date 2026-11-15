@@ -60,3 +60,8 @@
 - [node-postgres (`pg`)](https://github.com/brianc/node-postgres) 8.13.1, MIT, the Postgres client of the Vecinos API.
 - [Node.js](https://nodejs.org/) 22 and [PostgreSQL](https://www.postgresql.org/) 16 official Docker images (`node:22-alpine`, `postgres:16-alpine`).
 - The example posts in `app/data/vecinos.json` are illustrative, written for the demo; they are labelled "Ejemplo" in the app and are not real farmer reports.
+
+## The plot in 3D (*Su terreno*)
+- Terrain: [Terrain Tiles on AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Mapzen/Tilezen, Terrarium encoding), mostly built from NASA SRTM; read in the browser with CesiumJS `CustomHeightmapTerrainProvider`, not exaggerated.
+- Crop heights: Allen et al. (1998), *FAO Irrigation and Drainage Paper 56*, Table 12, "maximum crop height". Jack bean and velvet bean are estimated. Heights are drawn ×k (shown on screen) so they read against the plot's size.
+- Water left on the plot each month: rain minus ET₀ minus what the plot drains, the same rule the planner uses (NASA POWER monthly rain and ET₀, ~50 km cells).

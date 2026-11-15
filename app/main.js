@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
-import { COPY } from "./copy.js?v=44";
+import { COPY } from "./copy.js?v=49";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -966,6 +966,180 @@ function plotMap(r, f) {
       h("span", {}, tile(lead), h("b", {}, name), `${cropLabel(lead)} · ${fmtArea(pc.share)}`)))),
     h("div", { class: "pm-cap" }, h("b", {}, D.plotMap), h("span", {}, D.plotMapNote)));
 }
+/* ---------- the plot in 3D: real terrain, each crop at its height, the water a month leaves ---------- */
+// Tallest height each crop reaches, m: FAO-56 Table 12 ("maximum crop height"). Jack bean and velvet bean: estimated.
+const CROP_H = { rice: 1, maize: 2, soybean: 0.75, peanut: 0.4, common_bean: 0.4, cowpea: 0.4, sorghum: 1.5, jack_bean: 1, velvet_bean: 0.6, wheat: 1, barley: 1, potato: 0.6, sunflower: 2, chickpea: 0.4, mulch: 0.05, bare: 0 };
+const cssColor = (v) => (v.startsWith("var(") ? getComputedStyle(document.documentElement).getPropertyValue(v.slice(4, -1)).trim() || "#7A8B6F" : v);
+// The plot's corners: the drawn ones, or a rectangle of the plot's real size centred on the pin
+function lotOf(P) {
+  if (P.lot?.length >= 3) return { pts: P.lot, drawn: true };
+  const ha = (P.area || 1) * UNITS[P.unit || "ha"], w = Math.sqrt(ha * 1e4 * 2), R = 6371008.8, k = 180 / Math.PI, { lon, lat } = P.place;
+  const dLat = (w / 4 / R) * k, dLon = (w / 2 / (R * Math.cos(lat / k))) * k;
+  return { pts: [[lon - dLon, lat - dLat], [lon + dLon, lat - dLat], [lon + dLon, lat + dLat], [lon - dLon, lat + dLat]], drawn: false };
+}
+// The part of a polygon between two longitudes (Sutherland–Hodgman against two vertical lines)
+function clipLon(pts, a, b) {
+  const cut = (ps, keep, x) => { const out = []; ps.forEach((p, i) => { const q = ps[(i + 1) % ps.length], pin = keep(p[0]), qin = keep(q[0]); if (pin) out.push(p); if (pin !== qin) { const t = (x - p[0]) / (q[0] - p[0]); out.push([x, p[1] + t * (q[1] - p[1])]); } }); return out; };
+  return cut(cut(pts, (x) => x >= a, a), (x) => x <= b, b);
+}
+// Free elevation tiles (Mapzen Terrarium on AWS Open Data, mostly NASA SRTM), no key. Deeper zooms read inside a level-14 tile.
+function terrariumTerrain(Cz) {
+  const cache = new Map(), Z = 14, S = 33;
+  const tile = (x, y, z) => {
+    const k = `${z}/${x}/${y}`;
+    if (!cache.has(k)) cache.set(k, new Promise((res) => {
+      const img = new Image(); img.crossOrigin = "anonymous";
+      img.onload = () => { const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, 0, 0); res(g.getImageData(0, 0, 256, 256).data); };
+      img.onerror = () => res(null);
+      img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+    }));
+    return cache.get(k);
+  };
+  return new Cz.CustomHeightmapTerrainProvider({ width: S, height: S, tilingScheme: new Cz.WebMercatorTilingScheme(), callback: async (x, y, level) => {
+    const out = new Float32Array(S * S), z = Math.min(level, Z), f = 2 ** (level - z), d = await tile(Math.floor(x / f), Math.floor(y / f), z);
+    if (!d) return out;
+    const span = 256 / f, ox = (x % f) * span, oy = (y % f) * span;
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+      // bilinear between the four nearest pixels, so deep zooms are smooth instead of stepped
+      const u = Math.min(254.999, ox + (i / (S - 1)) * span), v = Math.min(254.999, oy + (j / (S - 1)) * span), u0 = Math.floor(u), v0 = Math.floor(v), fu = u - u0, fv = v - v0;
+      const e = (uu, vv) => { const o = (vv * 256 + uu) * 4; return d[o] * 256 + d[o + 1] + d[o + 2] / 256 - 32768; };
+      out[j * S + i] = (e(u0, v0) * (1 - fu) + e(u0 + 1, v0) * fu) * (1 - fv) + (e(u0, v0 + 1) * (1 - fu) + e(u0 + 1, v0 + 1) * fu) * fv;
+    }
+    return out;
+  } });
+}
+let viewer3d = null;
+function plot3d(r, f, extras = []) {
+  const P = state.plan, N = r.period.length, T = C().p3, D = C().ds, { pts, drawn } = lotOf(P);
+  const plots = plotsOf(f).map((x) => ({ ...x, runs: runsOf(x.pc, N) }));
+  // Water a month leaves on the plot: rain minus what evaporates minus what the plot drains (same rule as the planner)
+  const drainCap = 60 + 440 * (1 - (r.site?.wl ?? 0.25)) ** 1.5;
+  const nm = normals(r.clim), normal = { months: r.period.map((p) => nm[p.m - 1]) };
+  const surplusOf = (s) => s.months.map((c) => Math.max(0, (c?.rain ?? 0) - (c?.et0 ?? 0) - drainCap));
+  const wettest = [...r.samples].sort((a, b) => surplusOf(b).reduce((x, y) => x + y, 0) - surplusOf(a).reduce((x, y) => x + y, 0))[0];
+  const yrs = [["normal", T.normal, normal]];
+  if (wettest && surplusOf(wettest).some((v) => v > 0)) yrs.push(["wet", wettest.base != null ? T.wet(`${wettest.base}-${String(wettest.base + 1).slice(2)}`) : T.thisYear, wettest]);
+  let mode = yrs[yrs.length - 1][0], t = 0;
+  { const s = surplusOf(yrs.find((y) => y[0] === mode)[2]); const mx = Math.max(...s); if (mx > 0) t = s.indexOf(mx); }
+  const span = lotSpanM(pts), k = Math.max(1, Math.round((span * 0.05) / 2));
+  const lo = pts.map((p) => p[0]), xa = Math.min(...lo), xb = Math.max(...lo), tot = plots.reduce((a, x) => a + x.pc.share, 0) || 1;
+  let acc = xa;
+  const parts = plots.map((x) => { const w = ((xb - xa) * x.pc.share) / tot, poly = clipLon(pts, acc, acc + w); acc += w; return { ...x, poly }; });
+  const at = (x) => {
+    const ru = x.runs.find((u) => t >= u.t0 && t < u.t1) || { c: "bare", t0: t, t1: t + 1 }, c = ru.c;
+    const H = CROP_H[c] ?? 1, len = ru.t1 - ru.t0, grow = c === "bare" || c === "mulch" ? 1 : Math.min(1, (t - ru.t0 + 1) / Math.max(1, Math.ceil(len * 0.6)));
+    const m = yrs.find((y) => y[0] === mode)[2].months[t], ft = { low: 0, medium: 0.5, high: 1 }[String(DATA.crops[c]?.flood_tolerance || "").toLowerCase()] ?? 0.5;
+    const sev = c === "rice" || c === "bare" || c === "mulch" ? 0 : Math.max(0, Math.min(1, ((m?.rain ?? 0) - (m?.et0 ?? 0) - drainCap) / 200)) * (1 - 0.7 * ft);
+    return { c, h: H * grow, drown: sev > 0.2 };
+  };
+  // What the page knew as text, drawn on the scene: terrain chips, the month's weather, the soil under the plot
+  const tr = r.terrain, sd = describeSoil(tr?.soil), c0 = C(), slope = tr?.slopePct, wl = r.site?.wl ?? 0.25;
+  // Relief only where the plot is not flat: SRTM is radar, a few metres off every 30-90 m and it counts roofs and trees,
+  // so on flat ground it only draws waves (a runway looked like a rollercoaster). Flat ground is drawn flat.
+  const relief = slope != null && slope >= 2, gz = relief ? tr?.elevation ?? 0 : 0;
+  const nm12 = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([kk]) => +kk.slice(5) === i + 1 && +kk.slice(0, 4) >= 1991 && +kk.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (q) => vs.reduce((a, v) => a + (v[q] ?? 0), 0) / Math.max(1, vs.length); return { rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
+  const chip = (ic, lab, val) => h("div", { class: "p3-chip" }, icon(ic), h("span", {}, h("small", {}, lab), h("b", {}, val)));
+  const terrainChips = h("div", { class: "p3-hud" },
+    tr?.elevation != null ? chip("i-pin", c0.elevation, `${tr.elevation} m`) : null,
+    slope != null ? chip("i-plot", c0.slope, `${slope < 2 ? c0.flat : slope < 8 ? c0.gentle : c0.steep} · ${num(slope)} %`) : null,
+    sd ? chip("i-soil", c0.soilType, c0.texture[sd.texture]) : null,
+    sd ? chip("i-sprout", c0.acidity, `${c0.phWord[sd.phClass]} · pH ${num(sd.ph)}`) : null,
+    chip("i-water", c0.waterlog, wl >= 0.6 ? c0.high : wl >= 0.35 ? c0.medium : c0.low));
+  const box = h("div", { class: "p3-map" }), keys = h("div", { class: "pm-keys" }), wx = h("div", { class: "p3-wx" }), monthLab = h("b", {}), yrBox = h("div", { class: "seg p3-yrs" });
+  const chart = h("div", { class: "p3-chart", tabindex: "0", role: "slider", "aria-label": T.month, "aria-valuemin": "0", "aria-valuemax": String(N - 1) });
+  const pickAt = (e) => { const b = chart.getBoundingClientRect(); t = Math.max(0, Math.min(N - 1, Math.floor(((e.clientX - b.left) / b.width) * N))); paint(); };
+  chart.addEventListener("pointerdown", (e) => { chart.setPointerCapture(e.pointerId); pickAt(e); });
+  chart.addEventListener("pointermove", (e) => { if (chart.hasPointerCapture(e.pointerId)) pickAt(e); });
+  chart.addEventListener("keydown", (e) => { const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0; if (d) { e.preventDefault(); t = Math.max(0, Math.min(N - 1, t + d)); paint(); } });
+  const unk = h("details", { class: "p3-unk" }, h("summary", {}, icon("i-info"), T.unkChip), h("p", {}, T.waterNote));
+  const sec = h("section", { class: "p3" },
+    h("div", { class: "p3-stage" }, box, keys, wx, drawn ? null : h("div", { class: "p3-note" }, icon("i-info"), T.example)),
+    terrainChips,
+    h("div", { class: "p3-ctl" },
+      h("div", { class: "row between wrap", style: { gap: "8px" } }, h("span", { class: "p3-month" }, icon("i-month"), monthLab), yrBox),
+      chart,
+      h("div", { class: "p3-legend" }, h("span", {}, h("i", { class: "sw rain" }), T.lgRain), h("span", {}, h("i", { class: "sw drain" }), T.lgDrain), h("span", {}, h("i", { class: "sw water" }), T.lgWater)),
+      h("div", { class: "row wrap", style: { gap: "8px", alignItems: "center" } }, h("span", { class: "small" }, T.scale(k)), unk),
+      extras.length ? h("div", { class: "p3-more" }, ...extras.map(([ic, lab, make]) => h("button", { class: "chip", onclick: () => sheet(make()) }, icon(ic), lab))) : null));
+  const W = 40, Hc = 110;
+  const drawChart = (sample) => {
+    const ms = sample.months, thr = ms.map((c) => (c?.et0 ?? 0) + drainCap), rain = ms.map((c) => c?.rain ?? 0);
+    const mx = Math.max(...rain, ...thr) * 1.08 || 1, X = (i) => (i + 0.5) * W, Y = (v) => Hc - (v / mx) * (Hc - 6);
+    const line = (vs) => vs.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    const area = `${line(rain)}L${X(N - 1)},${Hc}L${X(0)},${Hc}Z`;
+    const top = rain.map((v, i) => Math.max(v, thr[i])), water = `${line(top)}${thr.map((v, i) => `L${X(N - 1 - i).toFixed(1)},${Y(thr[N - 1 - i]).toFixed(1)}`).join("")}Z`;
+    const g = svg("svg", { viewBox: `0 0 ${N * W} ${Hc}`, preserveAspectRatio: "none", "aria-hidden": "true" },
+      svg("rect", { x: t * W, y: 0, width: W, height: Hc, class: "cur" }),
+      svg("path", { d: area, class: "rain-a" }), svg("path", { d: water, class: "water-a" }),
+      svg("path", { d: line(thr), class: "drain-l" }), svg("path", { d: line(rain), class: "rain-l" }));
+    const labs = h("div", { class: "p3-months", style: { gridTemplateColumns: `repeat(${N}, 1fr)` } }, ...r.period.map((p, i) => h("span", { class: i === t ? "on" : "" }, N <= 24 || i % 3 === 0 ? mon(p.m) : "")));
+    put(chart, g, labs);
+    chart.setAttribute("aria-valuenow", String(t)); chart.setAttribute("aria-valuetext", `${cap(monL(r.period[t].m))} ${r.period[t].y}`);
+  };
+  let ents = [];
+  const paint = () => {
+    const sample = yrs.find((y) => y[0] === mode)[2], p = r.period[t], s = surplusOf(sample)[t], now = parts.map((x) => ({ ...x, ...at(x) })), m = sample.months[t] || {}, n = nm12[p.m - 1];
+    monthLab.textContent = `${cap(monL(p.m))} ${p.y}`;
+    put(yrBox, ...yrs.map(([key, lab]) => h("button", { "aria-pressed": String(mode === key), onclick: () => { mode = key; paint(); } }, lab)));
+    put(keys, ...now.map((x) => h("div", { class: `pm-key${x.drown ? " drown" : ""}`, style: { "--c": look(x.c).color } },
+      h("span", {}, tile(x.c), h("b", {}, x.name), `${cropLabel(x.c)}${x.h >= 0.1 ? ` · ${num(x.h)} m` : ""}`, x.drown ? h("em", {}, T.drown) : null))));
+    const tmin = m.tmin ?? n.tmin, tmax = m.tmax ?? n.tmax;
+    put(wx, h("div", { class: "p3-chip" }, icon("i-rain"), h("span", {}, h("small", {}, T.rainMonth), h("b", {}, `${Math.round(m.rain ?? n.rain)} mm`), mode !== "normal" ? h("small", {}, T.normalWas(Math.round(n.rain))) : null)),
+      h("div", { class: "p3-chip" }, icon("i-sun"), h("span", {}, h("small", {}, T.temp), h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`))),
+      h("div", { class: `p3-chip ${s > 0 ? "wet" : "dry"}` }, icon(s > 0 ? "i-waves" : "i-drop-off"), h("span", {}, h("small", {}, s > 0 ? T.stays : T.drains), h("b", {}, s > 0 ? `${Math.round(s)} mm` : T.noWater))));
+    drawChart(sample);
+    const v = viewer3d, Cz = window.Cesium;
+    if (!v || v.isDestroyed() || !Cz) return;
+    ents.forEach((e) => v.entities.remove(e)); ents = [];
+    const rel = Cz.HeightReference.RELATIVE_TO_GROUND, flat = (ps) => Cz.Cartesian3.fromDegreesArray(ps.flat()), z0 = gz;
+    // The soil under the plot: the top 60 cm the roots use, coloured by texture, drawn at the same scale as the crops
+    if (sd) {
+      const soilCol = { clay: "#7A4A32", clay_loam: "#8B5E3C", loam: "#9C7448", sandy_loam: "#B88E5A", sand: "#CDAA72" }[sd.texture];
+      ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: -0.6 * k, heightReference: rel, extrudedHeight: 0, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString(soilCol).withAlpha(0.95) } }));
+      const front = [lotCenter(pts)[0], Math.min(...pts.map((q) => q[1]))];
+      ents.push(v.entities.add({ position: Cz.Cartesian3.fromDegrees(front[0], front[1], z0 - 0.3 * k), label: { text: `${c0.texture[sd.texture]} · ${T.holdsShort(sd.awc)}`, font: "500 13px Geist, sans-serif", fillColor: Cz.Color.fromCssColorString("#F3F0E5"), showBackground: true, backgroundColor: Cz.Color.fromCssColorString(soilCol).withAlpha(0.92), backgroundPadding: new Cz.Cartesian2(10, 6), pixelOffset: new Cz.Cartesian2(0, 18), disableDepthTestDistance: Number.POSITIVE_INFINITY } }));
+    }
+    for (const x of now) {
+      if (x.poly.length < 3) continue;
+      const col = Cz.Color.fromCssColorString(cssColor(look(x.c).color));
+      ents.push(v.entities.add({ polygon: x.h * k >= 0.3
+        ? { hierarchy: flat(x.poly), height: 0, heightReference: rel, extrudedHeight: x.h * k, extrudedHeightReference: rel, material: col.withAlpha(x.drown ? 0.55 : 0.92), outline: false }
+        : { hierarchy: flat(x.poly), height: 0, heightReference: rel, extrudedHeight: 0.15 * k, extrudedHeightReference: rel, material: col.withAlpha(0.9) } }));
+    }
+    if (s > 0) ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: 0, heightReference: rel, extrudedHeight: Math.min(1.5, s / 1000) * k, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString("#2E6FD0").withAlpha(0.42) } }));
+    ents.push(v.entities.add({ polyline: { positions: Cz.Cartesian3.fromDegreesArrayHeights([...pts, pts[0]].flatMap((q) => [q[0], q[1], z0 + 0.5])), width: 3, material: Cz.Color.fromCssColorString("#C8FF9E") } }));
+    [0, 200, 600, 1200, 2000, 3500, 6000].forEach((ms) => setTimeout(() => v.isDestroyed() || v.scene.requestRender(), ms));
+  };
+  paint();
+  // The 3D view loads after the page; without WebGL or Cesium the flat satellite map stays
+  setTimeout(async () => {
+    let Cz;
+    try { Cz = await loadCesium(); } catch { sec.replaceWith(plotMap(r, f)); return; }
+    if (!box.isConnected) return;
+    if (viewer3d && !viewer3d.isDestroyed()) viewer3d.destroy();
+    try {
+      viewer3d = new Cz.Viewer(box, { baseLayer: false, baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false, infoBox: false, selectionIndicator: false, requestRenderMode: false, targetFrameRate: 30, ...(relief ? { terrainProvider: terrariumTerrain(Cz) } : {}) });
+    } catch { sec.replaceWith(plotMap(r, f)); return; }
+    const v = viewer3d;
+    // Blocks sit on the ground; without this, the coarse terrain pokes through them as steps
+    v.scene.globe.depthTestAgainstTerrain = false;
+    v.scene.skyAtmosphere.show = true;
+    // requestRenderMode only repaints on input; repaint as imagery tiles arrive and while entity geometry is built
+    v.scene.globe.tileLoadProgressEvent.addEventListener(() => v.isDestroyed() || v.scene.requestRender());
+    try { v.imageryLayers.addImageryProvider(await Cz.ArcGisMapServerImageryProvider.fromUrl(ESRI)); } catch { /* no imagery: terrain only */ }
+    if (v.isDestroyed()) return;
+    paint();
+    v.resize();
+    // Fit the plot (and the soil under it) whatever the box's shape: Cesium's 60° covers the longer side, so a wide box sees little height
+    const fr = v.camera.frustum, fy = fr.fovy || 0.6, fovy = Math.min(fy, 2 * Math.atan(Math.tan(fy / 2) * (fr.aspectRatio || 1))), pitch = Cz.Math.toRadians(-30);
+    const [cx, cy] = lotCenter(pts), target = Cz.Cartesian3.fromDegrees(cx, cy, gz - 0.3 * k), range = Math.max(180, (span * 0.62) / Math.sin(fovy / 2));
+    const aim = (hd) => { v.camera.lookAt(target, new Cz.HeadingPitchRange(Cz.Math.toRadians(hd), pitch, range)); v.scene.requestRender(); };
+    // One slow turn on arrival (none if the phone asks for less motion), then the farmer turns it by dragging
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) aim(20);
+    else { const t0 = performance.now(), go1 = (now) => { if (v.isDestroyed()) return; const q = Math.min(1, (now - t0) / 2600), e = 1 - (1 - q) ** 3; aim(-50 + 70 * e); if (q < 1) requestAnimationFrame(go1); }; requestAnimationFrame(go1); }
+  }, 0);
+  return sec;
+}
 function viewTerreno() {
   return withResults(async (r) => {
     const picked = (await chosen(r)).f;
@@ -980,30 +1154,29 @@ function viewTerreno() {
     const mx = Math.max(...months.map((x) => Math.max(x.rain, x.et0)), 1);
     const last = r.clim.last, lm = r.clim.months[last], lmNormal = normalRain(r.clim, +last.slice(5));
     const noaa = DATA.outlook?.official?.noaa, erfen = DATA.outlook?.official?.erfen;
-    put($("#view"), h("div", { class: "res terreno" },
-      resHead(P),
-      plotMap(r, picked),
-      h("div", { class: "col-left" },
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.yourPlot),
-          row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
-          row(c.slope, slopeW, slope != null ? `${num(slope)} %` : null),
-          row(c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null),
-          row(c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null),
-          row(c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null),
-          row(c.waterlog, wlW, wlWhy),
-          h("div", { class: "q", style: { marginTop: "4px" } }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); syncLot(); render(); })),
-          h("p", { class: "small" }, d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain))),
-      h("div", { class: "col-right" },
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.climate),
-          h("div", { class: "kpis" }, h("div", {}, h("b", {}, `${Math.round(annual).toLocaleString(state.lang)} mm`), h("small", {}, c.rainYear)), h("div", {}, h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`), h("small", {}, c.tempRange)), h("div", {}, h("b", {}, String(dry.length)), h("small", {}, c.dryMonths))),
-          h("div", { class: "clim-bars" }, ...months.map((x) => h("div", { class: "cb" }, h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1])))),
-          h("div", { class: "legend" }, h("span", {}, h("i", { class: "sw", style: { background: "var(--rain)" } }), c.lgRain), h("span", {}, h("i", { class: "sw", style: { background: "#C7CCD4" } }), c.lgNeed)),
-          h("p", { class: "small" }, wet.length ? c.wetMonths(andList(wet)) : "", " ", dry.length ? c.dryList(andList(dry)) : "")),
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.thisYear),
-          lm ? row(`${cap(S().monthsLong[+last.slice(5) - 1])} ${last.slice(0, 4)}`, `${Math.round(lm.rain)} mm`, c.vsNormal(Math.round(lmNormal))) : null,
-          noaa ? h("p", {}, c.ninoNow(noaa.chance_pct), h("br"), h("small", { class: "small" }, `NOAA · ${noaa.issued}`)) : null,
-          erfen && COAST(P.place) ? h("p", { class: "small" }, `ERFEN (${erfen.issued}): ${es() ? erfen.es : erfen.en}`) : null),
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r))))));
+    const card = (title, ...kids) => h("section", { class: "card sheet-card" }, h("h2", { class: "card-h" }, title), ...kids);
+    const extras = [
+      ["i-plot", c.yourPlot, () => card(c.yourPlot,
+        row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
+        row(c.slope, slopeW, slope != null ? `${num(slope)} %` : null),
+        row(c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null),
+        row(c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null),
+        row(c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null),
+        row(c.waterlog, wlW, wlWhy),
+        h("div", { class: "q", style: { marginTop: "4px" } }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { $("#sheet").close(); setPlan({ ...P }); memo.clear(); syncLot(); render(); })),
+        h("p", { class: "small" }, d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain))],
+      ["i-rain", c.climate, () => card(c.climate,
+        h("div", { class: "kpis" }, h("div", {}, h("b", {}, `${Math.round(annual).toLocaleString(state.lang)} mm`), h("small", {}, c.rainYear)), h("div", {}, h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`), h("small", {}, c.tempRange)), h("div", {}, h("b", {}, String(dry.length)), h("small", {}, c.dryMonths))),
+        h("div", { class: "clim-bars" }, ...months.map((x) => h("div", { class: "cb" }, h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1])))),
+        h("div", { class: "legend" }, h("span", {}, h("i", { class: "sw", style: { background: "var(--rain)" } }), c.lgRain), h("span", {}, h("i", { class: "sw", style: { background: "#C7CCD4" } }), c.lgNeed)),
+        h("p", { class: "small" }, wet.length ? c.wetMonths(andList(wet)) : "", " ", dry.length ? c.dryList(andList(dry)) : ""))],
+      ["i-nino", c.thisYear, () => card(c.thisYear,
+        lm ? row(`${cap(S().monthsLong[+last.slice(5) - 1])} ${last.slice(0, 4)}`, `${Math.round(lm.rain)} mm`, c.vsNormal(Math.round(lmNormal))) : null,
+        noaa ? h("p", {}, c.ninoNow(noaa.chance_pct), h("br"), h("small", { class: "small" }, `NOAA · ${noaa.issued}`)) : null,
+        erfen && COAST(P.place) ? h("p", { class: "small" }, `ERFEN (${erfen.issued}): ${es() ? erfen.es : erfen.en}`) : null)],
+      ["i-bulb", c.tipsTitle, () => card(c.tipsTitle, tipList(tipsFor(r)))],
+    ];
+    put($("#view"), h("div", { class: "res terreno full" }, resHead(P), plot3d(r, picked, extras)));
   });
 }
 
@@ -1131,9 +1304,12 @@ function viewComparar() {
         h("h2", { class: "display phone-only", style: { fontSize: "22px" } }, c.cmpTitle),
         // Swaps only the calendar so the pressed button keeps keyboard focus.
         h("div", { class: "seg cmp-seg" }, ...[["rec", recName], ["mine", c.mine]].map(([k, l]) => h("button", { "aria-pressed": String((state.cmpView || "rec") === k), onclick: (e) => {
+          const seg = e.currentTarget.parentElement, from = activeRect(seg, '[aria-pressed="true"]'), d = k === "rec" ? -1 : 1;
           state.cmpView = k;
-          for (const bt of e.currentTarget.parentElement.children) bt.setAttribute("aria-pressed", String(bt === e.currentTarget));
+          for (const bt of seg.querySelectorAll("button")) bt.setAttribute("aria-pressed", String(bt === e.currentTarget));
+          slidePill(seg, from, '[aria-pressed="true"]');
           put($("#cmpCal"), k === "rec" ? calCard(recName, rec) : calCard(c.mine, mine));
+          if (MOTION()) $("#cmpCal").animate([{ opacity: 0, transform: `translateX(${d * 12}px)` }, { opacity: 1, transform: "none" }], { duration: 200, easing: EASE_OUT });
         } }, l))),
         h("div", { id: "cmpCal" }, (state.cmpView || "rec") === "rec" ? calCard(recName, rec) : calCard(c.mine, mine)),
         h("section", { class: "card cmp-bars" }, h("div", { class: "cmp-key" }, h("span", {}, h("i", { class: "a" }), recName), h("span", {}, h("i", { class: "b" }), c.mine)),
@@ -1396,8 +1572,28 @@ function route() {
   if (r === "aviso" && !(link.alert && state.plan)) return { r: state.plan ? "plan" : "planear" };
   return { r: ["", "planear", "bootcamp", "aviso", ...RESULTS].includes(r) ? r : "", arg };
 }
+const TAB_ORDER = ["plan", "terreno", "probar", "comparar", "vecinos"];
+const tabIx = (r) => TAB_ORDER.indexOf(r === "pasado" ? "plan" : r);
+const EASE_OUT = "cubic-bezier(.16, 1, .3, 1)";
+const activeRect = (box, sel) => box?.querySelector(sel)?.getBoundingClientRect();
+// The active background travels from the previous choice instead of jumping; navs are rebuilt on every route.
+function slidePill(nav, from, sel = '[aria-current="page"]') {
+  const to = nav?.querySelector(sel);
+  if (!from || !to || !MOTION()) return;
+  const n = nav.getBoundingClientRect(), b = to.getBoundingClientRect();
+  if (Math.abs(from.left - b.left) < 1) return;
+  const ghost = h("span", { class: "tab-ghost", "aria-hidden": "true", style: { left: `${b.left - n.left}px`, top: `${b.top - n.top}px`, width: `${b.width}px`, height: `${b.height}px` } });
+  nav.prepend(ghost);
+  to.classList.add("sliding", "dim");
+  // The label turns active halfway, when the pill is under it, so it never sits light-on-light
+  setTimeout(() => to.classList.remove("dim"), 140);
+  ghost.animate([{ transform: `translateX(${from.left - b.left}px)`, width: `${from.width}px` }, { transform: "none", width: `${b.width}px` }], { duration: 320, easing: EASE_OUT })
+    // The ghost leaves only after the tab's own background has faded back in under it
+    .finished.then(() => { to.classList.remove("sliding"); setTimeout(() => ghost.remove(), 200); });
+}
 function renderChrome(r) {
   const c = C(), P = state.plan, isRes = RESULTS.includes(r);
+  const fromTop = activeRect($("#topbar .tabs"), '[aria-current="page"]'), fromBottom = activeRect($("#bottom-nav"), '[aria-current="page"]');
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
@@ -1408,14 +1604,32 @@ function renderChrome(r) {
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null,
       linked() && hasWhatsApp() ? h("a", { class: "round", href: waUrl(), "aria-label": c.wa.back, title: c.wa.back }, icon("i-chat")) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, icon(ic), l)));
+  slidePill($("#topbar .tabs"), fromTop);
+  slidePill($("#bottom-nav"), fromBottom);
   if (r !== "planear") put($("#map-overlay"));
+}
+let shownRoute = null;
+// Between tabs the new screen enters from the side of the tab that was pressed; the year-by-year view rises from the plan.
+function enterView(prev, r) {
+  if (MOTION() && (prev === "planear" || prev === "") && r === "plan") return revealPlan();
+  if (!MOTION() || prev === r || !RESULTS.includes(prev) || !RESULTS.includes(r) || tabIx(prev) < 0 || tabIx(r) < 0) return;
+  const d = Math.sign(tabIx(r) - tabIx(prev)), v = $("#view");
+  v.getAnimations().forEach((a) => a.cancel());
+  v.animate([{ opacity: 0, transform: d ? `translateX(${d * 28}px)` : "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 280, easing: EASE_OUT });
+}
+// Arriving at a new plan is rare and is what the farmer came for: its parts come in one after another.
+function revealPlan() {
+  const parts = document.querySelectorAll("#view .res-head, #view .nino-note, #view .pv-a, #view .pv-right, #view .pv-b, #view .pv-cards .strat, #view .pv-foot, #view .res.pv > .hint, #view .res.pv > .card");
+  parts.forEach((el, i) => el.animate([{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 480, delay: Math.min(i, 8) * 55, easing: EASE_OUT, fill: "backwards" }));
 }
 async function render() {
   const { r, arg } = route();
+  const prev = shownRoute;
+  shownRoute = r;
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
   const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
-  try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
+  try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
   document.documentElement.classList.toggle("motion", MOTION());
