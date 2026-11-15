@@ -1677,11 +1677,11 @@ const rooti = createRooti({
 
 /* ================= router ================= */
 function route() {
-  const [r = "", arg] = location.hash.replace(/^#\/?/, "").split("/");
+  const [r = "", arg, courseId, lessonNumber] = location.hash.replace(/^#\/?/, "").split("/");
   if (RESULTS.includes(r) && !state.plan) return { r: "planear", arg: state.linkError && state.draft.place && dateErr(state.draft) ? "2" : undefined };
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
   if (r === "aviso" && !(link.alert && state.plan)) return { r: state.plan ? "plan" : "planear" };
-  return { r: ["", "planear", "bootcamp", "aviso", ...RESULTS].includes(r) ? r : "", arg };
+  return { r: ["", "planear", "bootcamp", "aviso", ...RESULTS].includes(r) ? r : "", arg, courseId, lessonNumber };
 }
 const TAB_ORDER = ["plan", "terreno", "probar", "comparar", "vecinos"];
 const tabIx = (r) => TAB_ORDER.indexOf(r === "pasado" ? "plan" : r);
@@ -1734,13 +1734,13 @@ function revealPlan() {
   parts.forEach((el, i) => el.animate([{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 480, delay: Math.min(i, 8) * 55, easing: EASE_OUT, fill: "backwards" }));
 }
 async function render() {
-  const { r, arg } = route();
+  const { r, arg, courseId, lessonNumber } = route();
   const prev = shownRoute;
   shownRoute = r;
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
   rooti.route(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: () => viewBootcamp(arg, courseId, lessonNumber), plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
   try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
