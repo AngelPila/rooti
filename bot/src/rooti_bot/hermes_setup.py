@@ -110,7 +110,8 @@ def managed_config(home: Path, bot: str) -> dict:
 
 def run() -> int:
     home = hermes_home()
-    bot = shutil.which("rooti-bot") or str(Path(sys.prefix) / "bin" / "rooti-bot")
+    own = Path(sys.prefix) / "bin" / "rooti-bot"  # the venv's own, not the image's as-hermes wrapper
+    bot = str(own) if own.exists() else shutil.which("rooti-bot") or str(own)
     config_file = home / "config.yaml"
     current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
     merged = _merge(copy.deepcopy(current if isinstance(current, dict) else {}), managed_config(home, bot))

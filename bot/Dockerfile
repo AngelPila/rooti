@@ -26,6 +26,7 @@ RUN python3 -m venv /tmp/uv && /tmp/uv/bin/pip install --no-cache-dir --disable-
     /tmp/uv/bin/uv pip install --no-cache --python /opt/hermes/.venv/bin/python edge-tts==7.3.1 && \
     rm -rf /tmp/uv && \
     install -m 0755 /opt/rooti/bot/deploy/cont-init.sh /etc/cont-init.d/019-rooti && \
+    install -m 0755 /opt/rooti/bot/deploy/as-hermes.sh /usr/local/bin/rooti-bot && \
     for svc in rooti-avisos rooti-llamada; do \
       cp -r /opt/rooti/bot/deploy/s6/$svc /etc/s6-overlay/s6-rc.d/$svc && \
       touch /etc/s6-overlay/s6-rc.d/user/contents.d/$svc; \
