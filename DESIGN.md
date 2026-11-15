@@ -67,7 +67,12 @@ Rules learned from design reviews. Each one comes from a correction the product 
 ## Motion
 Applied from the `remove-animations`, `choreograph` and `mobile-native` skills at the owner's request ("instala esos y aplicalos").
 - **Nothing fades in on scroll, numbers count only when their value changes, and no loop runs on a persistent element (the loader is the exception).**
-- **UI transitions stay under 300ms (`--t-fast` 150ms, `--t-base` 250ms); only drawings that explain something (the rain curve, the hero lines) take longer, once.**
+- **UI transitions stay under 300ms (`--t-fast` 150ms, `--t-base` 250ms). Moving between places may take longer, once: a new page rises as a sheet with round top corners (~600ms), a tab's blocks cascade in from the side of the tab pressed (~400ms + 45ms each), and drawings that explain something (the rain curve, the hero lines) draw in.**
+  Why: "agreguemos animaciones al entrar a secciones… algo que se vea bacán" (overstory.com as reference).
+  <!-- 2026-11-15 -->
+- **A wait shows what is really happening: the 3D plot loader builds a block of land and ticks off each real step (photo, relief, 3D).**
+  Why: "al momento de la tierra algo mejor para la espera".
+  <!-- 2026-11-15 -->
 - **The hero's lines carry four weather words (Lluvia, Sol, Suelo, El Niño) into the headline and three crops out of it. The left side draws once on load; on a computer a short scroll (60svh) sends a dot down each line and draws the crops, and runs backwards with it. One or two words per chip, no dataset names: "Cómo funciona" already explains the data.**
   Why: the first version (dataset names, hub, four plans, 140svh) "no se entiende"; the owner asked for short words, a few seconds, little scroll, on the hero.
   <!-- 2026-11-15 -->

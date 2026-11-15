@@ -209,19 +209,34 @@ def test_a_long_chat_cut_inside_a_turn_still_gets_an_answer(app_url):
     assert "diciembre" in out["message"]["content"]
 
 
-def test_rooti_reads_its_answer_aloud_in_its_whatsapp_voice(app_url, browser, request):
+# Records when each audio element starts sounding and from where, since Rooti's player is not in the page
+HEAR = """window.heard = [];
+const play = HTMLMediaElement.prototype.play;
+HTMLMediaElement.prototype.play = function () { this.addEventListener("playing", () => window.heard.push({ src: this.src, at: performance.now() }), { once: true }); return play.call(this); };"""
+
+
+def test_rooti_answer_sounds_at_once_in_its_whatsapp_voice(app_url, browser, request):
     if request.node.callspec.params["app_url"] == "node":
         pytest.skip("the Node server has no voice of its own; there the browser speaks")
     page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True)
+    page.add_init_script(HEAR)
     open_example(page, app_url)
     page.locator(".rt-fab").click()
-    page.locator(".rt-cmp input").fill("¿Por qué este plan?")
-    page.keyboard.press("Enter")
-    page.locator(".rt-more").click()
-    with page.expect_response("**/api/rooti/say", timeout=30_000) as said:
-        page.locator(".rt-bot .rt-say").last.click()
+    # The voice is fetched as soon as the answer shows, before anyone asks to hear it
+    with page.expect_response(lambda r: "/api/rooti/say?" in r.url, timeout=30_000) as said:
+        page.locator(".rt-cmp input").fill("¿Por qué este plan?")
+        page.keyboard.press("Enter")
     assert said.value.status == 200 and said.value.headers["content-type"] == "audio/mpeg"
     assert len(said.value.body()) > 5000
+    page.locator(".rt-more").click()
+    page.wait_for_timeout(300)
+    asked = []
+    page.on("request", lambda r: asked.append(r.url) if "/api/rooti/say" in r.url else None)
+    clicked = page.evaluate("performance.now()")
+    page.locator(".rt-bot .rt-say").last.click()
+    page.wait_for_function("window.heard.some((h) => h.src.startsWith('blob:'))", timeout=5_000)
+    first = page.evaluate("window.heard.find((h) => h.src.startsWith('blob:'))")
+    assert first["at"] - clicked < 500 and not asked
 
 
 def test_computer_panel_sits_beside_the_page(app_url, browser):

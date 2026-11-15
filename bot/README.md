@@ -63,7 +63,7 @@ rooti-llamada ── call/ page ── WebRTC (Pipecat) ── Groq Whisper → 
   follows.
 - **Rooti in the website** (`src/rooti_bot/web_agent.py`): the avatar on every page of the app talks to `/api/rooti`
   on this same address, with the same model and persona; the prompt and its page tools are `hermes/rooti/WEB.md` and
-  `web-tools.json`. `/api/rooti/say` reads its answers aloud with the WhatsApp voice (Edge TTS). See the main README.
+  `web-tools.json`. `/api/rooti/say` reads its answers aloud with the WhatsApp voice (Edge TTS), streamed and cached; the page fetches each answer's audio as soon as it shows. See the main README.
 - **The pages** (`src/rooti_bot/web.py`): the buttons open the web app itself, served at the root next to the call
   page, signed in as that farmer by the same kind of signed link. There is one lot, in `rooti.db`: what the farmer
   marks on the map, Rooti knows in the chat and confirms there; the plan they pick on the page reaches the chat and
