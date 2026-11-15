@@ -147,7 +147,7 @@ export function createRooti(app) {
         const { message } = await r.json();
         // After acting, the model sometimes ends with no words; the final round forces them
         if (!message.tool_calls?.length && !message.content?.trim() && !final) { round = 3; continue; }
-        if (!message.tool_calls?.length || final) { reply = message.content; S.history.push({ role: "assistant", content: reply }); break; }
+        if (!message.tool_calls?.length || final) { reply = message.content?.trim() || ""; S.history.push({ role: "assistant", content: reply }); break; }
         S.history.push(message);
         for (const call of message.tool_calls) {
           let args = {}; try { args = JSON.parse(call.function.arguments || "{}"); } catch { /* the model sent bad JSON: the tool reports it */ }
