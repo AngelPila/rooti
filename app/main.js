@@ -3,7 +3,7 @@ import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
 import { COPY } from "./copy.js?v=44";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
-import { createBootcamp } from "./bootcamp.js?v=4";
+import { createBootcamp } from "./bootcamp.js?v=13";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -177,13 +177,13 @@ const errorCard = (msg, retry) => h("div", { class: "errorcard", role: "alert" }
 const stepIcon = (ic) => icon(ic === "calendar" ? "i-calendar" : ic === "map-pin" ? "i-pin" : "i-sprout");
 const bootcamp = createBootcamp({ h, put, icon, tile: (id) => tile(id), store, speak });
 
-function viewBootcamp(section) {
+function viewBootcamp(section, courseId, lessonNumber) {
   const crops = CROP_ORDER.filter((id) => DATA.crops[id]).map((id) => ({
     id,
     name: cap(cropName(id)),
     months: cropMonths(DATA.crops[id]),
   }));
-  put($("#view"), bootcamp(state.lang, crops, C().cta, () => { state.draft = null; }, section));
+  put($("#view"), bootcamp(state.lang, crops, C().cta, () => { state.draft = null; }, section, courseId, lessonNumber));
 }
 
 /* ================= landing ================= */
@@ -235,7 +235,7 @@ function viewLanding() {
     h("section", { class: "l-sheet" }, h("div", { class: "l-wrap" },
       h("div", { class: "l-how", id: "how" }, ...D.how.map(([ic, t, d]) => h("div", { class: "how" }, h("span", { class: "tile-i dark" }, icon(ic)), h("b", {}, t), h("p", {}, d)))),
       h("h2", { class: "h2" }, D.examplesTitle),
-      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}.jpg?v=2`, alt: "", loading: "lazy" }),
+      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.png`, alt: "", loading: "lazy" }),
         h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),
       h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "tile-i" }, icon("i-agronomist")), h("span", {}, h("b", {}, D.bootTitle), h("p", {}, D.bootLead)), icon("i-arrow-r")),
       h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
@@ -1309,10 +1309,10 @@ async function viewVecinos(arg) {
 
 /* ================= router ================= */
 function route() {
-  const [r = "", arg] = location.hash.replace(/^#\/?/, "").split("/");
+  const [r = "", arg, subArg, thirdArg] = location.hash.replace(/^#\/?/, "").split("/");
   if (RESULTS.includes(r) && !state.plan) return { r: "planear" };
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
-  return { r: ["", "planear", "bootcamp", ...RESULTS].includes(r) ? r : "", arg };
+  return { r: ["", "planear", "bootcamp", ...RESULTS].includes(r) ? r : "", arg, subArg, thirdArg };
 }
 function renderChrome(r) {
   const c = C(), P = state.plan, isRes = RESULTS.includes(r);
@@ -1328,12 +1328,12 @@ function renderChrome(r) {
   if (r !== "planear") put($("#map-overlay"));
 }
 async function render() {
-  const { r, arg } = route();
+  const { r, arg, subArg, thirdArg } = route();
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
   const views = {
     "": viewLanding,
-    bootcamp: () => viewBootcamp(arg),
+    bootcamp: () => viewBootcamp(arg, subArg, thirdArg),
     planear: () => viewPlanear(arg), plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar,
     pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg),
   };
