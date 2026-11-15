@@ -57,6 +57,13 @@ Rules learned from design reviews. Each one comes from a correction the product 
   Why: "se ve feo y aparte las capturas se ven borrosas"; "ocupa mucho"; "los assets son horribles... usa las imagenes" (reference: startuparena.gg "How it works").
   <!-- 2026-11-15 -->
 
+- **Between the cover and "How it works" goes the farmer's question ("¿Qué siembra después del arroz?") with one plain line under it, never a row of stat numbers, and no hazard as specific as El Niño in it.**
+  Why: "en vez de los numeros no se no me agrada"; "del niño es como muy específico".
+  <!-- 2026-11-15 -->
+- **The bootcamp is a paper card in the same family as the steps: AI illustration (with the HTML AI mark), kicker, title, one line and a sentence-case button. Not a dark forest banner.**
+  Why: "esto se ve terrible" (the old forest bar); "ok esto cool" on the card.
+  <!-- 2026-11-15 -->
+
 ## Motion
 Applied from the `remove-animations`, `choreograph` and `mobile-native` skills at the owner's request ("instala esos y aplicalos").
 - **Nothing fades in on scroll, numbers count only when their value changes, and no loop runs on a persistent element (the loader is the exception).**

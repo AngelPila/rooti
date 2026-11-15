@@ -338,7 +338,7 @@ function viewLanding() {
         h("div", { class: "hero-actions" }, h("button", { class: "btn lime big", onclick: start }, c.cta, dot()), h("button", { class: "btn glass big", onclick: () => openDemo("daule") }, D.example, dot()))),
       h("p", { class: "hero-source mono" }, D.source))),
     h("section", { class: "l-sheet" }, h("div", { class: "l-wrap" },
-      h("div", { class: "l-stats" }, ...D.howStats.map(([n, t]) => h("div", { class: "l-stat" }, h("b", {}, n), h("span", {}, t)))),
+      h("div", { class: "l-ask" }, h("h2", { class: "h2" }, D.askTitle), h("p", {}, D.askLead)),
       h("h2", { class: "h2 l-how-head", id: "how" }, D.howTitle),
       h("div", { class: "l-how" }, ...D.how.map(([art, t, d, alt], i) => h("article", { class: "how" },
         h("div", { class: "how-img" }, h("img", { src: `img/how/${art}.webp`, alt, loading: "lazy" }), h("span", { class: "ai-mark mono" }, D.aiMark)),
@@ -346,8 +346,8 @@ function viewLanding() {
       h("h2", { class: "h2" }, D.examplesTitle),
       h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.png`, alt: "", loading: "lazy" }),
         h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),
-      h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "tile-i" }, icon("i-agronomist")), h("span", {}, h("b", {}, D.bootTitle), h("p", {}, D.bootLead)), icon("i-arrow-r")),
-      h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
+      h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "how-img" }, h("img", { src: "img/how/bootcamp.webp", alt: "", loading: "lazy" }), h("span", { class: "ai-mark mono" }, D.aiMark)),
+        h("span", { class: "txt" }, h("span", { class: "mono" }, D.bootKicker), h("b", {}, D.bootTitle), h("p", {}, D.bootLead), h("span", { class: "btn dark" }, D.bootCta, icon("i-arrow-r")))))),
     h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"))))));
   tilt(document.querySelectorAll(".how"));
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => mountHero(art, title));
