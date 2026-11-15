@@ -38,8 +38,11 @@ SCRIPT = {
     "riego": (call("try_idea", idea="irrigation"), "Con riego le iría mejor. Si le convence, toque el botón."),
     # A real model sometimes acts and then says nothing until it is told it may not call tools
     "por qué": (call("show_on_page", screen="plan", mark="route"), "Este orden deja la tierra cubierta casi todo el año."),
+    "deshaz": (call("undo_change"), "Listo, veci, lo dejé como estaba."),
+    "cuándo": (None, "Siembre la soya en diciembre, veci."),
 }
-SILENT_UNTIL_FINAL = {"por qué"}
+# A real model sometimes says nothing at all until it is told it may not call tools
+SILENT_UNTIL_FINAL = {"por qué", "cuándo"}
 
 
 class FakeModel(BaseHTTPRequestHandler):
@@ -50,7 +53,7 @@ class FakeModel(BaseHTTPRequestHandler):
         FakeModel.requests.append(body)
         last, user = body["messages"][-1], next(m for m in reversed(body["messages"]) if m["role"] == "user")
         key = next(k for k in SCRIPT if k in user["content"].lower())
-        if last["role"] != "tool":
+        if last["role"] != "tool" and SCRIPT[key][0]:
             message = SCRIPT[key][0]
         elif key in SILENT_UNTIL_FINAL and body.get("tool_choice") != "none":
             message = {"role": "assistant", "content": ""}
@@ -169,6 +172,41 @@ def test_rooti_always_answers_in_words_after_acting(app_url, browser):
     page.keyboard.press("Enter")
     expect(page.locator(".rt-peek")).to_contain_text("tierra cubierta", timeout=15_000)
     assert FakeModel.requests[-1]["tool_choice"] == "none"
+
+
+def test_farmer_asks_rooti_to_undo_and_it_does(app_url, browser):
+    page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True)
+    open_example(page, app_url)
+    page.locator(".rt-fab").click()
+    page.locator(".rt-cmp input").fill("Me equivoqué, son tres cuadras")
+    page.keyboard.press("Enter")
+    expect(page.locator(".rt-peek .rt-chg")).to_contain_text("3 cuadras", timeout=15_000)
+    page.locator(".rt-more").click()
+    page.locator(".rt-cmp input").fill("deshaz eso porfa")
+    page.keyboard.press("Enter")
+    expect(page.locator(".rt-peek")).to_contain_text("lo dejé como estaba", timeout=15_000)
+    assert page.locator(".rt-chg.undone").count() == 1
+    assert saved_plan(page)["area"] == 5.2 and saved_plan(page)["unit"] == "ha"
+
+
+def test_rooti_answers_even_when_the_model_first_says_nothing(app_url, browser):
+    page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True)
+    open_example(page, app_url)
+    page.locator(".rt-fab").click()
+    page.locator(".rt-cmp input").fill("¿Cuándo siembro?")
+    page.keyboard.press("Enter")
+    expect(page.locator(".rt-bot").last).to_contain_text("en diciembre", timeout=15_000)
+
+
+def test_a_long_chat_cut_inside_a_turn_still_gets_an_answer(app_url):
+    turn = [{"role": "user", "content": "¿Cuándo siembro?"}, call("show_on_page", screen="plan"),
+            {"role": "tool", "tool_call_id": "x", "content": "{}"}, {"role": "assistant", "content": "Ahí lo tiene."}]
+    history = turn * 11 + [{"role": "user", "content": "¿Cuándo siembro?"}]
+    history[-3]["tool_call_id"] = history[-4]["tool_calls"][0]["id"]
+    req = urllib.request.Request(app_url + "/api/rooti", data=json.dumps({"lang": "es", "context": "", "messages": history[2:]}).encode(),
+                                 headers={"content-type": "application/json"})
+    out = json.loads(urllib.request.urlopen(req, timeout=15).read())
+    assert "diciembre" in out["message"]["content"]
 
 
 def test_rooti_reads_its_answer_aloud_in_its_whatsapp_voice(app_url, browser, request):

@@ -129,6 +129,18 @@
   {
     "type": "function",
     "function": {
+      "name": "undo_change",
+      "description": "Undo the latest change to the plot or the plan (one you made, or an idea the farmer applied), when the farmer asks to undo it or go back. Call it again to undo the one before.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "offer_whatsapp",
       "description": "Show a button to keep going with Rooti on WhatsApp, where Rooti sends heavy-rain and time-to-sow alerts for this plot. Only when the farmer wants alerts or to continue on WhatsApp.",
       "parameters": {
