@@ -2,6 +2,6 @@
 *
 !server/
 !app/
-!bot/hermes/rooti/SOUL.md
+!bot/hermes/rooti/
 server/node_modules
 app/data/raw

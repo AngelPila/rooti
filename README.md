@@ -129,8 +129,11 @@ functions the buttons use:
 Rooti never publishes on Vecinos or sends anything on its own. On the phone, after it changes the page, the sheet
 drops to a bar so the page stays in view; on a computer the panel sits beside the page.
 
-It needs the Node server with `DEEPSEEK_API_KEY` (the same model as the WhatsApp bot) and, for voice, `GROQ_API_KEY`
-(Whisper). Without the key the avatar does not show. The persona is `bot/hermes/rooti/SOUL.md`, shared with WhatsApp.
+Both servers that serve the app answer it with the same API (`/api/rooti`): the bot's container, which serves the
+public website (`bot/src/rooti_bot/web_agent.py`), and the Node server (`server/rooti.mjs`). Each needs
+`DEEPSEEK_API_KEY` (the same model as the WhatsApp bot) and, for voice, `GROQ_API_KEY` (Whisper); without the model key
+the avatar does not show. The prompt and tools are `bot/hermes/rooti/WEB.md` and `web-tools.json`, next to the persona
+(`SOUL.md`) both channels share.
 
 ```bash
 cd server && pnpm install && DEEPSEEK_API_KEY=... GROQ_API_KEY=... node server.mjs   # open http://localhost:3000

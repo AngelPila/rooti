@@ -1,6 +1,7 @@
-"""Rooti inside the web app, end to end: the real server and app in a headless browser, a fake model that answers
-with the tool calls a real one would make. Run from server/: python -m pytest tests/e2e (needs node, pnpm install,
-pytest and playwright with its Chromium)."""
+"""Rooti inside the web app, end to end: the real app in a headless browser, served by each of its two servers (the
+Node one in server/ and the bot's, which serves the public website), against a fake model that answers with the tool
+calls a real one would make. Run from server/: python -m pytest tests/e2e (needs node, pnpm install, pytest and
+playwright with its Chromium; the bot's case needs ROOTI_BOT_PYTHON, the bot's call environment, or is skipped)."""
 import json
 import os
 import socket
@@ -15,6 +16,8 @@ import pytest
 from playwright.sync_api import expect, sync_playwright
 
 SERVER = Path(__file__).resolve().parents[2]
+BOT = SERVER.parent / "bot"
+BOT_PYTHON = os.environ.get("ROOTI_BOT_PYTHON", str(BOT / ".venv-call" / "bin" / "python"))
 
 
 def free_port() -> int:
@@ -56,19 +59,29 @@ class FakeModel(BaseHTTPRequestHandler):
         pass
 
 
-@pytest.fixture(scope="module")
-def app_url():
+@pytest.fixture(scope="module", params=["node", "bot"])
+def app_url(request, tmp_path_factory):
     model = ThreadingHTTPServer(("127.0.0.1", free_port()), FakeModel)
     threading.Thread(target=model.serve_forever, daemon=True).start()
     port = free_port()
     env = {**os.environ, "PORT": str(port), "TRUST_PROXY": "0", "DEEPSEEK_API_KEY": "fake",
            "ROOTI_CHAT_URL": f"http://127.0.0.1:{model.server_port}/chat"}
     env.pop("DATABASE_URL", None)
-    proc = subprocess.Popen(["node", "server.mjs"], cwd=SERVER, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if request.param == "node":
+        proc = subprocess.Popen(["node", "server.mjs"], cwd=SERVER, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    else:
+        if not Path(BOT_PYTHON).exists():
+            model.shutdown()
+            pytest.skip("no bot call environment (ROOTI_BOT_PYTHON)")
+        env |= {"PYTHONPATH": str(BOT / "src"), "ROOTI_DATA": str(tmp_path_factory.mktemp("rooti-data"))}
+        proc = subprocess.Popen([BOT_PYTHON, "-c", "import sys, uvicorn; from rooti_bot.call_server import app; "
+                                 "uvicorn.run(app(), host='127.0.0.1', port=int(sys.argv[1]), log_level='warning')", str(port)],
+                                cwd=BOT, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     url = f"http://127.0.0.1:{port}"
-    for _ in range(50):
+    health = "/healthz" if request.param == "node" else "/api/rooti"
+    for _ in range(150):
         try:
-            urllib.request.urlopen(url + "/healthz", timeout=1)
+            urllib.request.urlopen(url + health, timeout=1)
             break
         except OSError:
             time.sleep(0.2)

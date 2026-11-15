@@ -1,7 +1,7 @@
 // Rooti web: serves the static app and a small API for Vecinos, backed by Postgres.
 // Env: DATABASE_URL (Postgres), PORT (default 3000), APP_DIR (default ../app), TRUST_PROXY=1 behind Coolify's proxy,
 // ROOTI_BOT_URL and ROOTI_WHATSAPP (Rooti on WhatsApp: its public address and number) for «Continuar en WhatsApp».
-// Rooti, the in-app assistant (rooti.mjs): DEEPSEEK_API_KEY, GROQ_API_KEY, ROOTI_PERSONA (default ../bot/hermes/rooti/SOUL.md).
+// Rooti, the in-app assistant (rooti.mjs): DEEPSEEK_API_KEY, GROQ_API_KEY, ROOTI_PROMPT_DIR (default ../bot/hermes/rooti: SOUL.md, WEB.md, web-tools.json).
 // Without DATABASE_URL the API answers 503 and the app falls back to its example posts and this phone's storage.
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
@@ -189,7 +189,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-await rooti.loadPersona(process.env.ROOTI_PERSONA || rooti.defaultPersona(HERE));
+await rooti.load(process.env.ROOTI_PROMPT_DIR || rooti.defaultDir(HERE));
 CROPS = new Set(Object.keys(JSON.parse(await readFile(path.join(APP, "data", "crops.json"), "utf8")).crops || {}));
 if (db) {
   for (let i = 1; ; i++) {

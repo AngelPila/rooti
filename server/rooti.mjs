@@ -8,75 +8,21 @@ const MODEL = process.env.ROOTI_MODEL || "deepseek-chat";
 // The URLs can point elsewhere so the E2E test runs against a fake model
 const CHAT_URL = process.env.ROOTI_CHAT_URL || "https://api.deepseek.com/chat/completions";
 const STT_URL = process.env.ROOTI_STT_URL || "https://api.groq.com/openai/v1/audio/transcriptions";
-const on = () => !!process.env.DEEPSEEK_API_KEY;
+const on = () => !!process.env.DEEPSEEK_API_KEY && !!template;
 const voiceOn = () => !!process.env.GROQ_API_KEY;
 
-const SCREENS = ["plan", "plot", "try", "compare", "past", "neighbors", "planner", "course"];
-const IDEAS = ["irrigation", "straw", "legume", "instead", "nino", "dry", "all"];
-const TOOLS = [
-  { name: "show_on_page", description: "Open a screen of the page and mark what you are talking about, so the farmer sees it while reading your answer. Call it whenever your answer refers to something on the page.",
-    parameters: { type: "object", additionalProperties: false, required: ["screen"], properties: {
-      screen: { type: "string", enum: SCREENS, description: "plan: the recommended plans, route, years and calendar. plot: soil, slope, climate. try: ideas that would do better and the best sowing months. compare: build your own plan. past: every run of real years. neighbors: what farmers nearby report. planner: where, when, crops and land. course: the free course." },
-      mark: { type: "string", description: "What to mark. On plan: route, years, calendar, cover, plans, unknowns, nino, or crop-<crop id> (e.g. crop-maize). On try: sow, or idea-<irrigation|straw|legume|instead|nino|dry|all>." } } } },
-  { name: "change_plot", description: "Change the farmer's plot data with only what they just said, and recompute the plan. The page shows the change with an Undo button.",
-    parameters: { type: "object", additionalProperties: false, properties: {
-      place: { type: "string", description: "Town or area of the plot, e.g. 'Daule'" },
-      area: { type: "number", description: "Size of the plot, in unit" },
-      unit: { type: "string", enum: ["ha", "cuadra", "m2", "acre"] },
-      crops: { type: "array", items: { type: "string" }, description: "Crop ids the plan may use, from the list in the page context" },
-      current: { type: "array", items: { type: "string" }, description: "Crop ids the farmer grows today" },
-      irrigation: { type: "boolean" },
-      floods: { type: "string", enum: ["yes", "sometimes", "no"], description: "Whether the plot floods in the rainy season" },
-      start: { type: "string", description: "First month of the plan, YYYY-MM" },
-      end: { type: "string", description: "Last month of the plan, YYYY-MM" } } } },
-  { name: "try_idea", description: "Test a 'what if' on the farmer's plan with the planner and open it on the Try screen. It does not change the plan: the farmer decides with a button.",
-    parameters: { type: "object", additionalProperties: false, required: ["idea"], properties: {
-      idea: { type: "string", enum: IDEAS, description: "irrigation, straw (keep the straw), legume (add a legume), instead (another crop for one that does badly), nino (only El Niño years), dry (only dry years), all (every year)" } } } },
-  { name: "offer_whatsapp", description: "Show a button to keep going with Rooti on WhatsApp, where Rooti sends heavy-rain and time-to-sow alerts for this plot. Only when the farmer wants alerts or to continue on WhatsApp.",
-    parameters: { type: "object", additionalProperties: false, properties: {} } },
-].map((f) => ({ type: "function", function: f }));
-
-const GLOSSARY = `ET or evapotranspiration: the water the sun and wind take out of the soil and the leaves each day; if it rains less than that, the plant goes thirsty.
-Soil moisture anomaly: when the ground holds more or less water than normal for that month.
-NDVI: a satellite number for how green the field is; high is a healthy, dense crop, low is bare soil or a dry plant.
-Water balance: the rain minus what the plant and the sun take; if it is negative, the crop needs water.
-El Niño: when the sea off the coast warms up; on the coast of Ecuador it usually brings much wetter rainy seasons, with floods, like 1983 and 1998.
-Bare soil: ground with nothing growing and no straw on it; heavy rain washes it away and the sun dries it out.
-NASA POWER: NASA climate data since 1981 for squares about 50 km wide; it describes the area, not the exact plot.`;
-
-// Who Rooti is comes from the WhatsApp persona, so both channels sound like the same Rooti
-let persona = "";
-export async function loadPersona(file) {
+// The prompt and the tools live next to the persona, so this server and the bot's (web_agent.py) send the same ones
+let persona = "", template = "", TOOLS = [];
+export async function load(dir) {
   try {
-    const soul = await readFile(file, "utf8");
+    const soul = await readFile(path.join(dir, "SOUL.md"), "utf8");
     persona = ["## Quién eres", "## Tu personalidad"].map((h) => soul.split(h)[1]?.split("\n## ")[0]?.trim()).filter(Boolean).join("\n\n");
-  } catch { persona = ""; }
-  if (!persona) console.warn(`rooti: persona not found at ${file}, using the short one`);
+    template = (await readFile(path.join(dir, "WEB.md"), "utf8")).replace(/<!--[\s\S]*?-->\s*/, "");
+    TOOLS = JSON.parse(await readFile(path.join(dir, "web-tools.json"), "utf8"));
+  } catch (e) { console.warn(`rooti: no prompt in ${dir}, Rooti stays off`, e.message); template = ""; }
 }
-const system = (lang, context) => `You are Rooti, a field assistant for smallholder farmers on the coast of Ecuador. You help them decide what to plant, when and on how much land, from what the Rooti tool computes with 45 years of NASA climate data and the soil of their plot. You support the farmer and their technician; you never replace them.
-
-${persona}
-
-## Where you are now
-You are inside the Rooti web page, in a chat panel next to the screen the farmer is looking at. The page context at the end says what is on that screen; trust it over anything you remember.
-
-## How you answer
-- Reply in ${lang === "en" ? "English. Keep the same warmth, without the coastal Spanish slang." : "Spanish, always with «usted»."}
-- 2 to 4 short sentences, the most important first. No lists, tables, markdown, links or emojis beyond one at most.
-- Numbers the way they are said in the field: "39 of 44 years", never percentages.
-- Answer from the page context and your tools, never from memory. If the data is not there, say so and suggest the technician or the MAG.
-- When your answer refers to something on the page (the plan, a crop in the route, the years, the calendar, an idea, the plot), call show_on_page so the page opens it and marks it.
-- When the farmer tells you something about their plot (where, how much land, which crops, dates, irrigation, flooding), call change_plot right away with only what they said. Never invent a value. The first time, say in a few words that they can undo it.
-- For "what if" questions call try_idea. It does not change the plan: say what would change and that they can apply it with the button. Never say you changed the plan when you did not.
-- You never publish on Neighbors and never send anything by WhatsApp. For alerts or to continue on WhatsApp, call offer_whatsapp: the farmer taps the button.
-- Say what we do not know: NASA climate describes about 50 km around the plot, prices are averages, pests and drainage need local eyes.
-- Never mention tools, models, the system, the page context or errors. If something failed, say it like a person would.
-
-## Words to explain in one plain sentence when they come up
-${GLOSSARY}
-
-## Page context
-${context}`;
+const LANGUAGE = { es: "Spanish, always with «usted».", en: "English. Keep the same warmth, without the coastal Spanish slang." };
+const system = (lang, context) => template.replace("{persona}", () => persona).replace("{language}", () => LANGUAGE[lang]).replace("{context}", () => context);
 
 const clean = (s, max) => (typeof s === "string" ? s.slice(0, max) : "");
 function messages(list) {
@@ -123,4 +69,4 @@ export async function transcribe(audio, type, lang) {
 }
 
 export const status = () => ({ on: on(), voice: voiceOn() });
-export const defaultPersona = (here) => path.join(here, "..", "bot", "hermes", "rooti", "SOUL.md");
+export const defaultDir = (here) => path.join(here, "..", "bot", "hermes", "rooti");
