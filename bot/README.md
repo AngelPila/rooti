@@ -67,7 +67,7 @@ repo root). Set these variables:
 |---|---|
 | `DEEPSEEK_API_KEY` | The model (default `deepseek` / `deepseek-chat`; change with `ROOTI_PROVIDER`, `ROOTI_MODEL`) |
 | `GROQ_API_KEY` | Speech to text for voice notes and calls (free tier) |
-| `ROOTI_CALL_SECRET` | Any long random string: signs the call links |
+| `ROOTI_CALL_SECRET` | Optional: signs the call links. Without it, Rooti makes one in the volume on first use |
 | `ROOTI_CALL_URL` | The public HTTPS address of port 7860 (the call page; browsers allow the microphone only on HTTPS) |
 | `ROOTI_OPERATOR` | Optional: your number, for Hermes' own deliveries |
 | `ROOTI_ICE_SERVERS` | Optional: STUN/TURN servers as JSON (see the limits below) |

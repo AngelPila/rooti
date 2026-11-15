@@ -32,8 +32,8 @@ RUN python3 -m venv /tmp/uv && /tmp/uv/bin/pip install --no-cache-dir --disable-
       touch /etc/s6-overlay/s6-rc.d/user/contents.d/$svc; \
     done
 
-# Set in Coolify: DEEPSEEK_API_KEY (the model), GROQ_API_KEY (voice notes and calls), ROOTI_CALL_SECRET (signs the
-# call links) and ROOTI_CALL_URL (the public address of port 7860).
+# Set in Coolify: DEEPSEEK_API_KEY (the model), GROQ_API_KEY (voice notes and calls) and ROOTI_CALL_URL (the
+# public address of port 7860).
 ENV HERMES_HOME=/opt/data \
     ROOTI_DATA=/opt/data/rooti \
     GATEWAY_ALLOW_ALL_USERS=false \

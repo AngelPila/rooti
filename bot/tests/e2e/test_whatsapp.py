@@ -148,7 +148,7 @@ def test_farmer_on_whatsapp(tmp_path):
         env.update({
             "HOME": str(home), "HERMES_HOME": str(hermes_home), "ROOTI_DATA": str(data),
             "ROOTI_TEST_BRIDGE": wa.base, "ROOTI_TEST_SCRIPT": str(stand_in / "bridge.js"), "ROOTI_BRIDGE": wa.base,
-            "ROOTI_PROVIDER": "fakellm", "ROOTI_MODEL": "fake", "ROOTI_CALL_SECRET": "e2e-secret",
+            "ROOTI_PROVIDER": "fakellm", "ROOTI_MODEL": "fake",
             "ROOTI_CALL_URL": f"http://127.0.0.1:{call_port}", "ROOTI_FORECAST_URL": f"{forecast.base}/v1/forecast",
             "ROOTI_NOW": f"{date.today().isoformat()}T09:00:00", "GROQ_API_KEY": "e2e", "DEEPSEEK_API_KEY": "e2e",
             "HERMES_STATE_DB_GUARD_BYPASS": "1", "PYTHONUNBUFFERED": "1",

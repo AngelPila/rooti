@@ -1,5 +1,6 @@
 """Where Rooti's bot keeps things and how it reaches the outside, all from the environment (Coolify's variables)."""
 import os
+import secrets
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -23,10 +24,23 @@ def call_url() -> str:
 
 
 def call_secret() -> bytes:
+    """Signs the call links. Without ROOTI_CALL_SECRET, a random one is made once in the data volume, so the
+    gateway, the alerts and the call server (separate processes) share it and links survive a redeploy."""
     secret = os.environ.get("ROOTI_CALL_SECRET", "")
-    if not secret:
-        raise RuntimeError("Falta ROOTI_CALL_SECRET: sin ella no puedo firmar los enlaces de llamada.")
-    return secret.encode()
+    if secret:
+        return secret.encode()
+    path = data_dir() / "call-secret"
+    if not path.exists():  # written aside and linked in, so a process never reads it half written
+        draft = path.with_name(f".call-secret.{os.getpid()}")
+        draft.write_text(secrets.token_urlsafe(32))
+        draft.chmod(0o600)
+        try:
+            os.link(draft, path)
+        except FileExistsError:
+            pass
+        finally:
+            draft.unlink()
+    return path.read_bytes().strip()
 
 
 def node_bin() -> str:
