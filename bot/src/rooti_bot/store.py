@@ -123,11 +123,11 @@ def alert(alert_id: int) -> dict | None:
     return dict(row) if row else None
 
 
-def mark_alert(alert_id: int, field: str) -> None:
+def mark_alert(alert_id: int, field: str, at: float | None = None) -> None:
     if field not in ("sent_at", "reminded_at", "call_opened_at"):
         raise ValueError(field)
     with connect() as db:
-        db.execute(f"UPDATE alerts SET {field} = ? WHERE id = ?", (time.time(), alert_id))
+        db.execute(f"UPDATE alerts SET {field} = ? WHERE id = ?", (at or time.time(), alert_id))
 
 
 def unopened_alerts(sent_before: float) -> list[dict]:

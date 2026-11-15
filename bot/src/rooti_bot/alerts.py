@@ -5,7 +5,6 @@ import asyncio
 import json
 import logging
 import os
-import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
@@ -63,12 +62,12 @@ def sow_window(farmer: dict, plan: dict | None, today=None) -> tuple[str, str] |
                                f"Antes de sembrar, revisemos cómo viene la lluvia.")
 
 
-def _send(phone: str, alert_id: int, text: str) -> None:
+def _send(phone: str, alert_id: int, text: str, at: float) -> None:
     ogg = asyncio.run(voice.synthesize(text))
     bridge.send_voice(phone, ogg)
     bridge.send_button(phone, text + "\n\nToque el botón y le explico qué hacer.", "📞 Hablar con Rooti",
                        calls.link(phone, alert_id))
-    store.mark_alert(alert_id, "sent_at")
+    store.mark_alert(alert_id, "sent_at", at)
 
 
 def run(*, dry_run: bool = False, now: datetime | None = None) -> list[dict]:
@@ -81,7 +80,7 @@ def run(*, dry_run: bool = False, now: datetime | None = None) -> list[dict]:
     out = []
     for farmer in store.all_with_alerts():
         phone = farmer["phone"]
-        if store.alerts_sent_since(phone, time.time() - 7 * 86400) >= MAX_PER_WEEK:
+        if store.alerts_sent_since(phone, now.timestamp() - 7 * 86400) >= MAX_PER_WEEK:
             continue
         saved = store.saved_plan(phone)
         for kind, check in (("heavy_rain", lambda: heavy_rain(farmer)),
@@ -101,7 +100,7 @@ def run(*, dry_run: bool = False, now: datetime | None = None) -> list[dict]:
             if alert_id is None:
                 continue  # already sent
             try:
-                _send(phone, alert_id, text)
+                _send(phone, alert_id, text, now.timestamp())
                 out.append({"phone": phone, "kind": kind, "text": text})
             except Exception as exc:
                 log.error("no pude mandar el aviso %s a %s: %s", alert_id, phone, exc)
@@ -111,7 +110,7 @@ def run(*, dry_run: bool = False, now: datetime | None = None) -> list[dict]:
             try:
                 bridge.send_button(alert["phone"], "¿Pudo escuchar mi aviso? Si quiere, conversamos un momento.",
                                    "📞 Hablar con Rooti", calls.link(alert["phone"], alert["id"]))
-                store.mark_alert(alert["id"], "reminded_at")
+                store.mark_alert(alert["id"], "reminded_at", now.timestamp())
             except Exception as exc:
                 log.error("no pude recordar el aviso %s: %s", alert["id"], exc)
     return out

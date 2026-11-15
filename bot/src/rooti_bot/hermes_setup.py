@@ -115,6 +115,8 @@ def run() -> int:
     config_file = home / "config.yaml"
     current = yaml.safe_load(config_file.read_text(encoding="utf-8")) if config_file.exists() else {}
     merged = _merge(copy.deepcopy(current if isinstance(current, dict) else {}), managed_config(home, bot))
+    # The Hermes image seeds OpenRouter's base_url, which would send any other provider's calls there.
+    merged["model"].pop("base_url", None)
     changed = _write_if_changed(config_file, yaml.safe_dump(merged, allow_unicode=True, sort_keys=False))
 
     creds = home / "platforms" / "whatsapp" / "session" / "creds.json"

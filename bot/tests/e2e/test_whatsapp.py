@@ -160,6 +160,11 @@ def test_farmer_on_whatsapp(tmp_path):
         if not locales.is_dir() and (Path.home() / ".hermes" / "hermes-agent" / "locales").is_dir():
             env["HERMES_BUNDLED_LOCALES"] = str(Path.home() / ".hermes" / "hermes-agent" / "locales")
 
+        # The Hermes image seeds OpenRouter as the model endpoint: left in place, every model call goes there.
+        hermes_home.mkdir(parents=True, exist_ok=True)
+        (hermes_home / "config.yaml").write_text(yaml.safe_dump(
+            {"model": {"provider": "openrouter", "default": "anthropic/claude-opus-4.6",
+                       "base_url": "https://openrouter.ai/api/v1"}}))
         setup = subprocess.run([str(BIN), "hermes-perfil"], env=env, capture_output=True, text=True, check=True)
         assert "Hermes de Rooti" in setup.stdout, setup.stdout
         cfg_file = hermes_home / "config.yaml"
