@@ -171,6 +171,21 @@ def test_rooti_always_answers_in_words_after_acting(app_url, browser):
     assert FakeModel.requests[-1]["tool_choice"] == "none"
 
 
+def test_rooti_reads_its_answer_aloud_in_its_whatsapp_voice(app_url, browser, request):
+    if request.node.callspec.params["app_url"] == "node":
+        pytest.skip("the Node server has no voice of its own; there the browser speaks")
+    page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True)
+    open_example(page, app_url)
+    page.locator(".rt-fab").click()
+    page.locator(".rt-cmp input").fill("¿Por qué este plan?")
+    page.keyboard.press("Enter")
+    page.locator(".rt-more").click()
+    with page.expect_response("**/api/rooti/say", timeout=30_000) as said:
+        page.locator(".rt-bot .rt-say").last.click()
+    assert said.value.status == 200 and said.value.headers["content-type"] == "audio/mpeg"
+    assert len(said.value.body()) > 5000
+
+
 def test_computer_panel_sits_beside_the_page(app_url, browser):
     page = browser.new_page(viewport={"width": 1440, "height": 900})
     open_example(page, app_url)
