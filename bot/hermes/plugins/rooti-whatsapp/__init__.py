@@ -12,6 +12,8 @@ Rooti on WhatsApp, adapted from Vinci's vinci-whatsapp and vinci-botones plugins
   farmer would otherwise get no answer at all.
 - Every Rooti tool call carries the chat it comes from (`_canal`), so the tools read that farmer's lot and two
   farmers at once never mix; the model never sees or sets it.
+- «mi lote es RT-XXXX», the code the website's «Continuar en WhatsApp» writes, brings the lot made on the website
+  into this chat (`rooti-bot canjear`) before the model reads the message.
 - Every turn starts with the farmer's lot (`rooti-bot contexto`), so the first answer needs no tool round trip.
 - How long each answer took, from the farmer's message to Rooti's first text and first voice note, goes to
   <ROOTI_DATA>/tiempos.jsonl (`rooti-bot tiempos` sums it up). The clock starts once the bubbles are joined, so
@@ -39,6 +41,7 @@ HERMES_NOTICE_RE = re.compile(
 # Text only Hermes writes: its name, its commands, provider errors, code blocks. Rooti speaks plain Spanish.
 LEAK_RE = re.compile(r"hermes|(?:^|\s)/[a-z]{2,}\b|api key|provider said|http \d{3}|settings →|openrouter|```",
                      re.IGNORECASE)
+HANDOFF_RE = re.compile(r"\bRT-[A-HJ-NP-Z2-9]{4}\b", re.IGNORECASE)
 APOLOGY = "Disculpe, ahorita no le pude responder. ¿Me escribe de nuevo en un ratito?"
 TIMES = "{{DATA}}/tiempos.jsonl"
 _HEARD = {}
@@ -75,7 +78,29 @@ async def _dispatch(event=None, **_):
             caption = str(getattr(event, "text", "") or "").strip()
             caption = "" if caption == "[audio received]" else caption
             return {"action": "rewrite", "text": f'"{heard}"' + (f"\n\n{caption}" if caption else "")}
+    text = str(getattr(event, "text", "") or "")
+    code = HANDOFF_RE.search(text)
+    if code:
+        note = await asyncio.to_thread(_redeem, str(getattr(source, "chat_id", "")), code.group(0).upper())
+        return {"action": "rewrite", "text": f"{text}\n\n[{note}]"}
     return None
+
+
+def _redeem(chat, code):
+    """What the model reads under the farmer's message: the lot is here now, or the code did not work."""
+    try:
+        proc = subprocess.run([BOT, "canjear", "--chat", chat, "--codigo", code], capture_output=True, text=True,
+                              timeout=20, env=ENV)
+        out = json.loads(proc.stdout or "{}")
+    except Exception as exc:
+        logger.warning("canjear %s: %s", code, exc)
+        out = {}
+    if out.get("ok"):
+        return (f"Nota de Rooti: este agricultor viene de la página web y su lote ya quedó guardado ({out['lote']}). "
+                "No le preguntes otra vez lo que ya está en su lote: salúdalo, dile que ya tienes su lote y revisa su "
+                "plan con plan_recomendado.")
+    return (f"Nota de Rooti: el código {code} no sirve o ya venció. Pídele que marque su lote otra vez con "
+            "boton_lote.")
 
 
 async def _hear(path):

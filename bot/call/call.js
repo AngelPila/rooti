@@ -5,6 +5,8 @@ const token = new URLSearchParams(location.hash.slice(1)).get("t") || "";
 let pc = null, stream = null, meter = null;
 
 function show(id) { for (const s of ["start", "live", "end"]) $(s).hidden = s !== id; }
+// After the call, the plan is one tap away: the same signed link opens the app (bot/src/rooti_bot/web.py)
+if (token) { $("plan").href = `app/#t=${encodeURIComponent(token)}&r=plan`; $("plan").hidden = false; }
 function end(title, text) {
   hangUp();
   $("end-title").textContent = title;

@@ -1,5 +1,5 @@
-"""The «📞 Hablar con Rooti» link: signed, so the call page knows whose lot it is and why Rooti called, and
-nobody can open another farmer's call by changing the number in the address."""
+"""The links Rooti sends as buttons: the live call and the app's pages (the lot, the plan, an alert). Signed, so a
+page knows whose lot it is and which alert it answers, and nobody opens another farmer's lot by editing the address."""
 import base64
 import hashlib
 import hmac
@@ -29,6 +29,15 @@ def link(phone: str, alert_id: int | None = None) -> str:
     if not base:
         raise RuntimeError("Falta ROOTI_CALL_URL: la dirección pública de la página de llamada.")
     return f"{base}/#t={token(phone, alert_id)}"
+
+
+def page(phone: str, route: str, alert_id: int | None = None, hours: int = LINK_HOURS) -> str:
+    """The web app (web.py serves it at /app/) opened on `route`, signed in as this farmer. The link rides in the
+    fragment, as in Vinci's webviews: it never reaches the proxy or its logs, and the page drops it on reading."""
+    base = config.call_url()
+    if not base:
+        raise RuntimeError("Falta ROOTI_CALL_URL: la dirección pública de las páginas de Rooti.")
+    return f"{base}/app/#t={token(phone, alert_id, hours)}&r={route}"
 
 
 def redeem(tok: str) -> dict:

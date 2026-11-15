@@ -23,6 +23,20 @@ def call_url() -> str:
     return os.environ.get("ROOTI_CALL_URL", "").rstrip("/")
 
 
+def whatsapp_number() -> str:
+    """Rooti's own number, for the website's «Continuar en WhatsApp» (wa.me): ROOTI_WHATSAPP, else the number the
+    bridge is linked to."""
+    if os.environ.get("ROOTI_WHATSAPP"):
+        return "".join(ch for ch in os.environ["ROOTI_WHATSAPP"] if ch.isdigit())
+    import json
+    home = Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
+    try:
+        me = json.loads((home / "platforms/whatsapp/session/creds.json").read_text(encoding="utf-8"))["me"]["id"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+    return me.split(":")[0].split("@")[0]
+
+
 def call_secret() -> bytes:
     """Signs the call links. Without ROOTI_CALL_SECRET, a random one is made once in the data volume, so the
     gateway, the alerts and the call server (separate processes) share it and links survive a redeploy."""

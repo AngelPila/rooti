@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS farmers (
   priority TEXT NOT NULL DEFAULT 'soil',  -- soil | water | income
   alerts_ok INTEGER NOT NULL DEFAULT 0,   -- agreed to get alerts Rooti sends first
   notes TEXT NOT NULL DEFAULT '',
+  plot TEXT NOT NULL DEFAULT '[]',        -- the corners drawn on the map, [[lon, lat], ...]
+  chosen TEXT,                            -- the plan picked on the plan page: {key, name, route}
   created_at REAL NOT NULL, updated_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS plans (
@@ -34,10 +36,19 @@ CREATE TABLE IF NOT EXISTS alerts (
   created_at REAL NOT NULL, sent_at REAL, reminded_at REAL, call_opened_at REAL,
   UNIQUE (phone, kind, key)
 );
+CREATE TABLE IF NOT EXISTS handoffs (     -- a lot made on the website, waiting for its farmer to write on WhatsApp
+  code TEXT PRIMARY KEY,
+  lot TEXT NOT NULL,
+  created_at REAL NOT NULL, used_by TEXT, used_at REAL
+);
 """
+# Columns added after the first deploy: CREATE TABLE IF NOT EXISTS leaves an older table as it was.
+LATER_COLUMNS = {"plot": "TEXT NOT NULL DEFAULT '[]'", "chosen": "TEXT"}
+HANDOFF_HOURS = 48
+CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I, read aloud or typed by hand
 LOT_FIELDS = ("name", "lat", "lon", "place", "crops", "current", "area", "unit", "irrigation", "waterlog", "priority",
-              "alerts_ok", "notes")
-JSON_FIELDS = ("crops", "current")
+              "alerts_ok", "notes", "plot", "chosen")
+JSON_FIELDS = ("crops", "current", "plot", "chosen")
 
 
 @contextmanager
@@ -46,6 +57,10 @@ def connect():
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys = ON")
     db.executescript(SCHEMA)
+    have = {row[1] for row in db.execute("PRAGMA table_info(farmers)")}
+    for column, kind in LATER_COLUMNS.items():
+        if column not in have:
+            db.execute(f"ALTER TABLE farmers ADD COLUMN {column} {kind}")
     try:
         yield db
         db.commit()
@@ -58,7 +73,7 @@ def _farmer(row) -> dict | None:
         return None
     out = dict(row)
     for key in JSON_FIELDS:
-        out[key] = json.loads(out[key] or "[]")
+        out[key] = json.loads(out[key]) if out[key] else ([] if key != "chosen" else None)
     for key in ("irrigation", "alerts_ok"):
         out[key] = bool(out[key])
     out["waterlog"] = None if out["waterlog"] is None else bool(out["waterlog"])
@@ -141,3 +156,28 @@ def unopened_alerts(sent_before: float) -> list[dict]:
 def alerts_sent_since(phone: str, since: float) -> int:
     with connect() as db:
         return db.execute("SELECT COUNT(*) FROM alerts WHERE phone = ? AND sent_at >= ?", (phone, since)).fetchone()[0]
+
+
+def add_handoff(lot: dict) -> str:
+    """A short code for a lot made on the website: the farmer sends it to Rooti on WhatsApp to bring the lot along."""
+    import secrets
+    with connect() as db:
+        db.execute("DELETE FROM handoffs WHERE created_at < ?", (time.time() - 7 * 86400,))
+        while True:
+            code = "RT-" + "".join(secrets.choice(CODE_LETTERS) for _ in range(4))
+            cur = db.execute("INSERT OR IGNORE INTO handoffs (code, lot, created_at) VALUES (?, ?, ?)",
+                             (code, json.dumps(lot, ensure_ascii=False), time.time()))
+            if cur.rowcount:
+                return code
+
+
+def redeem_handoff(code: str, phone: str) -> dict | None:
+    """The website's lot for this code, once: a second farmer sending the same code gets nothing."""
+    with connect() as db:
+        row = db.execute("SELECT lot, created_at, used_by FROM handoffs WHERE code = ?", (code.upper(),)).fetchone()
+        if row is None or row["created_at"] < time.time() - HANDOFF_HOURS * 3600:
+            return None
+        if row["used_by"] not in (None, phone):
+            return None
+        db.execute("UPDATE handoffs SET used_by = ?, used_at = ? WHERE code = ?", (phone, time.time(), code.upper()))
+        return json.loads(row["lot"])

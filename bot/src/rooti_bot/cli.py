@@ -27,7 +27,23 @@ def context(chat: str) -> str:
     if lot["falta_saber"]:
         lines.append("Falta preguntarle: " + ", ".join(lot["falta_saber"]) + ".")
     lines.append("Plan calculado: sí (léelo con plan_recomendado)." if lot["plan_listo"] else "Plan calculado: todavía no.")
+    chosen = farmer.get("chosen")
+    if chosen:
+        lines.append(f"En la página «Ver mi plan» eligió «{chosen['name']}»: {chosen.get('route') or ''}")
+        if not farmer["alerts_ok"]:
+            lines.append("Al elegirlo, Rooti le preguntó en el chat si quiere avisos de lluvia fuerte y de siembra: si "
+                         "dice que sí, guárdalo con guardar_lote (alerts_ok).")
     return "\n".join(lines)
+
+
+def redeem(chat: str, code: str) -> dict:
+    """A lot made on the website, brought to this chat by its code (the farmer sends «mi lote es RT-XXXX»)."""
+    from rooti_bot import lots, store
+    fields = store.redeem_handoff(code, chat)
+    if fields is None:
+        return {"ok": False}
+    store.update(chat, **fields)
+    return {"ok": True, "lote": lots.describe(fields)}
 
 
 def times(days: int) -> str:
@@ -74,6 +90,9 @@ def main(argv=None) -> int:
     sub.add_parser("mcp", help="las herramientas de Rooti para Hermes (stdio)")
     ctx = sub.add_parser("contexto", help="el contexto de un turno (lo pide el plugin)")
     ctx.add_argument("--chat", required=True)
+    rd = sub.add_parser("canjear", help="trae al chat el lote hecho en la web, con su código (lo pide el plugin)")
+    rd.add_argument("--chat", required=True)
+    rd.add_argument("--codigo", required=True)
     sub.add_parser("hermes-perfil", help="escribe el Hermes de Rooti (cada arranque)")
     link = sub.add_parser("whatsapp-vincular", help="vincula el número de Rooti con un código")
     link.add_argument("numero", nargs="?")
@@ -96,6 +115,12 @@ def main(argv=None) -> int:
             print(json.dumps({"contexto": context(args.chat)}, ensure_ascii=False))
         except Exception as exc:
             print(json.dumps({"contexto": None, "error": str(exc)}))
+        return 0
+    if args.cmd == "canjear":
+        try:
+            print(json.dumps(redeem(args.chat, args.codigo), ensure_ascii=False))
+        except Exception as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}))
         return 0
     if args.cmd == "hermes-perfil":
         from rooti_bot import hermes_setup

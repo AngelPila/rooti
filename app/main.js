@@ -1,9 +1,10 @@
 import { fetchClimate } from "./climate.js?v=22";
-import { plan as runPlanner, cropMonths } from "./planner.js?v=22";
-import { COPY } from "./copy.js?v=22";
+import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=34";
+import { COPY } from "./copy.js?v=49";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
-import { createBootcamp } from "./bootcamp.js?v=2";
+import { createBootcamp } from "./bootcamp.js?v=3";
+import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
 
 const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
@@ -15,7 +16,7 @@ const UNITS = { ha: 1, cuadra: 0.7056, m2: 0.0001, acre: 0.4047 };
 const STEP = { ha: 0.5, cuadra: 1, m2: 100, acre: 1 };
 const CEREALS = new Set(["rice", "maize", "sorghum", "wheat", "barley"]);
 const GREEN = new Set(["jack_bean", "velvet_bean"]);
-const RESULTS = ["plan", "terreno", "probar", "comparar", "pasado", "pasaporte"];
+const RESULTS = ["plan", "terreno", "probar", "comparar", "pasado", "pasaporte", "vecinos"];
 
 /* ---------------- state ---------------- */
 const store = {
@@ -28,7 +29,7 @@ const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 0);
 const state = {
   lang: store.get("lang", (navigator.language || "es").toLowerCase().startsWith("es") ? "es" : "en"),
   plan: store.get("plan3", null),
-  priority: store.get("priority", "soil"),
+  pick: null,
   mode: "all",
   draft: null, custom: null, customKey: null, undo: null, pastBase: undefined, showAll: false, saved: store.get("saved3", null),
 };
@@ -75,10 +76,19 @@ function h(tag, attrs = {}, ...kids) {
   for (const k of kids.flat(Infinity)) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(k));
   return n;
 }
+function svg(tag, attrs = {}, ...kids) {
+  const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) if (v != null) n.setAttribute(k, v);
+  for (const k of kids.flat(Infinity)) if (k) n.append(k);
+  return n;
+}
 const put = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false));
+const FILLED = new Set(["i-neighbors", "i-maize", "i-rice", "i-soybean", "i-straw", "i-rain", "i-sun", "i-sow", "i-harvest", "i-plot", "i-care", "i-water", "i-nino", "i-income", "i-soil", "i-agronomist", "i-month", "i-shield", "i-arrow", "i-info", "i-check", "i-x"]);
+const ALIAS = { "i-sprout": "i-sow", "i-drops": "i-water", "i-waves": "i-water", "i-coin": "i-income", "i-alert": "i-care", "i-user": "i-agronomist", "i-wheat": "i-harvest", "i-calendar": "i-month", "i-cloud-sun": "i-sun", "i-leaf": "i-sow" };
 function icon(id, cls = "icon") {
+  id = ALIAS[id] || id;
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  s.setAttribute("class", cls); s.setAttribute("aria-hidden", "true");
+  s.setAttribute("class", FILLED.has(id) ? `${cls} f` : cls); s.setAttribute("aria-hidden", "true");
   const u = document.createElementNS("http://www.w3.org/2000/svg", "use");
   u.setAttribute("href", "#" + id); s.append(u);
   return s;
@@ -91,8 +101,8 @@ const cropName = (id) => (id === "mulch" ? C().straw : S().crops[id] || DATA.cro
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const mon = (m) => S().monthsLong[m - 1].slice(0, 3);
 const ym = (p) => `${mon(p.m)} ${p.y}`;
-const spanM = (a, b) => (a.y === b.y && a.m === b.m ? mon(a.m) : `${mon(a.m)}–${mon(b.m)}`);
-const span = (a, b) => (a.y === b.y ? (a.m === b.m ? ym(a) : `${mon(a.m)}–${mon(b.m)} ${a.y}`) : `${ym(a)} – ${ym(b)}`);
+const monL = (m) => S().monthsLong[m - 1];
+const span = (a, b) => (a.y === b.y ? (a.m === b.m ? `${monL(a.m)} ${a.y}` : `${C().ds.monthsTo(monL(a.m), monL(b.m))} ${a.y}`) : C().ds.monthsTo(`${monL(a.m)} ${a.y}`, `${monL(b.m)} ${b.y}`));
 const fmtDate = (s) => new Date(s + "T12:00:00").toLocaleDateString(state.lang, { day: "numeric", month: "short", year: "numeric" });
 const num = (v, d = 1) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString(state.lang);
 const fmtArea = (share, P = state.plan) => { const v = share * (P.area || 1); return `${P.unit === "m2" ? Math.round(v).toLocaleString(state.lang) : num(v)} ${C().units[P.unit || "ha"]}`; };
@@ -133,9 +143,9 @@ function siteOf(t, P) {
   return { awc: d?.awc ?? 90, ph: d?.ph ?? null, slope: t?.slopePct ?? 0, wl: waterlogFactor(t, P.waterlog, t?.pilotWater) };
 }
 const memo = new Map();
-async function results(P = state.plan, mode = state.mode) {
-  const [c, tr] = await Promise.all([climate(P.place), terrain(P.place)]), key = JSON.stringify([P, mode, state.priority]);
-  if (!memo.has(key)) { const site = siteOf(tr, P); memo.set(key, { clim: c, P, terrain: tr, site, ...runPlanner(c, DATA.crops, P.crops, { start: P.start.slice(0, 7), end: P.end.slice(0, 7), irrigation: P.irrigation, priority: state.priority, mode, site, current: P.current || [] }) }); }
+async function results(P = state.plan, mode = state.mode, priority = "soil") {
+  const [c, tr] = await Promise.all([climate(P.place), terrain(P.place)]), key = JSON.stringify([P, mode, priority]);
+  if (!memo.has(key)) { const site = siteOf(tr, P); memo.set(key, { clim: c, P, terrain: tr, site, ...runPlanner(c, DATA.crops, P.crops, { start: P.start.slice(0, 7), end: P.end.slice(0, 7), irrigation: P.irrigation, priority, mode, site, current: P.current || [] }) }); }
   return memo.get(key);
 }
 async function fireData(z) { if (!(z in DATA.fires)) DATA.fires[z] = await fetch(`data/fires_${z}.json`).then(ok).catch(() => null); return DATA.fires[z]; }
@@ -158,11 +168,14 @@ function sheet(...kids) {
   d.showModal();
 }
 const langBtn = () => h("button", { class: "pill", "aria-label": "Idioma / Language", onclick: () => { state.lang = es() ? "en" : "es"; store.set("lang", state.lang); render(); } }, es() ? "ES | EN" : "EN | ES");
-const brand = () => h("a", { class: "brand", href: "#/" }, h("span", { class: "logo" }, icon("i-sprout")), h("b", {}, "Rooti"));
+// The Mosaico mark: four modules, four plots
+const MARK = '<svg viewBox="0 0 100 100" aria-hidden="true"><path class="m1" d="M14 0H32V36H50V53H0V14A14 14 0 0 1 14 0Z"/><path class="m2" d="M37 0H86A14 14 0 0 1 100 14V47H74V31H37Z"/><path class="m3" d="M55 52H100V86A14 14 0 0 1 86 100H70V70H55Z"/><path class="m4" d="M0 58H27V75H65V100H14A14 14 0 0 1 0 86Z"/></svg>';
+const lockup = (light) => { const mk = h("span", { class: "mk" }); mk.innerHTML = MARK; return h("a", { class: `lockup${light ? " light" : ""}`, href: "#/", "aria-label": "Rooti" }, mk, h("span", { class: "wordmark" }, "rooti")); };
+const brand = () => lockup(false);
 const loading = (msg) => h("div", { class: "loading" }, msg ? h("p", { class: "small" }, msg) : null, h("div", { class: "skeleton", style: { height: "120px" } }), h("div", { class: "skeleton", style: { height: "280px" } }), h("div", { class: "skeleton", style: { height: "160px" } }));
 const errorCard = (msg, retry) => h("div", { class: "errorcard", role: "alert" }, icon("i-wifi-off"), h("b", { class: "grow" }, msg), h("button", { class: "btn", onclick: retry }, C().retry));
 const stepIcon = (ic) => icon(ic === "calendar" ? "i-calendar" : ic === "map-pin" ? "i-pin" : "i-sprout");
-const bootcamp = createBootcamp({ h, put, icon, store, speak });
+const bootcamp = createBootcamp({ h, put, icon, tile: (id) => tile(id), store, speak });
 
 function viewBootcamp() {
   const crops = CROP_ORDER.filter((id) => DATA.crops[id]).map((id) => ({
@@ -174,46 +187,60 @@ function viewBootcamp() {
 }
 
 /* ================= landing ================= */
-// The cover is the farmer's plot seen from space, with the year's planting calendar printed on it.
-const COVERS = [
-  { k: "daule", rows: [["rice", [[1, 4, "good"]]], ["maize", [[1, 4, "good"], [5, 4, "care"]]], ["soybean", [[1, 4, "good"]]], ["mulch", [[5, 8, "straw"]]]] },
-  { k: "quevedo", rows: [["maize", [[1, 4, "good"]]], ["soybean", [[5, 4, "good"]]], ["peanut", [[1, 4, "good"]]], ["mulch", [[9, 4, "straw"]]]] },
-  { k: "iowa", rows: [["maize", [[5, 4, "good"]]], ["soybean", [[5, 4, "good"]]], ["bare", [[1, 4, "bare"], [9, 4, "bare"]]]] },
-];
-let coverTimer = null;
+const SVGNS = "http://www.w3.org/2000/svg";
+// Smooth path through points (Catmull-Rom as cubic Béziers)
+function smooth(pts) {
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    d += ` C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]},${p2[1]}`;
+  }
+  return d;
+}
+// Curves that converge on the headline. Decoration: drawn once, inner lines first, with uneven gaps.
+function heroLines(svg, title) {
+  const art = svg.parentElement;
+  if (!art?.isConnected || getComputedStyle(art).display === "none") return;
+  const a = art.getBoundingClientRect(), t = title.getBoundingClientRect(), H = a.height, k = H / 860;
+  svg.setAttribute("viewBox", `0 0 1440 ${H}`);
+  const ex = Math.min(560, t.left - a.left - 28), cy = t.top - a.top + t.height / 2, top = t.top - a.top - 90;
+  const L = [[[130, 186 * k], [ex, cy - 36]], [[40, 330 * k], [ex, cy - 12]], [[40, 520 * k], [ex, cy + 12]], [[120, 650 * k], [ex, cy + 36]]];
+  const curve = ([p, q]) => `M${p[0]},${p[1]} C${(p[0] + q[0]) / 2},${p[1]} ${(p[0] + q[0]) / 2 + 60},${q[1]} ${q[0]},${q[1]}`;
+  const all = [...L, ...L.map(([p, q]) => [[1440 - p[0], p[1]], [1440 - q[0], q[1]]])];
+  svg.innerHTML = all.map((l) => `<path d="${curve(l)}"/><circle cx="${l[0][0]}" cy="${l[0][1]}" r="3.5"/><circle cx="${l[1][0]}" cy="${l[1][1]}" r="3"/>`).join("") +
+    (top > 140 ? `<path d="M720,110 V${top}"/><circle cx="720" cy="${top}" r="3"/><circle cx="720" cy="110" r="3"/>` : "");
+  if (!MOTION()) return;
+  const AT = [90, 0, 30, 140];
+  svg.querySelectorAll("path").forEach((p, i) => {
+    const n = p.getTotalLength(); p.style.strokeDasharray = n;
+    p.animate([{ strokeDashoffset: n }, { strokeDashoffset: 0 }], { duration: 1100, delay: 200 + (AT[i % 4] ?? 60), easing: "cubic-bezier(.65,0,.35,1)", fill: "both" });
+  });
+  svg.querySelectorAll("circle").forEach((c) => c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: 1150, fill: "backwards" }));
+}
+const MOTION = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
+const ILLU = { daule: "rice", quevedo: "maize", iowa: "soybean" };
 function viewLanding() {
-  const c = C();
-  clearInterval(coverTimer);
+  const c = C(), D = c.ds;
   const start = () => { state.draft = null; go("planear"); };
-  const openDemo = (k) => { setPlan(demoPlan(k)); state.mode = defaultMode(state.plan); memo.clear(); go("plan"); };
-  const imgs = COVERS.map((cv, i) => h("img", { class: `cv-img${i === 0 ? " on" : ""}`, src: `img/sat/${cv.k}.jpg`, alt: c.demo[cv.k] }));
-  const overlay = h("div", { class: "cv-cal" }), label = h("button", { class: "cv-label" });
-  let i = 0;
-  const show = (n) => {
-    i = n; const cv = COVERS[n], D = DEMOS[cv.k];
-    imgs.forEach((im, j) => im.classList.toggle("on", j === n));
-    put(label, h("span", { class: "dot" }), h("b", {}, c.demo[cv.k]), h("small", {}, `${D.place.lat.toFixed(2)}, ${D.place.lon.toFixed(2)} · NASA POWER 1981–2026`), icon("i-arrow-r"));
-    label.onclick = () => openDemo(cv.k);
-    put(overlay, h("div", { class: "cal-row cal-head" }, h("span"), h("div", { class: "cal-grid", style: { "--n": 12 } }, ...S().months.map((mm) => h("span", {}, mm)))),
-      ...cv.rows.map(([id, bars]) => h("div", { class: "cal-row" }, h("span", { class: "cal-name" }, id === "bare" ? c.bare : cap(cropName(id))),
-        h("div", { class: "cal-grid", style: { "--n": 12 } }, ...bars.map(([a, l, lv], bi) => h("div", { class: `bar grow ${lv}`, style: { gridColumn: `${a} / span ${l}`, animationDelay: `${120 + bi * 140}ms` } }, h("b", {}, "")))))));
-  };
-  show(0);
-  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) coverTimer = setInterval(() => { if (!document.querySelector(".cover")) return clearInterval(coverTimer); show((i + 1) % COVERS.length); }, 5200);
-  put($("#view"), h("div", { class: "landing v2" },
-    h("header", { class: "cover" }, ...imgs, h("div", { class: "cv-scrim" }),
-      h("nav", { class: "l-nav" }, h("a", { class: "brand light", href: "#/" }, h("span", { class: "logo" }, icon("i-sprout")), h("b", {}, "Rooti")),
-        h("div", { class: "l-links" }, h("a", { class: "txt", href: "#how" }, c.nav.how), langBtn(), h("a", { class: "btn light", href: "#/bootcamp" }, c.ctaBootcamp), h("button", { class: "btn dark", onclick: start }, c.cta))),
-      h("div", { class: "cv-bottom" }, label, overlay)),
-    h("section", { class: "l-body" },
-      h("div", { class: "l-facts", id: "how" },
-        ...c.facts.map(([n, t]) => h("div", {}, h("b", { class: "display" }, n), h("span", {}, t)))),
-      h("div", { class: "l-copy" },
-        h("h1", { class: "display" }, c.heroTitle), h("p", { class: "lead" }, c.heroLead),
-        h("div", { class: "l-acts" }, h("button", { class: "btn dark big", onclick: start }, c.cta, icon("i-arrow-r")),
-          h("a", { class: "btn light big", href: "#/bootcamp" }, icon("i-leaf"), c.ctaBootcamp),
-          h("div", { class: "l-examples" }, h("span", { class: "small" }, c.examplesLbl), ...Object.keys(DEMOS).map((k) => h("button", { class: "chip", onclick: () => openDemo(k) }, c.demo[k])))),
-        h("p", { class: "l-note" }, c.heroNote, " · ", h("span", { class: "credit" }, "Imagery: Esri World Imagery"))))));
+  const openDemo = (k) => { setPlan(demoPlan(k)); state.mode = defaultMode(state.plan); state.pick = null; memo.clear(); go("plan"); };
+  const dot = (ic = "i-arrow-r") => h("span", { class: "dot" }, icon(ic));
+  const art = document.createElementNS(SVGNS, "svg"), title = h("h1", { class: "display" }, c.heroTitle);
+  put($("#view"), h("div", { class: "landing" },
+    h("header", { class: "hero" }, h("div", { class: "hero-img", style: { backgroundImage: "url(img/sat/daule.jpg)" } }), h("div", { class: "hero-art", "aria-hidden": "true" }, art),
+      h("nav", { class: "l-nav" }, lockup(true),
+        h("div", { class: "l-links" }, langBtn(), h("a", { class: "btn glass desk-only", href: "#/bootcamp" }, c.ctaBootcamp), h("button", { class: "btn lime desk-only", onclick: start }, c.cta, dot()))),
+      h("div", { class: "hero-copy" }, h("span", { class: "pill-eyebrow glass mono" }, D.eyebrow), title, h("p", { class: "lead" }, c.heroLead),
+        h("div", { class: "hero-actions" }, h("button", { class: "btn lime big", onclick: start }, c.cta, dot()), h("button", { class: "btn glass big", onclick: () => openDemo("daule") }, D.example, dot()))),
+      h("p", { class: "hero-source mono" }, D.source)),
+    h("section", { class: "l-sheet" }, h("div", { class: "l-wrap" },
+      h("div", { class: "l-how", id: "how" }, ...D.how.map(([ic, t, d]) => h("div", { class: "how" }, h("span", { class: "tile-i dark" }, icon(ic)), h("b", {}, t), h("p", {}, d)))),
+      h("h2", { class: "h2" }, D.examplesTitle),
+      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}.jpg?v=2`, alt: "", loading: "lazy" }),
+        h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),
+      h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "tile-i" }, icon("i-agronomist")), h("span", {}, h("b", {}, D.bootTitle), h("p", {}, D.bootLead)), icon("i-arrow-r")),
+      h("p", { class: "small", style: { textAlign: "center" } }, c.heroNote))),
+    h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"))))));
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => heroLines(art, title));
 }
 
 /* ================= planner ================= */
@@ -251,8 +278,40 @@ function searchBox(onPick) {
   });
   return [h("label", { class: "search" }, icon("i-search"), input), results];
 }
+const endDraw = () => { state.drawing = false; state.addCorner = null; document.body.classList.remove("drawing"); };
+/* ---------- the plot drawn on the map: corners as [lon, lat] ---------- */
+// Area on a local flat projection (shoelace): exact enough for a farm, a few metres across
+const lotXY = (pts) => { const R = 6371008.8, k = Math.PI / 180, lat0 = pts.reduce((a, p) => a + p[1], 0) / pts.length * k; return pts.map(([lo, la]) => [lo * k * R * Math.cos(lat0), la * k * R]); };
+const lotHa = (pts) => { if (!pts || pts.length < 3) return 0; const xy = lotXY(pts); let s = 0; xy.forEach((p, i) => { const q = xy[(i + 1) % xy.length]; s += p[0] * q[1] - q[0] * p[1]; }); return Math.abs(s) / 2 / 1e4; };
+const lotCenter = (pts) => [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+const lotSpanM = (pts) => { if (!pts?.length) return 0; const xy = lotXY(pts), xs = xy.map((p) => p[0]), ys = xy.map((p) => p[1]); return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)); };
+const inUnit = (ha, unit) => { const v = ha / UNITS[unit || "ha"]; return unit === "m2" ? Math.round(v) : Math.round(v * 100) / 100; };
+const areaText = (ha, unit) => `${inUnit(ha, unit).toLocaleString(state.lang)} ${C().units[unit || "ha"]}`;
+// Tap each corner on the map; the area fills itself in. Repaints only its own box and the map, so the map does not reload per tap.
+function lotTools(d, after) {
+  const box = h("div", { class: "lot-tools" }), L = C().lot;
+  let before = null;
+  const sync = (fly = false) => { if (d.lot?.length >= 3) d.area = Math.max(d.unit === "m2" ? 1 : 0.01, inUnit(lotHa(d.lot), d.unit)); updateMap(d.place, null, d.lot, fly); paint(); };
+  const start = () => { before = { lot: d.lot ? [...d.lot] : null, area: d.area }; state.drawing = true; d.lot = []; sync("draw"); };
+  const stop = (keep) => { state.drawing = false; document.body.classList.remove("drawing"); if (!keep) { d.lot = before.lot; d.area = before.area; } state.addCorner = null; after(); };
+  const paint = () => {
+    const n = d.lot?.length || 0;
+    document.body.classList.toggle("drawing", !!state.drawing);
+    state.addCorner = state.drawing ? (lon, lat) => { (d.lot ||= []).push([lon, lat]); sync(); } : null;
+    put(box, ...(state.drawing ? [
+      h("p", { class: "lot-hint" }, icon("i-pointer"), h("span", {}, n < 3 ? L.tap(n) : L.size(areaText(lotHa(d.lot), d.unit)))),
+      h("div", { class: "lot-acts" },
+        h("button", { class: "btn dark", disabled: n < 3, onclick: () => stop(true) }, icon("i-check"), L.done),
+        h("button", { class: "btn light", disabled: !n, onclick: () => { d.lot.pop(); sync(); } }, icon("i-undo"), L.undo),
+        h("button", { class: "link", onclick: () => stop(false) }, L.cancel))]
+      : n >= 3 ? [h("div", { class: "lot-row" }, icon("i-plot"), h("span", { class: "grow" }, h("b", {}, L.drawn), h("small", {}, L.size(areaText(lotHa(d.lot), d.unit)))), h("button", { class: "link", onclick: start }, L.redraw))]
+      : [h("button", { class: "btn light block", onclick: start }, icon("i-plot"), L.draw), h("p", { class: "small" }, L.why)]));
+  };
+  paint();
+  return box;
+}
 const placeCard = (d, onChange) => h("div", { class: "place" }, icon("i-pin"), h("div", { class: "grow" }, h("b", {}, d.place.name), h("small", {}, d.place.admin || "")), onChange ? h("button", { class: "link", onclick: onChange }, C().change) : null);
-const gpsBtn = (onPick) => h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: (e) => { const b = e.currentTarget; b.disabled = true; navigator.geolocation?.getCurrentPosition(async (p) => onPick(await placeAt(p.coords.latitude, p.coords.longitude)), () => { b.disabled = false; }, { timeout: 10000 }); } }, icon("i-locate"), " ", C().useLocation);
+const gpsBtn = (onPick) => h("button", { class: "link gps", style: { alignSelf: "flex-start" }, onclick: (e) => { const b = e.currentTarget; b.disabled = true; navigator.geolocation?.getCurrentPosition(async (p) => onPick(await placeAt(p.coords.latitude, p.coords.longitude)), () => { b.disabled = false; }, { timeout: 10000 }); } }, icon("i-locate"), " ", C().useLocation);
 function periodStrip(d) {
   const a = new Date(d.start + "T12:00:00"), n = Math.max(0, Math.min(24, monthsIn(d)));
   return h("div", { class: "period", "aria-hidden": "true" }, ...Array.from({ length: n }, (_, i) => h("i", { class: (a.getMonth() + i) % 12 < 5 ? "w" : "s" })));
@@ -270,7 +329,7 @@ function cropTiles(d, redo, limit) {
   return [h("div", { class: "crops" }, ...shown.map((id) => {
     const on = d.crops.includes(id);
     return h("button", { class: "crop", "aria-pressed": String(on), onclick: () => { d.crops = on ? d.crops.filter((x) => x !== id) : [...d.crops, id]; redo(); } },
-      on ? icon("i-check", "icon tick") : null, h("b", {}, cap(cropName(id))), h("small", {}, kind(id) + (id !== "mulch" ? ` · ${cropMonths(DATA.crops[id])} ${es() ? "meses" : "months"}` : "")));
+      on ? icon("i-check", "icon tick") : null, tile(id), h("span", {}, h("b", {}, cap(cropName(id))), h("small", {}, kind(id) + (id !== "mulch" ? ` · ${cropMonths(DATA.crops[id])} ${es() ? "meses" : "months"}` : ""))));
   })),
   limit ? h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { state.showAll = !state.showAll; redo(); } }, state.showAll ? C().fewer : C().more(all.length - shown.length)) : null];
 }
@@ -280,7 +339,7 @@ function areaBox(d, redo) {
     h("div", { class: "area-num" }, h("button", { class: "round", "aria-label": "−", onclick: () => set(d.area - STEP[d.unit]) }, icon("i-minus")),
       h("input", { type: "number", inputmode: "decimal", min: "0", step: "any", value: String(d.area), "aria-label": C().landQ, onchange: (e) => { const n = parseFloat(e.target.value); if (n > 0) set(n); } }),
       h("button", { class: "round", "aria-label": "+", onclick: () => set(d.area + STEP[d.unit]) }, icon("i-plus"))),
-    h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, C().units[u]))));
+    h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; if (d.lot?.length >= 3) d.area = inUnit(lotHa(d.lot), u); redo(); } }, C().units[u]))));
 }
 const currentChips = (d, redo) => h("div", { class: "row wrap", style: { gap: "6px" } }, ...CROP_ORDER.filter((id) => id !== "mulch" && DATA.crops[id]).slice(0, 8).map((id) => {
   const on = (d.current || []).includes(id);
@@ -288,8 +347,20 @@ const currentChips = (d, redo) => h("div", { class: "row wrap", style: { gap: "6
 }));
 const waterlogOpts = (d, redo) => h("div", { class: "opts" }, ...[["yes", C().yes], ["sometimes", C().sometimes], ["no", C().no], [null, C().dontKnow]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String((d.waterlog ?? null) === v), onclick: () => { d.waterlog = v; redo(); } }, l)));
 const irrigOpts = (d, redo) => h("div", { class: "opts" }, ...[[false, C().no], [true, C().yes]].map(([v, l]) => h("button", { class: "opt", "aria-pressed": String(d.irrigation === v), onclick: () => { d.irrigation = v; redo(); } }, l)));
-const prioOpts = (redo, short) => h("div", { class: "opts" }, ...[["soil", "i-sprout"], ["income", "i-coin"], ["water", "i-drops"]].map(([v, ic]) => h("button", { class: "opt", "aria-pressed": String(state.priority === v), onclick: () => { state.priority = v; store.set("priority", v); memo.clear(); redo(); } }, short ? null : icon(ic), C().prioShort[v])));
-const submitPlan = () => { setPlan({ ...state.draft, crops: [...state.draft.crops] }); state.draft = null; state.undo = null; state.mode = defaultMode(state.plan); memo.clear(); go("plan"); };
+const submitPlan = () => { setPlan({ ...state.draft, crops: [...state.draft.crops] }); state.draft = null; state.undo = null; state.mode = defaultMode(state.plan); memo.clear(); syncLot(); go("plan"); };
+// Opened from WhatsApp: the lot marked here goes to Rooti, which confirms it in the chat
+function syncLot() {
+  if (!linked()) return;
+  state.lotSync = "saving";
+  saveLot(state.plan).then(() => { state.lotSync = "saved"; }, () => { state.lotSync = "error"; }).finally(() => $("#lotSync")?.replaceWith(lotSyncEl()));
+}
+function lotSyncEl() {
+  const W = C().wa, s = state.lotSync;
+  if (!s) return h("div", { id: "lotSync", hidden: true });
+  return h("div", { id: "lotSync", class: `wa-sync ${s}`, role: "status" }, icon(s === "error" ? "i-wifi-off" : s === "saved" ? "i-check" : "i-chat"),
+    h("span", { class: "grow" }, s === "saving" ? W.saving : s === "saved" ? W.lotSaved : W.lotError),
+    s === "error" ? h("button", { class: "link", onclick: syncLot }, W.retry) : null);
+}
 
 function viewPlanear(stepArg) {
   const d = draft();
@@ -303,18 +374,18 @@ function viewPlanear(stepArg) {
   const nextBtn = (label, okk, to) => h("button", { class: "btn dark big block", disabled: !okk, onclick: to }, label);
   let body;
   if (n === 1) {
-    const pick = (pl) => { d.place = pl; redo(); };
-    state.onPick = async (lat, lon) => pick(await placeAt(lat, lon));
+    const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); };
+    state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
     const box = h("div", { class: "mapbox" });
-    body = [title(c.whereQ, c.whereHelp), ...(d.place ? [] : searchBox(pick)), box, d.place ? placeCard(d, () => { d.place = null; redo(); }) : h("p", { class: "small" }, c.tapMap), gpsBtn(pick), h("div", { class: "spacer" }), nextBtn(c.next, !!d.place, () => go("planear/2"))];
-    setTimeout(() => initCesium(box, { pick: true }).then(() => (d.place ? updateMap(d.place, null) : globeView())), 0);
+    body = [title(c.whereQ, c.whereHelp), ...(d.place ? [] : searchBox(pick)), box, d.place ? placeCard(d, () => { d.place = null; d.lot = null; state.drawing = false; redo(); }) : h("p", { class: "small" }, c.tapMap), d.place ? lotTools(d, redo) : null, state.drawing ? null : gpsBtn(pick), h("div", { class: "spacer" }), nextBtn(c.next, !!d.place, () => go("planear/2"))];
+    setTimeout(() => initCesium(box, { pick: true }).then(() => (d.place ? updateMap(d.place, null, d.lot, state.drawing ? false : d.lot?.length >= 3 ? "lot" : "place") : globeView())), 0);
   } else if (n === 2) {
     body = [title(c.whenQ, c.whenHelp), dateFields(d, redo), quickDates(d, redo), h("div", { class: "card", style: { gap: "8px", padding: "16px" } }, h("b", {}, c.months(Math.max(0, monthsIn(d)))), periodStrip(d)), err ? h("p", { class: "err" }, err) : null, h("div", { class: "spacer" }), nextBtn(c.next, !err, () => go("planear/3"))];
   } else if (n === 3) {
     body = [title(c.whatQ, c.whatHelp), ...cropTiles(d, redo, 6), h("div", { class: "spacer" }), nextBtn(d.crops.length ? c.nextCrops(d.crops.length) : c.pickCrop, d.crops.length > 0, () => go("planear/4"))];
   } else {
     const ready = d.place && d.crops.length && !err;
-    body = [title(c.landQ, c.landHelp), areaBox(d, redo), h("div", { class: "q" }, h("b", {}, c.irrigQ), irrigOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.wlQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), waterlogOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo)), h("div", { class: "q" }, h("b", {}, c.prioQ), prioOpts(redo, true)), h("div", { class: "spacer" }),
+    body = [title(c.landQ, c.landHelp), areaBox(d, redo), h("div", { class: "q" }, h("b", {}, c.irrigQ), irrigOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.wlQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), waterlogOpts(d, redo)), h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo)), h("div", { class: "spacer" }),
     nextBtn(ready ? c.seePlan : !d.place ? c.pickPlace : err || c.pickCrop, true, () => (ready ? submitPlan() : go(!d.place ? "planear/1" : err ? "planear/2" : "planear/3")))];
   }
   put($("#view"), h("div", { class: "step" }, head, ...body));
@@ -322,9 +393,9 @@ function viewPlanear(stepArg) {
 // Computer: the map fills the screen; one floating panel with four sections, one open at a time.
 function planDesktop(d) {
   const c = C(), err = dateErr(d), redo = () => planDesktop(d);
-  const pick = (pl) => { d.place = pl; if (state.sec === 1) state.sec = 2; redo(); updateMap(pl, null); };
-  state.onPick = async (lat, lon) => pick(await placeAt(lat, lon));
-  put($("#map-overlay"), h("div", { class: "map-hint" }, icon("i-pointer"), c.clickMap));
+  const pick = (pl) => { endDraw(); d.place = pl; d.lot = null; redo(); updateMap(pl, null); };
+  state.onPick = async (lat, lon) => (state.addCorner ? state.addCorner(lon, lat) : pick(await placeAt(lat, lon)));
+  put($("#map-overlay"), state.drawing ? null : h("div", { class: "map-hint" }, icon("i-pointer"), d.place ? c.lot.clickMore : c.clickMap));
   const done = { 1: !!d.place, 2: !err, 3: d.crops.length > 0, 4: true };
   if (state.sec == null) state.sec = !d.place ? 1 : !d.crops.length ? 3 : 0;
   const months = monthsIn(d);
@@ -332,17 +403,16 @@ function planDesktop(d) {
     1: d.place ? `${d.place.name}${d.place.admin ? " · " + d.place.admin : ""}` : c.pickPlace,
     2: err || `${fmtDate(d.start)} – ${fmtDate(d.end)} · ${c.months(months)}`,
     3: d.crops.length ? d.crops.map((id) => cap(cropName(id))).join(", ") : c.pickCrop,
-    4: `${(d.area || 1).toLocaleString(state.lang)} ${c.units[d.unit || "ha"]} · ${d.irrigation ? c.irrig.yes : c.irrig.no} · ${c.prioShort[state.priority]}`,
+    4: `${(d.area || 1).toLocaleString(state.lang)} ${c.units[d.unit || "ha"]}${d.lot?.length >= 3 ? " · " + c.lot.fromMap : ""} · ${d.irrigation ? c.irrig.yes : c.irrig.no}`,
   };
   const body = {
-    1: () => [d.place ? placeCard(d, null) : null, ...searchBox(pick), gpsBtn(pick)],
+    1: () => state.drawing ? [lotTools(d, redo)] : [d.place ? placeCard(d, null) : null, d.place ? lotTools(d, redo) : null, ...searchBox(pick), gpsBtn(pick)],
     2: () => [dateFields(d, redo), h("div", { class: "row between wrap" }, quickDates(d, redo), h("span", { class: err ? "err" : "small" }, err || c.months(months))), periodStrip(d)],
     3: () => [h("p", { class: "small" }, c.whatHelp), ...cropTiles(d, redo, 0)],
     4: () => [
       h("div", { class: "row-fields" }, h("input", { class: "num", type: "number", min: "0", step: "any", value: String(d.area), "aria-label": c.landQ, onchange: (e) => { const v = parseFloat(e.target.value); if (v > 0) { d.area = v; redo(); } } }),
-        h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; redo(); } }, c.units[u])))),
+        h("div", { class: "seg" }, ...Object.keys(UNITS).map((u) => h("button", { "aria-pressed": String(d.unit === u), onclick: () => { d.unit = u; if (d.lot?.length >= 3) d.area = inUnit(lotHa(d.lot), u); redo(); } }, c.units[u])))),
       h("div", { class: "q" }, h("b", {}, c.irrigQ), irrigOpts(d, redo)),
-      h("div", { class: "q" }, h("b", {}, c.prioQ), prioOpts(redo, true)),
       h("div", { class: "q" }, h("b", {}, c.wlQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), waterlogOpts(d, redo)),
       h("div", { class: "q" }, h("b", {}, c.todayQ, h("small", { class: "small", style: { fontWeight: 400 } }, " · ", c.optional)), currentChips(d, redo))],
   };
@@ -360,7 +430,7 @@ function planDesktop(d) {
         open ? h("div", { class: "pf-sec-b" }, ...body[n](), n < 4 ? h("button", { class: "btn light pf-next", disabled: !done[n], onclick: () => { state.sec = n + 1; redo(); } }, c.next, icon("i-chev-r")) : null) : null);
     })),
     h("div", { class: "pf-foot" }, h("button", { class: "btn dark big block", disabled: !okAll, onclick: () => { state.sec = null; submitPlan(); } }, okAll ? [c.seePlan, icon("i-arrow-r")] : !d.place ? c.pickPlace : err || c.pickCrop))));
-  initCesium($("#cesium"), { pick: true }).then(() => (d.place ? updateMap(d.place, null) : globeView()));
+  initCesium($("#cesium"), { pick: true }).then(() => (d.place ? updateMap(d.place, null, d.lot, state.drawing ? false : d.lot?.length >= 3 ? "lot" : "place") : globeView()));
 }
 
 /* ================= results ================= */
@@ -370,22 +440,18 @@ const outcomeShort = (pl, n) => (n === 1 ? (pl.fail >= 0.5 ? C().wasLost : `${Ma
   : pl.fail >= 0.5 ? C().lostShortS(...fracParts(pl.fail)) : pl.fail <= 0.001 ? C().allYearsS(Math.round(pl.yld * 100)) : pl.fail < 0.1 ? C().almostS(Math.round(pl.yld * 100)) : C().someYearsS(...fracParts(1 - pl.fail), Math.round(pl.yld * 100)));
 const majority = (ls) => { const d = ls.filter((l) => l === "danger").length, c = ls.filter((l) => l === "care").length; return d * 2 >= ls.length ? "danger" : (d + c) * 2 >= ls.length ? "care" : "good"; };
 const plantingsOf = (f) => Object.values(f.byCrop).flatMap((b) => b.plantings.map((p) => ({ ...p, crop: b.crop }))).sort((a, b) => a.t0 - b.t0 || a.crop.localeCompare(b.crop));
-function headline(f) {
-  const pls = plantingsOf(f), groups = new Map();
-  for (const p of pls) { const k = spanM(p.from, p.to); if (!groups.has(k)) groups.set(k, new Set()); groups.get(k).add(cropName(p.crop).toLowerCase()); }
-  if (!groups.size) return C().noPlans;
-  const straw = f.grid.some((g) => g.mulch?.share > 0.01) ? (es() ? "; paja entre siembras" : "; straw in between") : "";
-  if (groups.size > 3) return cap(`${andList([...new Set(pls.map((p) => cropName(p.crop).toLowerCase()))])}${es() ? ", en rotación" : ", rotating"}`) + straw;
-  return cap([...groups].map(([k, set]) => `${andList([...set])} ${es() ? "en" : "in"} ${k}`).join("; ")) + straw;
-}
-function kpis(f, r) {
-  const n = f.parcels.reduce((x, p) => x + p.d.steps.length, 0), N = r.period.length;
-  return h("div", { class: "kpis" },
-    h("div", {}, h("b", {}, String(n)), h("small", {}, C().kPlantings)),
-    h("div", {}, h("b", {}, frac(f.anyLoss)), h("small", {}, C().kLoss)),
-    h("div", {}, h("b", {}, C().ofMonths(Math.round(f.covered * N), N)), h("small", {}, C().kCovered)));
-}
 const verdictEl = (v) => h("span", { class: `verdict v-${v}` }, h("i", { class: `sw ${v}` }), C().verdict[v]);
+const level = (st) => (st.fail >= 0.5 ? "danger" : st.fail > 0.15 || st.yld < 0.6 ? "care" : "good");
+// Colour and drawing for each crop; bare soil is terracotta
+const CROP_LOOK = {
+  maize: ["var(--maize)", "i-maize"], soybean: ["var(--soybean)", "i-soybean"], rice: ["var(--rice)", "i-rice", 1], mulch: ["var(--straw)", "i-straw"],
+  peanut: ["#C98B5B", "i-sow"], common_bean: ["#9B5C7F", "i-soybean", 1], sorghum: ["#B5542D", "i-harvest", 1], wheat: ["#D9B861", "i-harvest"],
+  barley: ["#C8B26A", "i-harvest"], sunflower: ["#F2C230", "i-sun"], chickpea: ["#D7B98E", "i-soybean"], cowpea: ["#A9774E", "i-soybean", 1],
+  jack_bean: ["#6E9F5A", "i-sow", 1], velvet_bean: ["#5E8B4E", "i-sow", 1], potato: ["#A88A5C", "i-harvest", 1], bare: ["var(--bare)", "i-soil", 1],
+};
+const look = (id) => { const [color, ic, light] = CROP_LOOK[id] || ["var(--moss)", "i-sow"]; return { color, icon: ic, light: !!light }; };
+const tile = (id) => { const L = look(id); return h("span", { class: "tile-i", style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, icon(L.icon)); };
+const cropLabel = (id) => (id === "bare" ? C().ds.bare : cap(cropName(id)));
 function normalRain(clim, m) {
   normalRain.c ||= {};
   const k = `${clim.lat},${clim.lon},${m}`;
@@ -411,7 +477,7 @@ function farmCalendar(r, f, { compact = false, rain = false } = {}) {
         if (st.t1 <= a || st.t0 >= b) continue;
         const s0 = Math.max(a, st.t0), s1 = Math.min(b, st.t1) - 1, lv = st.fail >= 0.5 ? "danger" : st.fail > 0.15 || st.yld < 0.6 ? "care" : "good", len = s1 - s0 + 1;
         bars.push(h("button", {
-          class: `bar ${lv}${compact ? "" : " grow"}`, style: { gridColumn: `${s0 - a + 1} / span ${len}`, animationDelay: `${150 + st.t0 * 20 + k * 80}ms` },
+          class: `bar ${lv}${look(st.crop).light ? " light" : ""}${st.crop === "mulch" ? " straw" : ""}`, style: { gridColumn: `${s0 - a + 1} / span ${len}`, "--c": look(st.crop).color },
           title: `${cap(cropName(st.crop))} · ${span(r.period[st.t0], r.period[st.t1 - 1])} · ${outcomeShort(st, n1)}`, onclick: () => stepSheet(r, pc, st)
         },
           h("b", {}, cap(cropName(st.crop))), s0 === st.t0 && len >= 3 ? h("small", {}, outcomeShort(st, n1)) : null));
@@ -446,14 +512,6 @@ function barSheet(r, f, k, s, pl) {
     st ? h("p", { class: "small" }, C().rainVsNeed(Math.round(st.rain), Math.round(st.need))) : null,
     h("p", { class: "small" }, C().checkLocal));
 }
-const landList = (f) => h("ul", { class: "land" }, ...Object.values(f.byCrop).sort((a, b) => a.plantings[0].t0 - b.plantings[0].t0).map((b) =>
-  h("li", { class: b.crop === "mulch" ? "straw" : "" }, h("div", {}, h("b", {}, cap(cropName(b.crop))), h("span", {}, [...b.plantings].sort((x, y) => x.t0 - y.t0).slice(0, 2).map((p) => `${fmtArea(p.share)} · ${span(p.from, p.to)}`).join("; "))),
-    h("i", { style: { "--w": `${Math.round(b.area * 100)}%` } }))));
-const miniMap = (pl, v) => {
-  const d = 0.006, bb = [pl.lon - d * 2.6, pl.lat - d, pl.lon + d * 2.6, pl.lat + d].join(","), dk = demoKey(pl);
-  return h("div", { class: "mini-map desk-only" }, h("img", { alt: "", loading: "lazy", src: dk ? `img/sat/${dk}.jpg` : `${ESRI}/export?bbox=${bb}&bboxSR=4326&size=800,300&format=jpg&f=image` }), h("i", { class: v || "" }),
-    h("span", { class: "mm-label" }, h("b", {}, pl.name), `${pl.lat.toFixed(2)}, ${pl.lon.toFixed(2)}`));
-};
 const resHead = (P) => h("div", { class: "res-head" }, h("div", { class: "grow" }, h("b", {}, `${P.place.name} · ${fmtArea(1)}`), h("small", {}, `${fmtDate(P.start)} – ${fmtDate(P.end)}`)),
   h("a", { class: "btn", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; } }, C().change));
 async function withResults(draw) {
@@ -464,49 +522,349 @@ async function withResults(draw) {
   if (!r.farm) { put(v, h("div", { class: "res", style: { flexDirection: "column" } }, resHead(state.plan), h("div", { class: "card" }, h("p", {}, C().noPlans), h("a", { class: "btn dark", href: "#/planear" }, C().changeData)))); return; }
   await draw(r);
 }
+// Three named plans the farmer compares, plus what they do today. "Safest" is the new plan that loses a harvest in the fewest years.
+const NAMED_ICON = { safe: "i-shield", income: "i-income", soil: "i-straw", today: "i-plot" };
+async function namedPlans(P = state.plan, mode = state.mode) {
+  const [rs, ri] = await Promise.all([results(P, mode, "soil"), results(P, mode, "income")]);
+  const today = rs.today, tSig = today ? sig(today) : null;
+  const pool = [rs.farm, ri.farm, ...(rs.others || []), ...(ri.others || [])].filter((f) => f && sig(f) !== tSig && f.parcels.some((p) => p.d.steps.length));
+  const safe = [...pool].sort((a, b) => a.anyLoss - b.anyLoss || b.harvest - a.harvest)[0];
+  const out = [], seen = new Set();
+  for (const [key, f] of [["safe", safe], ["income", ri.farm], ["soil", rs.farm]]) { if (!f || seen.has(sig(f))) continue; seen.add(sig(f)); out.push({ key, f }); }
+  if (today) out.push({ key: "today", f: today });
+  return out;
+}
+const whyOf = (it, plans) => {
+  const D = C().ds, today = plans.find((x) => x.key === "today");
+  return it.key === "safe" && today && today.f.anyLoss < it.f.anyLoss ? D.why.safeNew : D.why[it.key];
+};
+// Plots, largest first, named the same way everywhere on the screen
+const plotsOf = (f) => f.parcels.map((pc) => ({ pc })).filter((x) => x.pc.share > 0.001).sort((a, b) => b.pc.share - a.pc.share)
+  .map((x, i, all) => ({ ...x, name: all.length > 1 ? `${C().plot} ${String.fromCharCode(65 + i)}` : C().ds.wholeFarm }));
+// What sits on a plot month by month: a planting, straw, or bare soil. Two plantings of the same crop stay apart.
+function runsOf(pc, N) {
+  const out = [];
+  for (let t = 0; t < N; t++) {
+    const st = pc.d.steps.find((x) => x.t0 <= t && t < x.t1), m = pc.d.months[t]?.crop;
+    const c = st ? st.crop : m || "bare", key = st ? `${st.crop}@${st.t0}` : c, l = out[out.length - 1];
+    if (l && l.key === key) l.t1 = t + 1; else out.push({ c, key, t0: t, t1: t + 1, st });
+  }
+  return out;
+}
+function monthsText(r, ru) {
+  const D = C().ds, yr = r.period.length > 12, nm = (p) => monL(p.m) + (yr ? ` ${p.y}` : "");
+  return ru.t1 - ru.t0 === 1 ? D.onlyMonth(nm(r.period[ru.t0])) : D.monthsTo(nm(r.period[ru.t0]), nm(r.period[ru.t1 - 1]));
+}
+const yearLv = (x) => (x.lostShare >= 0.5 ? "x" : x.lostShare > 0 ? "c" : "g");
+const coveredMonths = (f, N) => f.grid.slice(0, N).map((g) => !(g.bare?.share > 0.5));
+function normals(clim) {
+  normals.c ||= {};
+  return (normals.c[`${clim.lat},${clim.lon}`] ||= Array.from({ length: 12 }, (_, i) => {
+    const vs = Object.entries(clim.months).filter(([k]) => +k.slice(5) === i + 1 && +k.slice(0, 4) >= 1991 && +k.slice(0, 4) <= 2020).map(([, v]) => v);
+    const avg = (q) => vs.reduce((a, v) => a + v[q], 0) / Math.max(1, vs.length);
+    return { rain: avg("rain"), et0: avg("et0") };
+  }));
+}
+
+// The plan as a route: crop, then the months spelled out
+// Plans longer than a year show the first year; the rest opens on request so the route still reads at a glance
+function routeEl(r, f) {
+  const N = r.period.length, D = C().ds, long = N > 12, all = !long || state.routeAll, vseen = new Set();
+  const box = h("div", { class: "route" }, ...plotsOf(f).map(({ pc, name }) => h("div", { class: "rt-plot" }, h("span", { class: "rt-lab" }, `${name} · ${fmtArea(pc.share)}`),
+    h("ol", { class: "rt-steps" }, ...runsOf(pc, N).filter((ru) => all || ru.t0 < 12).map((ru) =>
+      h("li", { class: ru.c === "bare" ? "bare" : "", style: { "--c": look(ru.c).color } }, tile(ru.c), h("p", {}, h("b", {}, cropLabel(ru.c)), h("span", {}, monthsText(r, ru)))))),
+    vecChips(r, pc, all, vseen))));
+  if (long) box.append(h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { state.routeAll = !all; box.replaceWith(routeEl(r, f)); } },
+    all ? D.routeFirst : D.routeAll(Math.ceil(N / 12))));
+  return box;
+}
+const routeWords = (r, f) => plotsOf(f).map(({ pc }) => runsOf(pc, r.period.length).filter((ru) => ru.c !== "bare").map((ru) => `${cropLabel(ru.c)}, ${monthsText(r, ru)}`).join("; ")).join(". ");
+
+function countUp(el, to, ms) {
+  if (!MOTION()) { el.textContent = to; return; }
+  const t0 = performance.now();
+  const step = (now) => { const p = Math.min(1, (now - t0) / ms); el.textContent = Math.round(to * (1 - Math.pow(1 - p, 4))); if (p < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+// One dot per real year; same plan size recolours the dots in place so the change is visible
+function yearDots(el, r, f) {
+  const coast = COAST(state.plan.place), D = C().ds, per = f.per;
+  const cls = (x) => yearLv(x) + (coast && NINO_ONSET.includes(x.base) ? " n" : "");
+  el._f = f;
+  const dots = el.querySelectorAll("i");
+  if (dots.length === per.length) { dots.forEach((d, i) => { d.className = cls(per[i]); }); return; }
+  el.style.setProperty("--cols", Math.min(22, Math.max(12, Math.ceil(per.length / 2))));
+  const tip = h("span", { class: "dot-tip" });
+  put(el, ...per.map((x, i) => h("i", { class: cls(x), "data-i": i })), tip);
+  const show = (d) => {
+    const i = +d.dataset.i, x = el._f.per[i], y = x.base;
+    el.querySelectorAll("i.on").forEach((q) => q.classList.remove("on")); d.classList.add("on");
+    put(tip, h("b", {}, `${y}–${String(y + 1).slice(2)}${coast && NINO_ONSET.includes(y) ? ` · ${D.legend.n}` : ""}`), D.yearTip[yearLv(x)]);
+    tip.style.left = d.offsetLeft + d.offsetWidth / 2 + "px"; tip.style.top = d.offsetTop + "px"; tip.classList.add("on");
+  };
+  el.onpointerover = (e) => { if (e.target.dataset.i) show(e.target); };
+  el.onclick = (e) => { if (e.target.dataset.i) show(e.target); };
+  el.onpointerleave = () => { tip.classList.remove("on"); el.querySelectorAll("i.on").forEach((q) => q.classList.remove("on")); };
+}
+// Soil cover: a month counts as covered when most of the land has a crop or straw on it
+function coverSquares(el, r, f) {
+  const N = r.period.length, cov = coveredMonths(f, N), cells = el.querySelectorAll("i"), D = C().ds;
+  const title = (t) => `${cap(monL(r.period[t].m))}: ${cov[t] ? cap(es() ? "tierra cubierta" : "soil covered") : D.bare}`;
+  if (cells.length === N) { cells.forEach((c, t) => { c.style.transitionDelay = t * 15 + "ms"; c.classList.toggle("bare", !cov[t]); c.title = title(t); }); return; }
+  el.style.setProperty("--n", Math.min(N, 12));
+  put(el, ...cov.map((c, t) => h("div", {}, h("i", { class: c ? "" : "bare", title: title(t) }), t < 12 ? cap(monL(r.period[t].m)).slice(0, 1) : "")));
+}
+
+// Calendar: rain of a normal year, one lane per plot, a playhead moved by tap, drag or arrow keys
+function planCalendar(el, r, f) {
+  const c = C(), D = c.ds, N = r.period.length, nm = normals(r.clim), coast = COAST(state.plan.place);
+  const rain = r.period.map((p) => Math.round(nm[p.m - 1].rain)), wet = r.period.map((p) => nm[p.m - 1].rain >= 0.8 * nm[p.m - 1].et0);
+  const max = Math.max(1, ...rain), Y = (v) => 100 - (v / max) * 86 - 4;
+  const pts = rain.map((v, t) => [((t + 0.5) / N) * 1200, Y(v)]), line = smooth([[0, pts[0][1]], ...pts, [1200, pts[N - 1][1]]]);
+  const plots = plotsOf(f).map((x) => ({ ...x, runs: runsOf(x.pc, N) })), last = 2 + plots.length * 2 + 2;
+  const first12 = rain.slice(0, 12);
+  let sel = Math.min(N - 1, el.dataset.sel != null ? +el.dataset.sel : first12.indexOf(Math.max(...first12)));
+  const kids = [];
+  const area = document.createElementNS(SVGNS, "svg");
+  area.setAttribute("class", "pc-area"); area.setAttribute("viewBox", "0 0 1200 100"); area.setAttribute("preserveAspectRatio", "none"); area.setAttribute("aria-hidden", "true");
+  area.innerHTML = `<defs><linearGradient id="pcRain" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4A7FC1" stop-opacity=".5"/><stop offset="1" stop-color="#4A7FC1" stop-opacity=".08"/></linearGradient></defs><path class="fill" d="${line} L1200,100 L0,100 Z"/><path class="line" d="${line}" vector-effect="non-scaling-stroke"/>`;
+  kids.push(area);
+  plots.forEach(({ pc, name, runs }, k) => {
+    const row = 2 + k * 2;
+    kids.push(h("div", { class: "pc-lab", style: { gridRow: String(row) } }, h("b", {}, name), fmtArea(pc.share)));
+    kids.push(h("div", { class: "pc-track", style: { gridRow: String(row + 1) } }));
+    for (const ru of runs) {
+      const L = look(ru.c), lv = ru.st ? level(ru.st) : "good";
+      kids.push(h("div", { class: ["pc-run", ru.c === "bare" ? "bare" : ru.c === "mulch" ? "straw" : "", L.light ? "light" : "", lv !== "good" ? lv : ""].filter(Boolean).join(" "),
+        style: { gridRow: String(row + 1), gridColumn: `${ru.t0 + 1} / ${ru.t1 + 1}`, background: L.color }, title: `${cropLabel(ru.c)} · ${monthsText(r, ru)}` }, h("span", {}, ru.t1 - ru.t0 > (N > 12 ? 3 : 1) ? cropLabel(ru.c) : "")));
+    }
+  });
+  const short = (p) => (N <= 12 ? cap(monL(p.m)).slice(0, 3) : cap(monL(p.m)).slice(0, 1));
+  r.period.forEach((p, t) => kids.push(h("div", { class: "pc-month", style: { gridRow: String(last - 1), gridColumn: String(t + 1) } }, N > 24 ? (p.m === 1 ? `'${String(p.y).slice(2)}` : "") : short(p))));
+  for (let a = 0; a < N;) { let b = a; while (b + 1 < N && wet[b + 1] === wet[a]) b++; const w = wet[a]; kids.push(h("div", { class: `pc-season${w ? " w" : ""}${N > 24 ? " tiny" : b - a < (N > 12 ? 2 : 1) ? " short" : ""}`, style: { gridRow: String(last), gridColumn: `${a + 1} / ${b + 2}` } }, w ? (coast ? D.wet : D.wetX) : coast ? D.dry : D.dryX)); a = b + 1; }
+  const hits = r.period.map((p, t) => h("button", { class: "pc-hit", style: { gridRow: `1 / ${last + 1}`, gridColumn: String(t + 1) }, "aria-label": `${cap(monL(p.m))} ${p.y}`, tabindex: "-1" }));
+  const dot = h("div", { class: "pc-dot" }, h("b"), h("span", { class: "pc-pt" }));
+  const grid = h("div", { class: "pc-grid", style: { "--n": N } }, ...kids, ...hits, dot);
+  const when = h("span", { class: "mono" }), big = h("span", { class: "pc-big" }), mm = h("span", { class: "pc-big" }), now = h("div", { class: "pc-now" });
+  put(el, h("div", { class: "pc-head" }, h("div", { class: "pc-when" }, when, big), h("div", { class: "pc-rain" }, mm, h("span", { class: "mono" }, D.normalRain))), now, grid, h("p", { class: "small pc-note" }, D.tapMonth));
+  // A season name that does not fit its months is hidden instead of cut mid-word; the line stays.
+  new ResizeObserver(() => grid.querySelectorAll(".pc-season").forEach((x) => { x.classList.remove("nofit"); if (x.scrollWidth > x.clientWidth + 1) x.classList.add("nofit"); })).observe(grid);
+  const place = () => {
+    const g = grid.getBoundingClientRect(), hr = hits[sel].getBoundingClientRect(), lanes = grid.querySelectorAll(".pc-track");
+    if (!g.width || !lanes.length) return;
+    dot.style.height = lanes[lanes.length - 1].getBoundingClientRect().bottom - g.top + "px";
+    dot.style.transform = `translateX(${hr.left - g.left + hr.width / 2}px)`;
+    dot.querySelector(".pc-pt").style.top = (Y(rain[sel]) / 100) * area.getBoundingClientRect().height + "px";
+  };
+  const pick = (t, focus) => {
+    sel = Math.max(0, Math.min(N - 1, t)); el.dataset.sel = sel;
+    const p = r.period[sel];
+    hits.forEach((b, i) => { b.tabIndex = i === sel ? 0 : -1; });
+    grid.querySelectorAll(".pc-month").forEach((b, i) => b.classList.toggle("on", i === sel));
+    when.textContent = `${wet[sel] ? (coast ? D.wet : D.wetX) : coast ? D.dry : D.dryX} · ${p.y}`;
+    big.textContent = cap(monL(p.m));
+    put(mm, String(rain[sel]), h("small", {}, "mm"));
+    dot.querySelector("b").textContent = cap(monL(p.m)).slice(0, 3);
+    put(now, ...plots.map(({ pc, name, runs }) => { const ru = runs.find((x) => x.t0 <= sel && sel < x.t1); return h("button", { onclick: () => (ru.st ? stepSheet(r, pc, ru.st) : null) }, tile(ru.c), h("p", {}, h("span", {}, name), cropLabel(ru.c))); }));
+    place();
+    if (focus) hits[sel].focus();
+  };
+  hits.forEach((b, t) => {
+    b.addEventListener("click", () => pick(t));
+    b.addEventListener("keydown", (e) => { const d = { ArrowRight: 1, ArrowLeft: -1, Home: -999, End: 999 }[e.key]; if (d !== undefined) { e.preventDefault(); pick(sel + d, true); } });
+  });
+  let drag = false;
+  const at = (x) => { const rs = hits.map((b) => b.getBoundingClientRect()), i = rs.findIndex((q) => x >= q.left - 2 && x <= q.right + 2); return i < 0 ? (x < rs[0].left ? 0 : N - 1) : i; };
+  grid.addEventListener("pointerdown", (e) => { drag = true; grid.classList.add("dragging"); pick(at(e.clientX)); });
+  grid.addEventListener("pointermove", (e) => { if (drag) pick(at(e.clientX)); });
+  const end = () => { drag = false; grid.classList.remove("dragging"); };
+  grid.addEventListener("pointerup", end); grid.addEventListener("pointercancel", end); grid.addEventListener("pointerleave", end);
+  el._ro?.disconnect(); el._ro = new ResizeObserver(place); el._ro.observe(grid);
+  pick(sel);
+}
+
+// A card per plan: why it is suggested, its crops in order, how it would have gone
+function planCard(it, r, plans, onPick) {
+  const D = C().ds, f = it.f, N = r.period.length, plots = plotsOf(f).map((x) => ({ ...x, runs: runsOf(x.pc, N) }));
+  const order = [];
+  for (let t = 0; t < N; t++) for (const { runs } of plots) { const c = runs.find((x) => x.t0 <= t && t < x.t1).c; if (!order.includes(c)) order.push(c); }
+  const lossYears = f.per.filter((x) => x.lostShare > 0).length, cov = coveredMonths(f, N).filter(Boolean).length;
+  return h("button", { class: "strat", role: "radio", "aria-checked": String(it.key === state.pick), "data-id": it.key, onclick: () => onPick(it.key) },
+    h("span", { class: "spec mono" }, whyOf(it, plans), h("span", { class: "radio" })),
+    h("span", { class: "pname" }, icon(NAMED_ICON[it.key]), D.names[it.key]),
+    h("span", { class: "cropline" }, ...order.slice(0, 4).map((c) => { const L = look(c); return h("span", { class: `cl-chip${c === "bare" ? " bare" : ""}` }, h("i", { style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, icon(L.icon)), cropLabel(c)); }),
+      order.length > 4 ? h("span", { class: "cl-chip more", title: order.slice(4).map(cropLabel).join(", ") }, `+${order.length - 4}`) : null),
+    h("span", { class: "cl-note" }, plots.length > 1 ? D.inPlots(plots.length) : D.wholeFarm),
+    h("span", { class: "mini", style: { "--n": N } }, ...plots.map(({ runs }) => h("div", {}, ...runs.flatMap((ru) => Array.from({ length: ru.t1 - ru.t0 }, () => h("i", { class: ru.c === "bare" ? "bare" : "", style: { background: look(ru.c).color } })))))),
+    h("span", { class: `badge ${f.verdict}` }, C().verdict[f.verdict]),
+    h("span", { class: "facts" }, r.samples.length > 1 ? h("span", {}, icon("i-care"), D.lossYears(lossYears)) : null, h("span", {}, icon("i-straw"), D.coverOf(cov, N))));
+}
+
+// What we don't know: a short label each, the sentence opens on tap
+function unknownChips(r, f) {
+  const c = C(), D = c.ds, tr = r.terrain, d = describeSoil(tr?.soil), crops = new Set(f.parcels.flatMap((p) => p.d.steps.map((s) => s.crop)));
+  const items = [["i-rain", D.unk.climate, c.unkClimate], ["i-soil", D.unk.soil, d ? (tr.soil.offsetKm ? c.unkSoilNear(tr.soil.offsetKm) : c.unkSoil) : c.unkNoSoil], ["i-maize", D.unk.variety, c.unkVariety]];
+  if ([...crops].some((id) => DATA.crops[id]?.approximate)) items.push(["i-info", D.unk.approx, c.approx]);
+  if (!nearPilot(state.plan.place)) items.push(["i-income", D.unk.prices, c.unkPrices]);
+  items.push(["i-agronomist", D.unk.local, D.localWhy]);
+  const toggle = (e) => { const b = e.currentTarget; b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true")); };
+  return h("div", { class: "unk" }, ...items.map(([ic, t, txt]) => h("button", { class: "unk-chip", "aria-expanded": "false", onclick: toggle },
+    h("span", { class: "top" }, icon(ic), t, h("span", { class: "plus" })), h("span", { class: "more" }, h("div", {}, h("p", {}, txt))))));
+}
+function sourceNote(r, f) {
+  const D = C().ds, per = f.per, b = h("button", { class: "source", "aria-expanded": "false" }, icon("i-info"), D.source,
+    h("span", { class: "pop" }, D.sourcePop(state.plan.place.name, per[0]?.base ?? r.period[0].y, per[per.length - 1]?.base ?? r.period[0].y)));
+  b.addEventListener("click", (e) => { e.stopPropagation(); b.setAttribute("aria-expanded", String(b.getAttribute("aria-expanded") !== "true")); });
+  return b;
+}
+
 function viewPlan() {
   return withResults(async (r) => {
-    const f = r.farm, P = state.plan, c = C(), ids = await ideas(r);
-    const say = () => `${c.best}: ${headline(f)}. ${c.verdict[f.verdict]}.`;
-    const isSaved = state.saved && JSON.stringify(state.saved.plan) === JSON.stringify(P);
-    put($("#view"), h("div", { class: "res" },
+    const c = C(), D = c.ds, P = state.plan, N = r.period.length, multi = r.samples.length > 1;
+    const [plans, ids] = await Promise.all([namedPlans(P), ideas(r), loadVecinos()]);
+    if (!plans.length) { put($("#view"), h("div", { class: "res" }, resHead(P), h("div", { class: "card" }, h("p", {}, c.noPlans), h("a", { class: "btn dark", href: "#/planear" }, c.changeData)))); return; }
+    if (!plans.some((x) => x.key === state.pick)) state.pick = plans[0].key;
+    const cur = () => plans.find((x) => x.key === state.pick);
+    const head = h("div", { class: "pv-block", id: "pvHead" }), routeBox = h("div"), stat = h("div"), dots = h("div", { class: "dots" }), coverLab = h("b"), squares = h("div", { class: "squares" }), cal = h("div", { class: "pcal" });
+    const isSaved = () => state.saved && JSON.stringify(state.saved.plan) === JSON.stringify(P);
+    const saveBtn = h("button", { class: "round", "aria-label": c.save, title: c.save, onclick: () => { state.saved = { plan: P, at: Date.now() }; store.set("saved3", state.saved); put(saveBtn, icon("i-check")); } }, icon(isSaved() ? "i-check" : "i-bookmark"));
+    const show = (anim) => {
+      const it = cur(), f = it.f, good = f.per.filter((x) => yearLv(x) === "g").length, cov = coveredMonths(f, N).filter(Boolean).length;
+      put(head, h("span", { class: "pill-eyebrow mono" }, whyOf(it, plans)), h("h2", { class: "h3" }, D.names[it.key]), h("span", { class: `badge ${f.verdict}` }, c.verdict[f.verdict]));
+      put(routeBox, routeEl(r, f));
+      if (multi) {
+        const [a, b, z] = D.goodYears(f.per.length), n = h("span", {}, String(good));
+        put(stat, h("div", { class: "statbox" }, h("div", { class: "stat" }, n), h("p", {}, a, h("b", {}, b), z)));
+        yearDots(dots, r, f);
+        if (anim) countUp(n, good, 800);
+      }
+      coverLab.textContent = D.coverOf(cov, N);
+      coverSquares(squares, r, f);
+      planCalendar(cal, r, f);
+      if (anim) [head, routeBox, stat, cal].forEach((x) => { x.classList.remove("swap"); void x.offsetWidth; x.classList.add("swap"); });
+      bar?.redraw();
+    };
+    const cards = h("div", { class: "strats", role: "radiogroup", "aria-label": D.names.safe, style: { "--k": plans.length } });
+    const pickPlan = (key) => {
+      state.pick = key;
+      cards.querySelectorAll(".strat").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.id === key)));
+      show(true);
+      // On narrow screens the plan sits above the cards: bring it into view so the change is seen
+      const rc = head.getBoundingClientRect();
+      if (!desktop() && (rc.top < 60 || rc.bottom > innerHeight)) {
+        head.scrollIntoView({ behavior: MOTION() ? "smooth" : "auto", block: "start" });
+        const badge = head.querySelector(".badge"); badge.classList.add("flash"); setTimeout(() => badge.classList.remove("flash"), 900);
+      }
+    };
+    put(cards, ...plans.map((it) => planCard(it, r, plans, pickPlan)));
+    const bar = linked() ? pickBar(r, cur) : null;
+    const legend = h("div", { class: "dots-legend" }, ...["g", "c", "x"].map((k) => h("span", {}, h("i", { class: k, style: { background: { g: "var(--good)", c: "var(--care)", x: "var(--danger)" }[k] } }), D.legend[k])),
+      COAST(P.place) ? h("span", {}, h("i", { class: "n" }), D.legend.n) : null);
+    put($("#view"), h("div", { class: "res pv" },
       resHead(P),
-      h("div", { class: "col-left" },
-        miniMap(P.place, f.verdict),
-        h("section", { class: "card answer" },
-          h("p", { class: "lbl" }, c.best), h("h2", { class: "display" }, headline(f)), verdictEl(f.verdict), kpis(f, r),
-          h("button", { class: "link", style: { alignSelf: "flex-start", fontSize: "15px" }, onclick: () => explainSheet(headline(f), f, r) }, c.whyThis),
-          h("div", { class: "desk-only", style: { display: "flex", flexDirection: "column", gap: "10px" } }, h("b", { style: { fontSize: "15px" } }, c.landEach), landList(f)),
-          h("div", { class: "desk-only", style: { display: "flex", flexDirection: "column", gap: "8px" } }, h("b", { style: { fontSize: "15px" } }, c.tipsTitle), tipList(tipsFor(r).slice(0, 1)), h("a", { class: "link", href: "#/terreno", style: { fontSize: "14px" } }, c.seePlot)),
-          h("div", { class: "acts desk-only" },
-            h("button", { class: "btn dark", onclick: () => { state.saved = { plan: P, at: Date.now() }; store.set("saved3", state.saved); render(); } }, icon(isSaved ? "i-check" : "i-bookmark"), isSaved ? c.saved : c.save),
-            h("button", { class: "round", "aria-label": c.listen, title: c.listen, onclick: () => speak(say()) }, icon("i-volume"))))),
-      h("div", { class: "col-right" },
-        ninoBanner(r),
-        h("section", { class: "card farm-card" },
-          h("div", { class: "row between wrap" }, h("b", { style: { fontSize: desktop() ? "18px" : "16px" } }, c.calendar),
-            h("div", { class: "legend" }, ...[["good", c.lgGood], ["care", c.lgCare], ["danger", c.lgDanger], ["bare", c.lgBare]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l)))),
-          farmCalendar(r, f, { rain: desktop() }),
-          desktop() ? h("p", { class: "small" }, c.rainNote(P.place.name)) : null,
-          h("p", { class: "small", style: { marginTop: "auto", display: "flex", gap: "8px", alignItems: "flex-start" } }, icon("i-sat"), r.samples.length > 1 ? (state.mode === "nino" ? c.calNoteNino(r.samples.length) : c.calNote) : c.calNoteReal)),
-        h("section", { class: "strats-wrap" }, h("div", { class: "row between" }, h("b", { class: "sec-h" }, c.otherStrats), ids.length ? h("a", { class: "link desk-only", href: "#/probar", style: { fontSize: "14px" } }, c.ideasHint(ids.length)) : null),
-          h("div", { class: "strats" }, ...strategies(r).map((s) => stratCard(s, r)))),
-        h("section", { class: "card phone-only" }, h("b", {}, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot)),
-        ids.length ? h("a", { class: "tip phone-only", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(ids.length)), icon("i-chev-r")) : null)));
+      linked() ? lotSyncEl() : null,
+      ninoBanner(r),
+      h("section", { class: "pv-panel" },
+        h("div", { class: "pv-body" },
+          h("div", { class: "pv-left" },
+            h("div", { class: "pv-a" }, head, h("div", { class: "pv-block" }, h("b", {}, D.whatWhen), routeBox),
+              h("div", { class: "pv-acts" }, h("button", { class: "btn soft", onclick: () => explainSheet(D.names[cur().key], cur().f, r) }, D.whyRisks), saveBtn,
+                h("button", { class: "round", "aria-label": c.listen, title: c.listen, onclick: () => speak(`${D.names[cur().key]}. ${routeWords(r, cur().f)}. ${c.verdict[cur().f.verdict]}.`) }, icon("i-volume")))),
+            h("div", { class: "pv-b" },
+              multi ? [stat, h("div", { class: "pv-block" }, dots, legend, h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r")))] : h("p", { class: "small" }, D.realOnly),
+              h("div", { class: "pv-block" }, coverLab, squares))),
+          h("div", { class: "pv-right" }, cal)),
+        h("div", { class: "pv-block pv-cards" }, h("b", {}, D.plansTitle(plans.filter((x) => x.key !== "today").length, plans.some((x) => x.key === "today"))), cards, bar),
+        h("div", { class: "pv-foot" }, unknownChips(r, plans[0].f), sourceNote(r, plans[0].f))),
+      ids.length ? h("a", { class: "hint", href: "#/probar" }, icon("i-bulb"), h("span", { class: "grow" }, c.ideasHint(ids.length)), icon("i-chev-r")) : null,
+      h("section", { class: "card" }, h("b", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r).slice(0, 4)), h("a", { class: "link", href: "#/terreno" }, c.seePlot)),
+      canHandoff() ? handoffCard(P) : null));
+    show(false);
   });
 }
 
+// Opened from WhatsApp: the farmer picks a plan here and Rooti hears about it in the chat
+function pickBar(r, cur) {
+  const W = C().wa, box = h("div", { class: "wa-bar" });
+  const draw = (status) => {
+    const it = cur(), name = C().ds.names[it.key];
+    if (link.chosen?.key === it.key) return put(box, h("p", { class: "wa-done" }, icon("i-check"), h("span", {}, W.chosen(name))), hasWhatsApp() ? h("a", { class: "btn big block", href: waUrl() }, icon("i-chat"), W.back) : null);
+    put(box, h("button", { class: "btn lime big block", disabled: status === "saving", onclick: async () => {
+      draw("saving");
+      try { await choosePlan({ key: it.key, name, route: routeWords(r, it.f) }); draw(); } catch { draw("error"); }
+    } }, status === "saving" ? W.saving : W.choose(name)), h("p", { class: status === "error" ? "err" : "small" }, status === "error" ? W.chooseError : W.chooseHelp));
+  };
+  box.redraw = () => draw();
+  draw();
+  return box;
+}
+// The public website: the plan goes on to Rooti on WhatsApp as a short code the farmer sends
+function handoffCard(P) {
+  const W = C().wa, msg = h("p", { class: "small" }, W.goText);
+  return h("section", { class: "card wa-go" }, h("b", { class: "card-h" }, W.goTitle), msg,
+    h("button", { class: "btn dark big", onclick: async (e) => {
+      const b = e.currentTarget; b.disabled = true;
+      try { location.href = waUrl(W.goMsg(await handoff(P))); } catch { msg.textContent = W.goError; msg.className = "err"; b.disabled = false; }
+    } }, icon("i-chat"), W.go));
+}
+
+/* ================= Aviso: the page behind an alert's «Ver el aviso» ================= */
+const HEAVY_MM = 40; // the same threshold as bot/src/rooti_bot/alerts.py
+async function forecastDays(pl) {
+  const q = new URLSearchParams({ latitude: pl.lat, longitude: pl.lon, daily: "precipitation_sum", timezone: "America/Guayaquil", forecast_days: 7 });
+  const d = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`).then(ok);
+  return d.daily.time.map((day, i) => ({ day, mm: d.daily.precipitation_sum[i] || 0 }));
+}
+const weekday = (day, style = "long") => new Date(day + "T12:00:00").toLocaleDateString(state.lang, { weekday: style });
+function rainChart(days) {
+  const W = C().wa, wd = 340, ht = 180, top = 28, bot = 40, max = Math.max(HEAVY_MM * 1.3, ...days.map((d) => d.mm));
+  const x = (i) => (i + 0.5) * (wd / days.length), y = (v) => top + (ht - top - bot) * (1 - v / max);
+  const line = days.map((d, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(d.mm).toFixed(1)}`).join("");
+  return svg("svg", { viewBox: `0 0 ${wd} ${ht}`, class: "rain-chart", role: "img", "aria-label": days.map((d) => `${weekday(d.day)} ${Math.round(d.mm)} ${W.mm}`).join(", ") },
+    svg("path", { d: `${line}L${x(days.length - 1)},${y(0)}L${x(0)},${y(0)}Z`, class: "ra" }),
+    svg("line", { x1: 0, x2: wd, y1: y(HEAVY_MM), y2: y(HEAVY_MM), class: "rh" }),
+    svg("text", { x: wd - 2, y: y(HEAVY_MM) - 6, "text-anchor": "end", class: "rht" }, `${W.heavy} · ${HEAVY_MM} ${W.mm}`),
+    svg("path", { d: line, class: "rl" }),
+    ...days.flatMap((d, i) => [
+      svg("circle", { cx: x(i), cy: y(d.mm), r: d.mm >= HEAVY_MM ? 5 : 3.5, class: d.mm >= HEAVY_MM ? "rp heavy" : "rp" }),
+      svg("text", { x: x(i), y: y(d.mm) - 10, "text-anchor": "middle", class: d.mm >= HEAVY_MM ? "rv heavy" : "rv" }, String(Math.round(d.mm))),
+      svg("text", { x: x(i), y: ht - 20, "text-anchor": "middle", class: "rd" }, cap(weekday(d.day, "short").replace(".", ""))),
+      svg("text", { x: x(i), y: ht - 6, "text-anchor": "middle", class: "rdn" }, String(+d.day.slice(8))),
+    ]));
+}
+function alertTitle(A, days) {
+  const W = C().wa;
+  if (A.kind === "heavy_rain") {
+    // The millimetres Rooti said in the voice note, so the page never contradicts it; the forecast may have moved since
+    const said = A.text.match(/unos (\d+) mil/)?.[1], mm = said ? +said : days?.find((d) => d.day === A.key)?.mm ?? 0;
+    return W.rainTitle(weekday(A.key), Math.round(mm));
+  }
+  const [crop, month = ""] = A.key.split("@"), [mName, year] = month.split(" ");
+  const id = Object.keys(DATA.crops).find((k) => DATA.crops[k].name_es.split(" / ")[0].toLowerCase() === crop);
+  const m = STR.es.monthsLong.indexOf(mName);
+  return W.sowTitle(id ? cropName(id).toLowerCase() : crop, m >= 0 ? `${monL(m + 1)} ${year}` : month);
+}
+async function viewAviso() {
+  const W = C().wa, A = link.alert, P = state.plan;
+  put($("#view"), loading());
+  const days = await forecastDays(P.place).catch(() => null);
+  put($("#view"), h("div", { class: "res aviso" },
+    h("section", { class: "av-hero" }, h("span", { class: "pill-eyebrow glass mono" }, W.kind[A.kind] || W.crumb), h("h1", { class: "h2" }, alertTitle(A, days)), es() ? h("p", {}, A.text) : null),
+    h("section", { class: "card" }, h("b", { class: "card-h" }, W.nextDays), days ? rainChart(days) : h("p", { class: "small" }, W.noForecast), h("p", { class: "small" }, W.forecastSrc)),
+    h("section", { class: "card" }, h("b", { class: "card-h" }, W.todo), tipList(W.tips[A.kind] || [])),
+    h("div", { class: "av-acts" }, h("a", { class: "btn lime big block", href: link.call }, icon("i-mic"), W.call), h("a", { class: "btn big block", href: "#/plan" }, icon("i-month"), W.seePlan))));
+}
 
 /* ---------- why, risks, what we don't know, questions for the agronomist ---------- */
 const COAST = (pl) => pl.lat > -5 && pl.lat < 2 && pl.lon > -81.5 && pl.lon < -78.5;
 // A strong El Niño is under way (NOAA/ERFEN, data/outlook.json): on the Pacific coast, a plan for the coming rainy
 // season is tested by default on the seasons that followed past strong El Niños, not on all years alike.
-const ninoNow = (P) => !!P && DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place) && P.start.slice(0, 7) <= "2027-04";
+const ninoNow = (P) => !!P && DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place) && P.start.slice(0, 7) <= "2027-04" && P.end >= iso(new Date());
 const defaultMode = (P) => (ninoNow(P) ? "nino" : "all");
 const seasonsOf = (r) => r.samples.filter((s) => s.base != null).map((s) => `${s.base}-${String(s.base + 1).slice(2)}`);
 function ninoBanner(r) {
   const c = C(), P = state.plan;
-  if (state.mode === "nino") return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, h("b", {}, c.ninoOnTitle), " ", c.ninoOn(andList(seasonsOf(r)))), h("button", { class: "link", onclick: () => { state.mode = "all"; render(); } }, c.ninoSeeAll));
+  if (state.mode === "nino" && seasonsOf(r).length) return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, h("b", {}, c.ninoOnTitle), " ", c.ninoOn(andList(seasonsOf(r)))), h("button", { class: "link", onclick: () => { state.mode = "all"; render(); } }, c.ninoSeeAll));
   if (ninoNow(P)) return h("div", { class: "read nino-note" }, icon("i-rain"), h("span", { class: "grow" }, c.ninoOff), h("button", { class: "link", onclick: () => { state.mode = "nino"; render(); } }, c.ninoTest));
   return null;
 }
@@ -574,26 +932,217 @@ function tipsFor(r) {
   return out;
 }
 const tipList = (items) => h("ul", { class: "tips" }, ...items.map(([ic, tx]) => h("li", {}, h("span", { class: "ic" }, icon(ic)), h("span", {}, tx))));
-// Other strategies, judged on the same years: what the farmer does today and single-plot rotations.
-function strategies(r) {
-  const c = C(), out = [], seen = new Set([sig(r.farm)]);
-  if (r.today) { out.push({ label: c.stratToday, f: r.today }); seen.add(sig(r.today)); }
-  let n = 1;
-  for (const f of r.others) { if (seen.has(sig(f))) continue; seen.add(sig(f)); out.push({ label: c.stratOption(++n), f }); if (out.length >= 3) break; }
-  return out;
-}
 function sig(f) { return f.parcels.map((p) => p.d.steps.map((s) => s.crop + s.t0).join(",")).join("|"); }
-function stratCard(s, r) {
-  const f = s.f, N = r.period.length;
-  return h("button", { class: "strat", onclick: () => explainSheet(`${s.label}: ${headline(f)}`, f, r) },
-    h("small", {}, s.label), h("b", {}, headline(f)), verdictEl(f.verdict),
-    h("span", { class: "small" }, `${C().kLoss}: ${frac(f.anyLoss).toLowerCase()} · ${C().kCovered}: ${C().ofMonths(Math.round(f.covered * N), N)}`),
-    h("span", { class: "more" }, C().seeWhy, icon("i-chev-r")));
-}
 
 /* ---------- the plot ---------- */
+// The plot from the satellite with the picked plan's plots drawn on it. The split is illustrative, and says so.
+function plotMap(r, f) {
+  const P = state.plan, pl = P.place, D = C().ds, dk = demoKey(pl), d = 0.006, N = r.period.length;
+  const bb = [pl.lon - d * 2.6, pl.lat - d, pl.lon + d * 2.6, pl.lat + d].join(",");
+  const plots = plotsOf(f).map((x) => ({ ...x, lead: runsOf(x.pc, N).find((ru) => ru.c !== "bare" && ru.c !== "mulch")?.c || "bare" }));
+  const label = ({ name, lead, pc }) => h("span", {}, tile(lead), h("b", {}, name), `${cropLabel(lead)} · ${fmtArea(pc.share)}`);
+  if (P.lot?.length >= 3) {
+    // The drawn plot on the image, split in strips by share. Image and SVG share the same box in degrees (EPSG:4326, W:H = 1000:420).
+    const lo = P.lot.map((p) => p[0]), la = P.lot.map((p) => p[1]), cx = (Math.min(...lo) + Math.max(...lo)) / 2, cy = (Math.min(...la) + Math.max(...la)) / 2;
+    let hh = Math.max(Math.max(...la) - Math.min(...la), (Math.max(...lo) - Math.min(...lo)) * 420 / 1000) * 1.9; hh = Math.max(hh, 0.0012);
+    const ww = hh * 1000 / 420, x0 = cx - ww / 2, y1 = cy + hh / 2;
+    const X = (v) => ((v - x0) / ww) * 1000, Y = (v) => ((y1 - v) / hh) * 420, pts = P.lot.map((p) => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
+    const xa = X(Math.min(...lo)), xb = X(Math.max(...lo)), tot = plots.reduce((a, x) => a + x.pc.share, 0) || 1;
+    let acc = xa;
+    const strips = plots.map(({ pc, lead }) => { const w = ((xb - xa) * pc.share) / tot, r = svg("rect", { x: acc, y: 0, width: w, height: 420, fill: look(lead).color, "fill-opacity": 0.38 }); acc += w; return r; });
+    const cuts = strips.slice(1).map((r) => svg("line", { x1: r.getAttribute("x"), x2: r.getAttribute("x"), y1: 0, y2: 420, stroke: "#F3F0E5", "stroke-width": 2, "stroke-dasharray": "6 5" }));
+    return h("section", { class: "plot-map" },
+      h("img", { alt: "", src: `${ESRI}/export?bbox=${[x0, cy - hh / 2, x0 + ww, y1].join(",")}&bboxSR=4326&imageSR=4326&size=1000,420&format=jpg&f=image` }),
+      svg("svg", { class: "pm-shape", viewBox: "0 0 1000 420", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true" },
+        svg("defs", {}, svg("clipPath", { id: "pmClip" }, svg("polygon", { points: pts }))),
+        svg("g", { "clip-path": "url(#pmClip)" }, ...strips, ...cuts),
+        svg("polygon", { points: pts, fill: "none", stroke: "#C8FF9E", "stroke-width": 3, "stroke-linejoin": "round" })),
+      h("div", { class: "pm-keys" }, ...plots.map((x) => h("div", { class: "pm-key", style: { "--c": look(x.lead).color } }, label(x)))),
+      h("div", { class: "pm-cap" }, h("b", {}, D.plotMap), h("span", {}, D.plotMapNote)));
+  }
+  return h("section", { class: "plot-map" },
+    h("img", { alt: "", src: dk ? `img/sat/${dk}.jpg` : `${ESRI}/export?bbox=${bb}&bboxSR=4326&size=1000,420&format=jpg&f=image` }),
+    h("div", { class: "pm-lot" }, ...plots.map(({ pc, name, lead }) => h("div", { class: "pm-plot", style: { flexGrow: String(pc.share), "--c": look(lead).color } },
+      h("span", {}, tile(lead), h("b", {}, name), `${cropLabel(lead)} · ${fmtArea(pc.share)}`)))),
+    h("div", { class: "pm-cap" }, h("b", {}, D.plotMap), h("span", {}, D.plotMapNote)));
+}
+/* ---------- the plot in 3D: real terrain, each crop at its height, the water a month leaves ---------- */
+// Tallest height each crop reaches, m: FAO-56 Table 12 ("maximum crop height"). Jack bean and velvet bean: estimated.
+const CROP_H = { rice: 1, maize: 2, soybean: 0.75, peanut: 0.4, common_bean: 0.4, cowpea: 0.4, sorghum: 1.5, jack_bean: 1, velvet_bean: 0.6, wheat: 1, barley: 1, potato: 0.6, sunflower: 2, chickpea: 0.4, mulch: 0.05, bare: 0 };
+const cssColor = (v) => (v.startsWith("var(") ? getComputedStyle(document.documentElement).getPropertyValue(v.slice(4, -1)).trim() || "#7A8B6F" : v);
+// The plot's corners: the drawn ones, or a rectangle of the plot's real size centred on the pin
+function lotOf(P) {
+  if (P.lot?.length >= 3) return { pts: P.lot, drawn: true };
+  const ha = (P.area || 1) * UNITS[P.unit || "ha"], w = Math.sqrt(ha * 1e4 * 2), R = 6371008.8, k = 180 / Math.PI, { lon, lat } = P.place;
+  const dLat = (w / 4 / R) * k, dLon = (w / 2 / (R * Math.cos(lat / k))) * k;
+  return { pts: [[lon - dLon, lat - dLat], [lon + dLon, lat - dLat], [lon + dLon, lat + dLat], [lon - dLon, lat + dLat]], drawn: false };
+}
+// The part of a polygon between two longitudes (Sutherland–Hodgman against two vertical lines)
+function clipLon(pts, a, b) {
+  const cut = (ps, keep, x) => { const out = []; ps.forEach((p, i) => { const q = ps[(i + 1) % ps.length], pin = keep(p[0]), qin = keep(q[0]); if (pin) out.push(p); if (pin !== qin) { const t = (x - p[0]) / (q[0] - p[0]); out.push([x, p[1] + t * (q[1] - p[1])]); } }); return out; };
+  return cut(cut(pts, (x) => x >= a, a), (x) => x <= b, b);
+}
+// Free elevation tiles (Mapzen Terrarium on AWS Open Data, mostly NASA SRTM), no key. Deeper zooms read inside a level-14 tile.
+function terrariumTerrain(Cz) {
+  const cache = new Map(), Z = 14, S = 33;
+  const tile = (x, y, z) => {
+    const k = `${z}/${x}/${y}`;
+    if (!cache.has(k)) cache.set(k, new Promise((res) => {
+      const img = new Image(); img.crossOrigin = "anonymous";
+      img.onload = () => { const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, 0, 0); res(g.getImageData(0, 0, 256, 256).data); };
+      img.onerror = () => res(null);
+      img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+    }));
+    return cache.get(k);
+  };
+  return new Cz.CustomHeightmapTerrainProvider({ width: S, height: S, tilingScheme: new Cz.WebMercatorTilingScheme(), callback: async (x, y, level) => {
+    const out = new Float32Array(S * S), z = Math.min(level, Z), f = 2 ** (level - z), d = await tile(Math.floor(x / f), Math.floor(y / f), z);
+    if (!d) return out;
+    const span = 256 / f, ox = (x % f) * span, oy = (y % f) * span;
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+      // bilinear between the four nearest pixels, so deep zooms are smooth instead of stepped
+      const u = Math.min(254.999, ox + (i / (S - 1)) * span), v = Math.min(254.999, oy + (j / (S - 1)) * span), u0 = Math.floor(u), v0 = Math.floor(v), fu = u - u0, fv = v - v0;
+      const e = (uu, vv) => { const o = (vv * 256 + uu) * 4; return d[o] * 256 + d[o + 1] + d[o + 2] / 256 - 32768; };
+      out[j * S + i] = (e(u0, v0) * (1 - fu) + e(u0 + 1, v0) * fu) * (1 - fv) + (e(u0, v0 + 1) * (1 - fu) + e(u0 + 1, v0 + 1) * fu) * fv;
+    }
+    return out;
+  } });
+}
+let viewer3d = null;
+function plot3d(r, f, extras = []) {
+  const P = state.plan, N = r.period.length, T = C().p3, D = C().ds, { pts, drawn } = lotOf(P);
+  const plots = plotsOf(f).map((x) => ({ ...x, runs: runsOf(x.pc, N) }));
+  // Water a month leaves on the plot: rain minus what evaporates minus what the plot drains (same rule as the planner)
+  const drainCap = 60 + 440 * (1 - (r.site?.wl ?? 0.25)) ** 1.5;
+  const nm = normals(r.clim), normal = { months: r.period.map((p) => nm[p.m - 1]) };
+  const surplusOf = (s) => s.months.map((c) => Math.max(0, (c?.rain ?? 0) - (c?.et0 ?? 0) - drainCap));
+  const wettest = [...r.samples].sort((a, b) => surplusOf(b).reduce((x, y) => x + y, 0) - surplusOf(a).reduce((x, y) => x + y, 0))[0];
+  const yrs = [["normal", T.normal, normal]];
+  if (wettest && surplusOf(wettest).some((v) => v > 0)) yrs.push(["wet", wettest.base != null ? T.wet(`${wettest.base}-${String(wettest.base + 1).slice(2)}`) : T.thisYear, wettest]);
+  let mode = yrs[yrs.length - 1][0], t = 0;
+  { const s = surplusOf(yrs.find((y) => y[0] === mode)[2]); const mx = Math.max(...s); if (mx > 0) t = s.indexOf(mx); }
+  const span = lotSpanM(pts), k = Math.max(1, Math.round((span * 0.05) / 2));
+  const lo = pts.map((p) => p[0]), xa = Math.min(...lo), xb = Math.max(...lo), tot = plots.reduce((a, x) => a + x.pc.share, 0) || 1;
+  let acc = xa;
+  const parts = plots.map((x) => { const w = ((xb - xa) * x.pc.share) / tot, poly = clipLon(pts, acc, acc + w); acc += w; return { ...x, poly }; });
+  const at = (x) => {
+    const ru = x.runs.find((u) => t >= u.t0 && t < u.t1) || { c: "bare", t0: t, t1: t + 1 }, c = ru.c;
+    const H = CROP_H[c] ?? 1, len = ru.t1 - ru.t0, grow = c === "bare" || c === "mulch" ? 1 : Math.min(1, (t - ru.t0 + 1) / Math.max(1, Math.ceil(len * 0.6)));
+    const m = yrs.find((y) => y[0] === mode)[2].months[t], ft = { low: 0, medium: 0.5, high: 1 }[String(DATA.crops[c]?.flood_tolerance || "").toLowerCase()] ?? 0.5;
+    const sev = c === "rice" || c === "bare" || c === "mulch" ? 0 : Math.max(0, Math.min(1, ((m?.rain ?? 0) - (m?.et0 ?? 0) - drainCap) / 200)) * (1 - 0.7 * ft);
+    return { c, h: H * grow, drown: sev > 0.2 };
+  };
+  // What the page knew as text, drawn on the scene: terrain chips, the month's weather, the soil under the plot
+  const tr = r.terrain, sd = describeSoil(tr?.soil), c0 = C(), slope = tr?.slopePct, wl = r.site?.wl ?? 0.25;
+  // Relief only where the plot is not flat: SRTM is radar, a few metres off every 30-90 m and it counts roofs and trees,
+  // so on flat ground it only draws waves (a runway looked like a rollercoaster). Flat ground is drawn flat.
+  const relief = slope != null && slope >= 2, gz = relief ? tr?.elevation ?? 0 : 0;
+  const nm12 = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([kk]) => +kk.slice(5) === i + 1 && +kk.slice(0, 4) >= 1991 && +kk.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (q) => vs.reduce((a, v) => a + (v[q] ?? 0), 0) / Math.max(1, vs.length); return { rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
+  const chip = (ic, lab, val) => h("div", { class: "p3-chip" }, icon(ic), h("span", {}, h("small", {}, lab), h("b", {}, val)));
+  const terrainChips = h("div", { class: "p3-hud" },
+    tr?.elevation != null ? chip("i-pin", c0.elevation, `${tr.elevation} m`) : null,
+    slope != null ? chip("i-plot", c0.slope, `${slope < 2 ? c0.flat : slope < 8 ? c0.gentle : c0.steep} · ${num(slope)} %`) : null,
+    sd ? chip("i-soil", c0.soilType, c0.texture[sd.texture]) : null,
+    sd ? chip("i-sprout", c0.acidity, `${c0.phWord[sd.phClass]} · pH ${num(sd.ph)}`) : null,
+    chip("i-water", c0.waterlog, wl >= 0.6 ? c0.high : wl >= 0.35 ? c0.medium : c0.low));
+  const box = h("div", { class: "p3-map" }), keys = h("div", { class: "pm-keys" }), wx = h("div", { class: "p3-wx" }), monthLab = h("b", {}), yrBox = h("div", { class: "seg p3-yrs" });
+  const chart = h("div", { class: "p3-chart", tabindex: "0", role: "slider", "aria-label": T.month, "aria-valuemin": "0", "aria-valuemax": String(N - 1) });
+  const pickAt = (e) => { const b = chart.getBoundingClientRect(); t = Math.max(0, Math.min(N - 1, Math.floor(((e.clientX - b.left) / b.width) * N))); paint(); };
+  chart.addEventListener("pointerdown", (e) => { chart.setPointerCapture(e.pointerId); pickAt(e); });
+  chart.addEventListener("pointermove", (e) => { if (chart.hasPointerCapture(e.pointerId)) pickAt(e); });
+  chart.addEventListener("keydown", (e) => { const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0; if (d) { e.preventDefault(); t = Math.max(0, Math.min(N - 1, t + d)); paint(); } });
+  const unk = h("details", { class: "p3-unk" }, h("summary", {}, icon("i-info"), T.unkChip), h("p", {}, T.waterNote));
+  const sec = h("section", { class: "p3" },
+    h("div", { class: "p3-stage" }, box, keys, wx, drawn ? null : h("div", { class: "p3-note" }, icon("i-info"), T.example)),
+    terrainChips,
+    h("div", { class: "p3-ctl" },
+      h("div", { class: "row between wrap", style: { gap: "8px" } }, h("span", { class: "p3-month" }, icon("i-month"), monthLab), yrBox),
+      chart,
+      h("div", { class: "p3-legend" }, h("span", {}, h("i", { class: "sw rain" }), T.lgRain), h("span", {}, h("i", { class: "sw drain" }), T.lgDrain), h("span", {}, h("i", { class: "sw water" }), T.lgWater)),
+      h("div", { class: "row wrap", style: { gap: "8px", alignItems: "center" } }, h("span", { class: "small" }, T.scale(k)), unk),
+      extras.length ? h("div", { class: "p3-more" }, ...extras.map(([ic, lab, make]) => h("button", { class: "chip", onclick: () => sheet(make()) }, icon(ic), lab))) : null));
+  const W = 40, Hc = 110;
+  const drawChart = (sample) => {
+    const ms = sample.months, thr = ms.map((c) => (c?.et0 ?? 0) + drainCap), rain = ms.map((c) => c?.rain ?? 0);
+    const mx = Math.max(...rain, ...thr) * 1.08 || 1, X = (i) => (i + 0.5) * W, Y = (v) => Hc - (v / mx) * (Hc - 6);
+    const line = (vs) => vs.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    const area = `${line(rain)}L${X(N - 1)},${Hc}L${X(0)},${Hc}Z`;
+    const top = rain.map((v, i) => Math.max(v, thr[i])), water = `${line(top)}${thr.map((v, i) => `L${X(N - 1 - i).toFixed(1)},${Y(thr[N - 1 - i]).toFixed(1)}`).join("")}Z`;
+    const g = svg("svg", { viewBox: `0 0 ${N * W} ${Hc}`, preserveAspectRatio: "none", "aria-hidden": "true" },
+      svg("rect", { x: t * W, y: 0, width: W, height: Hc, class: "cur" }),
+      svg("path", { d: area, class: "rain-a" }), svg("path", { d: water, class: "water-a" }),
+      svg("path", { d: line(thr), class: "drain-l" }), svg("path", { d: line(rain), class: "rain-l" }));
+    const labs = h("div", { class: "p3-months", style: { gridTemplateColumns: `repeat(${N}, 1fr)` } }, ...r.period.map((p, i) => h("span", { class: i === t ? "on" : "" }, N <= 24 || i % 3 === 0 ? mon(p.m) : "")));
+    put(chart, g, labs);
+    chart.setAttribute("aria-valuenow", String(t)); chart.setAttribute("aria-valuetext", `${cap(monL(r.period[t].m))} ${r.period[t].y}`);
+  };
+  let ents = [];
+  const paint = () => {
+    const sample = yrs.find((y) => y[0] === mode)[2], p = r.period[t], s = surplusOf(sample)[t], now = parts.map((x) => ({ ...x, ...at(x) })), m = sample.months[t] || {}, n = nm12[p.m - 1];
+    monthLab.textContent = `${cap(monL(p.m))} ${p.y}`;
+    put(yrBox, ...yrs.map(([key, lab]) => h("button", { "aria-pressed": String(mode === key), onclick: () => { mode = key; paint(); } }, lab)));
+    put(keys, ...now.map((x) => h("div", { class: `pm-key${x.drown ? " drown" : ""}`, style: { "--c": look(x.c).color } },
+      h("span", {}, tile(x.c), h("b", {}, x.name), `${cropLabel(x.c)}${x.h >= 0.1 ? ` · ${num(x.h)} m` : ""}`, x.drown ? h("em", {}, T.drown) : null))));
+    const tmin = m.tmin ?? n.tmin, tmax = m.tmax ?? n.tmax;
+    put(wx, h("div", { class: "p3-chip" }, icon("i-rain"), h("span", {}, h("small", {}, T.rainMonth), h("b", {}, `${Math.round(m.rain ?? n.rain)} mm`), mode !== "normal" ? h("small", {}, T.normalWas(Math.round(n.rain))) : null)),
+      h("div", { class: "p3-chip" }, icon("i-sun"), h("span", {}, h("small", {}, T.temp), h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`))),
+      h("div", { class: `p3-chip ${s > 0 ? "wet" : "dry"}` }, icon(s > 0 ? "i-waves" : "i-drop-off"), h("span", {}, h("small", {}, s > 0 ? T.stays : T.drains), h("b", {}, s > 0 ? `${Math.round(s)} mm` : T.noWater))));
+    drawChart(sample);
+    const v = viewer3d, Cz = window.Cesium;
+    if (!v || v.isDestroyed() || !Cz) return;
+    ents.forEach((e) => v.entities.remove(e)); ents = [];
+    const rel = Cz.HeightReference.RELATIVE_TO_GROUND, flat = (ps) => Cz.Cartesian3.fromDegreesArray(ps.flat()), z0 = gz;
+    // The soil under the plot: the top 60 cm the roots use, coloured by texture, drawn at the same scale as the crops
+    if (sd) {
+      const soilCol = { clay: "#7A4A32", clay_loam: "#8B5E3C", loam: "#9C7448", sandy_loam: "#B88E5A", sand: "#CDAA72" }[sd.texture];
+      ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: -0.6 * k, heightReference: rel, extrudedHeight: 0, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString(soilCol).withAlpha(0.95) } }));
+      const front = [lotCenter(pts)[0], Math.min(...pts.map((q) => q[1]))];
+      ents.push(v.entities.add({ position: Cz.Cartesian3.fromDegrees(front[0], front[1], z0 - 0.3 * k), label: { text: `${c0.texture[sd.texture]} · ${T.holdsShort(sd.awc)}`, font: "500 13px Geist, sans-serif", fillColor: Cz.Color.fromCssColorString("#F3F0E5"), showBackground: true, backgroundColor: Cz.Color.fromCssColorString(soilCol).withAlpha(0.92), backgroundPadding: new Cz.Cartesian2(10, 6), pixelOffset: new Cz.Cartesian2(0, 18), disableDepthTestDistance: Number.POSITIVE_INFINITY } }));
+    }
+    for (const x of now) {
+      if (x.poly.length < 3) continue;
+      const col = Cz.Color.fromCssColorString(cssColor(look(x.c).color));
+      ents.push(v.entities.add({ polygon: x.h * k >= 0.3
+        ? { hierarchy: flat(x.poly), height: 0, heightReference: rel, extrudedHeight: x.h * k, extrudedHeightReference: rel, material: col.withAlpha(x.drown ? 0.55 : 0.92), outline: false }
+        : { hierarchy: flat(x.poly), height: 0, heightReference: rel, extrudedHeight: 0.15 * k, extrudedHeightReference: rel, material: col.withAlpha(0.9) } }));
+    }
+    if (s > 0) ents.push(v.entities.add({ polygon: { hierarchy: flat(pts), height: 0, heightReference: rel, extrudedHeight: Math.min(1.5, s / 1000) * k, extrudedHeightReference: rel, material: Cz.Color.fromCssColorString("#2E6FD0").withAlpha(0.42) } }));
+    ents.push(v.entities.add({ polyline: { positions: Cz.Cartesian3.fromDegreesArrayHeights([...pts, pts[0]].flatMap((q) => [q[0], q[1], z0 + 0.5])), width: 3, material: Cz.Color.fromCssColorString("#C8FF9E") } }));
+    [0, 200, 600, 1200, 2000, 3500, 6000].forEach((ms) => setTimeout(() => v.isDestroyed() || v.scene.requestRender(), ms));
+  };
+  paint();
+  // The 3D view loads after the page; without WebGL or Cesium the flat satellite map stays
+  setTimeout(async () => {
+    let Cz;
+    try { Cz = await loadCesium(); } catch { sec.replaceWith(plotMap(r, f)); return; }
+    if (!box.isConnected) return;
+    if (viewer3d && !viewer3d.isDestroyed()) viewer3d.destroy();
+    try {
+      viewer3d = new Cz.Viewer(box, { baseLayer: false, baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false, infoBox: false, selectionIndicator: false, requestRenderMode: false, targetFrameRate: 30, ...(relief ? { terrainProvider: terrariumTerrain(Cz) } : {}) });
+    } catch { sec.replaceWith(plotMap(r, f)); return; }
+    const v = viewer3d;
+    // Blocks sit on the ground; without this, the coarse terrain pokes through them as steps
+    v.scene.globe.depthTestAgainstTerrain = false;
+    v.scene.skyAtmosphere.show = true;
+    // requestRenderMode only repaints on input; repaint as imagery tiles arrive and while entity geometry is built
+    v.scene.globe.tileLoadProgressEvent.addEventListener(() => v.isDestroyed() || v.scene.requestRender());
+    try { v.imageryLayers.addImageryProvider(await Cz.ArcGisMapServerImageryProvider.fromUrl(ESRI)); } catch { /* no imagery: terrain only */ }
+    if (v.isDestroyed()) return;
+    paint();
+    v.resize();
+    // Fit the plot (and the soil under it) whatever the box's shape: Cesium's 60° covers the longer side, so a wide box sees little height
+    const fr = v.camera.frustum, fy = fr.fovy || 0.6, fovy = Math.min(fy, 2 * Math.atan(Math.tan(fy / 2) * (fr.aspectRatio || 1))), pitch = Cz.Math.toRadians(-30);
+    const [cx, cy] = lotCenter(pts), target = Cz.Cartesian3.fromDegrees(cx, cy, gz - 0.3 * k), range = Math.max(180, (span * 0.62) / Math.sin(fovy / 2));
+    const aim = (hd) => { v.camera.lookAt(target, new Cz.HeadingPitchRange(Cz.Math.toRadians(hd), pitch, range)); v.scene.requestRender(); };
+    // One slow turn on arrival (none if the phone asks for less motion), then the farmer turns it by dragging
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) aim(20);
+    else { const t0 = performance.now(), go1 = (now) => { if (v.isDestroyed()) return; const q = Math.min(1, (now - t0) / 2600), e = 1 - (1 - q) ** 3; aim(-50 + 70 * e); if (q < 1) requestAnimationFrame(go1); }; requestAnimationFrame(go1); }
+  }, 0);
+  return sec;
+}
 function viewTerreno() {
-  return withResults((r) => {
+  return withResults(async (r) => {
+    const picked = (await chosen(r)).f;
     const c = C(), P = state.plan, tr = r.terrain, d = describeSoil(tr?.soil), wl = r.site.wl;
     const months = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([k]) => +k.slice(5) === i + 1 && +k.slice(0, 4) >= 1991 && +k.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (f) => vs.reduce((a, v) => a + v[f], 0) / Math.max(1, vs.length); return { m: i + 1, rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
     const annual = months.reduce((a, x) => a + x.rain, 0), wet = months.filter((x) => x.rain >= x.et0 * 0.8).map((x) => mon(x.m)), dry = months.filter((x) => x.rain < 0.5 * x.et0).map((x) => mon(x.m));
@@ -605,29 +1154,29 @@ function viewTerreno() {
     const mx = Math.max(...months.map((x) => Math.max(x.rain, x.et0)), 1);
     const last = r.clim.last, lm = r.clim.months[last], lmNormal = normalRain(r.clim, +last.slice(5));
     const noaa = DATA.outlook?.official?.noaa, erfen = DATA.outlook?.official?.erfen;
-    put($("#view"), h("div", { class: "res terreno" },
-      resHead(P),
-      h("div", { class: "col-left" },
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.yourPlot),
-          row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
-          row(c.slope, slopeW, slope != null ? `${num(slope)} %` : null),
-          row(c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null),
-          row(c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null),
-          row(c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null),
-          row(c.waterlog, wlW, wlWhy),
-          h("div", { class: "q", style: { marginTop: "4px" } }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); render(); })),
-          h("p", { class: "small" }, d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain))),
-      h("div", { class: "col-right" },
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.climate),
-          h("div", { class: "kpis" }, h("div", {}, h("b", {}, `${Math.round(annual).toLocaleString(state.lang)} mm`), h("small", {}, c.rainYear)), h("div", {}, h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`), h("small", {}, c.tempRange)), h("div", {}, h("b", {}, String(dry.length)), h("small", {}, c.dryMonths))),
-          h("div", { class: "clim-bars" }, ...months.map((x) => h("div", { class: "cb" }, h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1])))),
-          h("div", { class: "legend" }, h("span", {}, h("i", { class: "sw", style: { background: "var(--rain)" } }), c.lgRain), h("span", {}, h("i", { class: "sw", style: { background: "#C7CCD4" } }), c.lgNeed)),
-          h("p", { class: "small" }, wet.length ? c.wetMonths(andList(wet)) : "", " ", dry.length ? c.dryList(andList(dry)) : "")),
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.thisYear),
-          lm ? row(`${cap(S().monthsLong[+last.slice(5) - 1])} ${last.slice(0, 4)}`, `${Math.round(lm.rain)} mm`, c.vsNormal(Math.round(lmNormal))) : null,
-          noaa ? h("p", {}, c.ninoNow(noaa.chance_pct), h("br"), h("small", { class: "small" }, `NOAA · ${noaa.issued}`)) : null,
-          erfen && COAST(P.place) ? h("p", { class: "small" }, `ERFEN (${erfen.issued}): ${es() ? erfen.es : erfen.en}`) : null),
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r))))));
+    const card = (title, ...kids) => h("section", { class: "card sheet-card" }, h("h2", { class: "card-h" }, title), ...kids);
+    const extras = [
+      ["i-plot", c.yourPlot, () => card(c.yourPlot,
+        row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
+        row(c.slope, slopeW, slope != null ? `${num(slope)} %` : null),
+        row(c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null),
+        row(c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null),
+        row(c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null),
+        row(c.waterlog, wlW, wlWhy),
+        h("div", { class: "q", style: { marginTop: "4px" } }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { $("#sheet").close(); setPlan({ ...P }); memo.clear(); syncLot(); render(); })),
+        h("p", { class: "small" }, d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain))],
+      ["i-rain", c.climate, () => card(c.climate,
+        h("div", { class: "kpis" }, h("div", {}, h("b", {}, `${Math.round(annual).toLocaleString(state.lang)} mm`), h("small", {}, c.rainYear)), h("div", {}, h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`), h("small", {}, c.tempRange)), h("div", {}, h("b", {}, String(dry.length)), h("small", {}, c.dryMonths))),
+        h("div", { class: "clim-bars" }, ...months.map((x) => h("div", { class: "cb" }, h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1])))),
+        h("div", { class: "legend" }, h("span", {}, h("i", { class: "sw", style: { background: "var(--rain)" } }), c.lgRain), h("span", {}, h("i", { class: "sw", style: { background: "#C7CCD4" } }), c.lgNeed)),
+        h("p", { class: "small" }, wet.length ? c.wetMonths(andList(wet)) : "", " ", dry.length ? c.dryList(andList(dry)) : ""))],
+      ["i-nino", c.thisYear, () => card(c.thisYear,
+        lm ? row(`${cap(S().monthsLong[+last.slice(5) - 1])} ${last.slice(0, 4)}`, `${Math.round(lm.rain)} mm`, c.vsNormal(Math.round(lmNormal))) : null,
+        noaa ? h("p", {}, c.ninoNow(noaa.chance_pct), h("br"), h("small", { class: "small" }, `NOAA · ${noaa.issued}`)) : null,
+        erfen && COAST(P.place) ? h("p", { class: "small" }, `ERFEN (${erfen.issued}): ${es() ? erfen.es : erfen.en}`) : null)],
+      ["i-bulb", c.tipsTitle, () => card(c.tipsTitle, tipList(tipsFor(r)))],
+    ];
+    put($("#view"), h("div", { class: "res terreno full" }, resHead(P), plot3d(r, picked, extras)));
   });
 }
 
@@ -656,7 +1205,7 @@ async function ideas(r) {
   if (state.mode === "all") {
     if (ninoNow(P)) out.unshift({ icon: "i-rain", title: c.idNino, why: c.idNinoWhy, eff: c.yearsLike.nino, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "nino"; render(); } });
     out.push({ icon: "i-cloud-sun", title: c.idDry, why: c.idDryWhy, eff: c.idDryEff, apply: () => { state.undo = { plan: P, mode: "all" }; state.mode = "dry"; render(); } });
-  } else out.unshift({ icon: "i-cloud-sun", title: c.idAll, why: c.idAllWhyBy[state.mode] || c.idAllWhy, eff: c.yearsLike[state.mode], on: true, apply: () => { state.mode = "all"; state.undo = null; render(); } });
+  } else out.unshift({ icon: "i-cloud-sun", title: c.idAll, why: c.idAllWhyBy[state.mode] || c.idAllWhy, eff: c.yearsLike[state.mode], apply: () => { state.mode = "all"; state.undo = null; render(); } });
   return out;
 }
 function viewProbar() {
@@ -665,29 +1214,25 @@ function viewProbar() {
     const picked = P.crops.filter((id) => r.windows[id]);
     const suggested = [...new Set(list.flatMap((it) => (it.P2 ? it.P2.crops.filter((x) => !P.crops.includes(x) && r.windows[x]) : [])))];
     const N = r.period.length, lab = desktop() ? "146px" : "64px";
-    const head = h("div", { class: "sow-row", style: { "--lab": lab } }, h("span"), h("div", { class: "sow-cells", style: { "--n": N } }, ...r.period.map((p, i) => h("span", { style: { textAlign: "center", fontSize: "12px", fontWeight: 700, color: "var(--ink2)", overflow: "hidden" } }, N <= 14 && desktop() ? mon(p.m) : S().months[p.m - 1]))));
+    const head = h("div", { class: "sow-row", style: { "--lab": lab } }, h("span"), h("div", { class: "sow-cells", style: { "--n": N } }, ...r.period.map((p, i) => N > 24
+      ? h("span", { style: { fontSize: "12px", fontWeight: 700, color: "var(--ink2)", whiteSpace: "nowrap" } }, p.m === 1 ? `'${String(p.y).slice(2)}` : "")
+      : h("span", { style: { textAlign: "center", fontSize: "12px", fontWeight: 700, color: "var(--ink2)", overflow: "hidden" } }, N <= 14 && desktop() ? mon(p.m) : S().months[p.m - 1]))));
     const sowRow = (id) => {
       const w = r.windows[id];
       return h("div", { class: "sow-row", style: { "--lab": lab } }, h("b", { style: { fontSize: desktop() ? "16px" : "13px" } }, cap(cropName(id))),
         h("div", { class: "sow-cells", style: { "--n": N } }, ...w.starts.map((s, t) => h("i", { class: s ? s.level : "none", title: s ? `${ym(r.period[t])}: ${Math.round(s.value * 100)} %` : c.sowNone }, s && w.best && s.t === w.best.t && w.best.level !== "danger" ? "★" : ""))));
     };
-    const byWin = new Map(), no = [];
-    for (const id of picked) { const top = r.windows[id].windows[0]; if (!top) { no.push(cap(cropName(id))); continue; } const k = span(top.from, top.to); byWin.set(k, [...(byWin.get(k) || []), cropName(id)]); }
-    const reads = [...[...byWin].map(([k, cs]) => c.sowRead(andList(cs), k)), ...no.map((x) => c.sowNo(x))];
-    put($("#view"), h("div", { class: "res" },
+    put($("#view"), h("div", { class: "res stack" },
       resHead(P),
-      h("div", { class: "col-left wide" },
-        h("div", { class: "res-title" }, h("h1", { class: "display" }, c.tryTitle), h("p", {}, c.tryLead)),
-        state.undo ? h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { setPlan(state.undo.plan); state.mode = state.undo.mode; state.undo = null; render(); } }, icon("i-undo"), " ", c.undo) : null,
-        list.length ? h("div", { class: "ideas" }, ...list.map((it) => h("div", { class: `idea${it.on ? " on" : ""}` }, h("span", { class: "ic" }, icon(it.icon)), h("div", { class: "grow" }, h("b", {}, it.title), h("p", {}, it.why), h("em", {}, it.eff)),
-          h("button", { class: "btn dark", onclick: it.apply }, it.on ? c.undo : c.tryBtn)))) : h("p", {}, c.noIdeas)),
-      h("div", { class: "col-right" },
-        h("section", { class: "card sow-card" },
-          h("div", { class: "row between wrap" }, h("b", { style: { fontSize: desktop() ? "20px" : "16px" } }, c.sowTitle),
-            h("div", { class: "legend" }, ...[["good", c.sowGood], ["care", c.sowCare], ["danger", c.sowBad], ["none", c.sowNone]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l)))),
-          h("p", { class: "small" }, c.sowLead),
-          h("div", { class: "sow" }, head, h("p", { class: "sow-group" }, c.yours), ...picked.map(sowRow), suggested.length ? h("p", { class: "sow-group" }, c.suggested) : null, ...suggested.slice(0, 3).map(sowRow)),
-          reads.length ? h("div", { class: "read", style: { marginTop: "auto" } }, icon("i-info"), h("span", {}, reads.join(" "))) : null))));
+      h("div", { class: "res-title" }, h("h1", { class: "display" }, c.tryTitle), h("p", {}, c.tryLead)),
+      state.undo ? h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { setPlan(state.undo.plan); state.mode = state.undo.mode; state.undo = null; render(); } }, icon("i-undo"), " ", c.undo) : null,
+      list.length ? h("div", { class: "ideas row-ideas" }, ...list.map((it) => h("div", { class: `idea${it.on ? " on" : ""}` }, h("span", { class: "ic" }, icon(it.icon)), h("div", { class: "grow" }, h("b", {}, it.title), h("p", {}, it.why), h("em", {}, it.eff)),
+        h("button", { class: "btn dark", onclick: it.apply }, it.on ? c.undo : c.tryBtn)))) : h("p", {}, c.noIdeas),
+      h("section", { class: "card sow-card" },
+        h("div", { class: "row between wrap" }, h("b", { class: "card-h" }, c.sowTitle),
+          h("div", { class: "legend" }, ...[["good", c.sowGood], ["care", c.sowCare], ["danger", c.sowBad], ["none", c.sowNone]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l)))),
+        h("p", { class: "small" }, c.sowLead),
+        h("div", { class: "sow" }, head, h("p", { class: "sow-group" }, c.yours), ...picked.map(sowRow), suggested.length ? h("p", { class: "sow-group" }, c.suggested) : null, ...suggested.slice(0, 3).map(sowRow)))));
   });
 }
 
@@ -700,9 +1245,14 @@ function money(f) {
   for (const b of Object.values(f.byCrop)) for (const p of b.plantings) { const e = DATA.econ.crops?.[b.crop], y = e?.yield_t_ha?.typical, pr = e?.price_usd_per_t?.typical, co = e?.cost_usd_ha?.typical; if (!y || !pr || !co) continue; known = true; total += p.share * A * (y * pr * p.yld - co); }
   return known ? Math.round(total / 10) * 10 : null;
 }
+// The plan the farmer picked on the plan screen; compare and "what if" follow it
+async function chosen(r) {
+  const plans = await namedPlans(), it = plans.find((x) => x.key === state.pick) || plans[0];
+  return it ? { f: it.f, name: C().ds.names[it.key] } : { f: r.farm, name: C().recommended };
+}
 function viewComparar() {
-  return withResults((r) => {
-    const c = C(), P = state.plan, rec = r.farm, N = r.period.length;
+  return withResults(async (r) => {
+    const c = C(), P = state.plan, { f: rec, name: recName } = await chosen(r), N = r.period.length;
     if (!state.custom || state.customKey !== JSON.stringify(P)) { state.custom = customFrom(r.today || rec); state.customKey = JSON.stringify(P); state.customStraw = !r.today && P.crops.includes("mulch"); }
     const K = state.custom, redo = () => viewComparar();
     const mine = r.evalFarm(K.map((pc) => ({ share: (+pc.area || 0) / (P.area || 1), steps: pc.steps })), { noMulch: !state.customStraw });
@@ -740,7 +1290,7 @@ function viewComparar() {
       ? (es() ? `Su plan pierde cosecha ${frac(mine.anyLoss).toLowerCase()} años; el recomendado, ${frac(rec.anyLoss).toLowerCase()}.` : `Your plan loses a harvest ${frac(mine.anyLoss).toLowerCase()} years; the recommended one, ${frac(rec.anyLoss).toLowerCase()}.`)
       : rec.harvest > mine.harvest ? (es() ? `Con el recomendado llega a cosecha ${fmtArea(rec.harvest - mine.harvest)} más.` : `The recommended plan brings ${fmtArea(rec.harvest - mine.harvest)} more to harvest.`) : "";
     const calCard = (title, f) => h("section", { class: "card" }, h("div", { class: "row between" }, h("b", {}, title), verdictEl(f.verdict)), f.parcels.some((p) => p.d.steps.length) ? farmCalendar(r, f, { compact: true }) : h("p", { class: "small" }, c.noPlans));
-    put($("#view"), h("div", { class: "res" },
+    put($("#view"), h("div", { class: "res cmp" },
       resHead(P),
       h("div", { class: "col-left wide" },
         h("div", { class: "res-title" }, h("h1", { class: "display" }, c.build), h("p", {}, c.buildLead)),
@@ -752,10 +1302,23 @@ function viewComparar() {
         h("p", { class: used > (P.area || 1) + 1e-6 ? "err" : "small" }, c.uses(fmtArea(used / (P.area || 1)), fmtArea(1)))),
       h("div", { class: "col-right" },
         h("h2", { class: "display phone-only", style: { fontSize: "22px" } }, c.cmpTitle),
-        h("div", { class: "cals2" }, calCard(c.recommended, rec), calCard(c.mine, mine)),
-        h("section", { class: "card", style: { padding: "6px 20px" } }, h("table", { class: "cmp" },
-          h("thead", {}, h("tr", {}, h("th", {}), h("th", { style: { textAlign: "right" } }, c.recommended), h("th", { style: { textAlign: "right" } }, c.mine))),
-          h("tbody", {}, ...rows.map(([l, a, b, va, vb, up]) => { const w = better(va, vb, up); return h("tr", {}, h("th", { scope: "row" }, l), h("td", { class: w < 0 ? "win" : "" }, a), h("td", { class: w > 0 ? "win" : "" }, b)); })))),
+        // Swaps only the calendar so the pressed button keeps keyboard focus.
+        h("div", { class: "seg cmp-seg" }, ...[["rec", recName], ["mine", c.mine]].map(([k, l]) => h("button", { "aria-pressed": String((state.cmpView || "rec") === k), onclick: (e) => {
+          const seg = e.currentTarget.parentElement, from = activeRect(seg, '[aria-pressed="true"]'), d = k === "rec" ? -1 : 1;
+          state.cmpView = k;
+          for (const bt of seg.querySelectorAll("button")) bt.setAttribute("aria-pressed", String(bt === e.currentTarget));
+          slidePill(seg, from, '[aria-pressed="true"]');
+          put($("#cmpCal"), k === "rec" ? calCard(recName, rec) : calCard(c.mine, mine));
+          if (MOTION()) $("#cmpCal").animate([{ opacity: 0, transform: `translateX(${d * 12}px)` }, { opacity: 1, transform: "none" }], { duration: 200, easing: EASE_OUT });
+        } }, l))),
+        h("div", { id: "cmpCal" }, (state.cmpView || "rec") === "rec" ? calCard(recName, rec) : calCard(c.mine, mine)),
+        h("section", { class: "card cmp-bars" }, h("div", { class: "cmp-key" }, h("span", {}, h("i", { class: "a" }), recName), h("span", {}, h("i", { class: "b" }), c.mine)),
+          ...rows.map(([l, a, b, va, vb, up]) => {
+            const w = better(va, vb, up), mx = Math.max(Math.abs(va), Math.abs(vb), 1e-9), bars = va >= 0 && vb >= 0;
+            const line = (cls, who, txt, v, win) => h("div", { class: `cb-line ${cls}${win ? " win" : ""}` }, h("span", { class: `cb-track${bars ? "" : " empty"}`, "aria-hidden": "true" }, bars ? h("i", { style: { width: `${Math.max(3, (Math.abs(v) / mx) * 100)}%` } }) : null),
+              h("b", {}, h("span", { class: "sr-only" }, `${who}: `), txt, win ? h("span", { class: "sr-only" }, es() ? " (mejor)" : " (better)") : null), win ? icon("i-check") : h("span", { class: "cb-tick" }));
+            return h("div", { class: "cb-row", role: "group", "aria-label": l }, h("span", { class: "cb-label", "aria-hidden": "true" }, l), line("a", recName, a, va, w < 0), line("b", c.mine, b, vb, w > 0));
+          })),
         mR != null && mM != null ? h("p", { class: "small" }, c.moneyNote) : null,
         h("div", { class: `conclusion ${score > 0 ? "good" : "even"}` }, icon(score < 0 ? "i-info" : "i-check"), h("span", {}, score < 0 ? (why || c.recBetter) : score > 0 ? c.mineBetter : c.tie)))));
   });
@@ -763,8 +1326,8 @@ function viewComparar() {
 
 /* ---------- what would have happened ---------- */
 function viewPasado() {
-  return withResults((r) => {
-    const c = C(), per = r.farm.per;
+  return withResults(async (r) => {
+    const c = C(), per = (await chosen(r)).f.per;
     const lvl = (x) => (x.lostShare >= 0.5 ? "danger" : x.lostShare > 0 || x.loss > 2.5 ? "care" : "good");
     const sel = per.find((x) => x.base === state.pastBase) || per[0];
     const soil = sel.loss > 2.5 ? "high" : sel.loss > 1.2 ? "medium" : "low";
@@ -827,18 +1390,178 @@ async function initCesium(container, { pick = false } = {}) {
   }
 }
 function globeView() { if (viewer && window.Cesium) viewer.camera.flyTo({ destination: window.Cesium.Cartesian3.fromDegrees(-70, -5, 14e6), duration: 1.2 }); }
-function updateMap(pl, verdict) {
+// The plot on the globe: the pin alone until the farmer draws the plot's corners; then the real shape.
+// fly: "place" (oblique view of the area), "draw" (straight down, close, to tap corners), "lot" (straight down, framing the plot), false (stay)
+let lotDots = [];
+function updateMap(pl, verdict, lot, fly = "place") {
   if (!viewer || !window.Cesium || !pl) return;
-  const Cz = window.Cesium, d = 0.0012;
-  const col = verdict ? { good: "#15803D", care: "#B45309", danger: "#B91C1C" }[verdict] : "#111827";
+  const Cz = window.Cesium, col = (s) => Cz.Color.fromCssColorString(s);
+  const fill = verdict ? { good: "#2F7D4F", care: "#C7860F", danger: "#D2452E" }[verdict] : "#C8FF9E";
   if (lotEntity) viewer.entities.remove(lotEntity);
+  lotDots.forEach((e) => viewer.entities.remove(e)); lotDots = [];
+  const pts = lot || [], closed = pts.length >= 3 && !state.drawing, c = pts.length >= 3 ? lotCenter(pts) : [pl.lon, pl.lat];
+  const flat = (ps) => Cz.Cartesian3.fromDegreesArray(ps.flat());
   lotEntity = viewer.entities.add({
-    polygon: { height: 0, hierarchy: Cz.Cartesian3.fromDegreesArray([pl.lon - d, pl.lat - d, pl.lon + d, pl.lat - d * 0.9, pl.lon + d * 0.95, pl.lat + d, pl.lon - d * 1.05, pl.lat + d * 0.92]), material: Cz.Color.fromCssColorString(col).withAlpha(0.45), outline: true, outlineColor: Cz.Color.WHITE, outlineWidth: 3 },
-    position: Cz.Cartesian3.fromDegrees(pl.lon, pl.lat),
-    label: { text: pl.name, font: "700 15px Inter, sans-serif", fillColor: Cz.Color.fromCssColorString("#111827"), showBackground: true, backgroundColor: Cz.Color.WHITE, backgroundPadding: new Cz.Cartesian2(10, 6), pixelOffset: new Cz.Cartesian2(0, -36) },
+    polygon: pts.length >= 3 ? { height: 0, hierarchy: flat(pts), material: col(fill).withAlpha(closed ? 0.22 : 0.15) } : undefined,
+    polyline: pts.length >= 2 ? { clampToGround: true, width: 3, material: col("#C8FF9E"), positions: flat(pts.length >= 3 ? [...pts, pts[0]] : pts) } : undefined,
+    position: Cz.Cartesian3.fromDegrees(c[0], c[1]),
+    point: state.drawing ? undefined : { pixelSize: 12, color: col("#C8FF9E"), outlineColor: col("#153E32"), outlineWidth: 3, heightReference: Cz.HeightReference.CLAMP_TO_GROUND },
+    label: state.drawing ? undefined : { text: pl.name, font: "500 15px Geist, sans-serif", fillColor: col("#F3F0E5"), showBackground: true, backgroundColor: col("#153E32"), backgroundPadding: new Cz.Cartesian2(12, 8), pixelOffset: new Cz.Cartesian2(0, -30), heightReference: Cz.HeightReference.CLAMP_TO_GROUND },
   });
-  viewer.camera.flyTo({ destination: Cz.Cartesian3.fromDegrees(pl.lon, pl.lat - 0.02, 4500), orientation: { heading: 0, pitch: Cz.Math.toRadians(-55), roll: 0 }, duration: 1.6 });
-  viewer.scene.requestRender();
+  if (state.drawing) lotDots = pts.map((p, i) => viewer.entities.add({ position: Cz.Cartesian3.fromDegrees(p[0], p[1]), point: { pixelSize: i === pts.length - 1 ? 14 : 10, color: col("#C8FF9E"), outlineColor: col("#153E32"), outlineWidth: 2 } }));
+  const down = { heading: 0, pitch: Cz.Math.toRadians(-90), roll: 0 };
+  if (fly === "place") viewer.camera.flyTo({ destination: Cz.Cartesian3.fromDegrees(c[0], c[1] - 0.02, 4500), orientation: { heading: 0, pitch: Cz.Math.toRadians(-55), roll: 0 }, duration: 1.6 });
+  else if (fly === "draw") viewer.camera.flyTo({ destination: Cz.Cartesian3.fromDegrees(c[0], c[1], 1100), orientation: down, duration: 1.2 });
+  else if (fly === "lot") { const span = lotSpanM(pts); viewer.camera.flyTo({ destination: Cz.Cartesian3.fromDegrees(c[0], c[1], Math.min(8000, Math.max(600, span * 5))), orientation: down, duration: 1.2 }); }
+  // Ground shapes are built off the main thread; with requestRenderMode they only show on a later frame
+  [0, 150, 400, 900].forEach((t) => setTimeout(() => viewer?.scene.requestRender(), t));
+}
+
+/* ================= Vecinos: what farmers nearby saw, next to the satellite data ================= */
+// Demo: example posts ship in data/vecinos.json (marked example), the farmer's own posts and replies stay in localStorage.
+// The post shape is the one the WhatsApp bot will store in rooti.db, so the feed can switch to a server without changes.
+// With the server (Coolify: server/server.mjs + Postgres) posts are shared; without it (static host, no signal)
+// the app falls back to the example posts and this phone's storage, so the feed and the plan chips always work.
+const VEC = { posts: null, server: false, zone: null, load: null };
+const vecDevice = () => { let d = store.get("vecDevice1", null); if (!d) { d = globalThis.crypto?.randomUUID?.() || String(Math.random()).slice(2); store.set("vecDevice1", d); } return d; };
+async function vecApi(path, body) {
+  const t = (ms) => (AbortSignal.timeout ? AbortSignal.timeout(ms) : undefined);
+  const r = await fetch("api/vecinos" + path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: t(8000) } : { signal: t(4000) });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+function loadVecinos(pl = state.plan?.place, fresh = false) {
+  const z = pl ? zoneKey(pl) : null;
+  if (!fresh && VEC.load && VEC.zone === z) return VEC.load;
+  VEC.zone = z;
+  return (VEC.load = (async () => {
+    if (z) try { const d = await vecApi(`?zone=${encodeURIComponent(z)}`); VEC.posts = d.posts || []; VEC.server = true; return; } catch { /* no server: examples and this phone */ }
+    VEC.server = false;
+    try { const d = await fetch("data/vecinos.json?v=1").then(ok); VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true })); } catch { VEC.posts = []; }
+  })());
+}
+const zoneKey = (pl) => nearPilot(pl) || `pt:${pl.lat.toFixed(1)},${pl.lon.toFixed(1)}`;
+const vecText = (x) => x.text ?? (es() ? x.text_es : x.text_en) ?? "";
+const maskName = (n) => { const w = (n || "").trim().split(/\s+/).filter(Boolean); return !w.length ? C().vec.anon : w.length === 1 ? cap(w[0]) : `${cap(w[0])} ${w[w.length - 1][0].toUpperCase()}.`; };
+const monthGap = (a, b) => { const d = Math.abs(a - b) % 12; return Math.min(d, 12 - d); };
+function vecPosts(pl) {
+  const z = zoneKey(pl), hidden = new Set(store.get("vecHidden1", [])), extra = store.get("vecReplies1", {});
+  return [...store.get("vecMine1", []).map((p) => ({ ...p, local: true })), ...(VEC.posts || [])].filter((p) => p.zone === z)
+    .map((p) => ({ ...p, hidden: hidden.has(p.id), replies: [...(p.replies || []), ...(extra[p.id] || [])] }))
+    .sort((a, b) => (b.ts || b.date).localeCompare(a.ts || a.date));
+}
+// Reports of the same crop sown within a month of the plan's month, in the plot's zone
+const vecMatch = (pl, crop, m) => vecPosts(pl).filter((p) => p.type === "asi_me_fue" && !p.hidden && p.crop === crop && p.sowMonth && monthGap(p.sowMonth, m) <= 1);
+// Never lets a problem with the neighbours' data break the plan screen
+function vecChips(r, pc, all, seen) {
+  try { return vecChipsOf(r, pc, all, seen); } catch (e) { console.error(e); return null; }
+}
+function vecChipsOf(r, pc, all, seen = new Set()) {
+  if (!VEC.posts) return null;
+  const V = C().vec, out = [];
+  for (const ru of runsOf(pc, r.period.length)) {
+    if (ru.c === "bare" || ru.c === "mulch" || (!all && ru.t0 >= 12)) continue;
+    const m = r.period[ru.t0].m, k = `${ru.c}@${m}`;
+    if (seen.has(k)) continue; seen.add(k);
+    const rep = vecMatch(state.plan.place, ru.c, m);
+    if (!rep.length) continue;
+    const n = { bien: 0, regular: 0, perdio: 0 }; rep.forEach((p) => { n[p.result] = (n[p.result] || 0) + 1; });
+    const lv = ru.st && ru.st.fail != null ? level(ru.st) : null, check = n.perdio / rep.length >= 1 / 3 && lv !== "danger";
+    out.push(h("a", { class: `vec-chip${check ? " check" : ""}`, href: `#/vecinos/${ru.c}` }, icon("i-neighbors"),
+      h("span", {}, h("b", {}, V.chip(rep.length, cropName(ru.c).toLowerCase(), monL(m))), " · ", ["bien", "regular", "perdio"].filter((x) => n[x]).map((x) => V.chipCount[x](n[x])).join(", "),
+        check ? h("em", {}, V.chipCheck) : null), icon("i-chev-r")));
+  }
+  return out.length ? h("div", { class: "vec-chips" }, ...out) : null;
+}
+const VEC_BADGE = { bien: "good", regular: "care", perdio: "danger" };
+function vecAuthor(x, V) {
+  return h("p", { class: "vp-by" }, h("b", {}, x.author), x.role === "tecnico" ? h("span", { class: "vp-tech" }, icon("i-agronomist"), V.tech) : null, h("span", {}, fmtDate(x.date)));
+}
+function vecCard(p, redraw) {
+  const c = C(), V = c.vec;
+  if (p.hidden) return h("article", { class: "vp hidden" }, h("p", { class: "small" }, V.reported), h("button", { class: "link", onclick: () => { store.set("vecHidden1", store.get("vecHidden1", []).filter((x) => x !== p.id)); redraw(); } }, V.undoReport));
+  const replyBox = h("div", { class: "vp-reply" });
+  const openReply = () => {
+    const input = h("textarea", { rows: 2, maxlength: 280, placeholder: V.replyPh, "aria-label": V.reply });
+    put(replyBox, input, h("div", { class: "row", style: { gap: "8px" } },
+      h("button", { class: "btn lime", onclick: async (e) => { const t = input.value.trim(); if (!t) { input.focus(); return; }
+        e.currentTarget.disabled = true;
+        if (VEC.server && !p.local) try { await vecApi(`/${encodeURIComponent(p.id)}/replies`, { author: state.vecName, text: t }); await loadVecinos(state.plan.place, true); redraw(); return; } catch { /* keep it on this phone */ }
+        const all = store.get("vecReplies1", {}); (all[p.id] ||= []).push({ author: maskName(state.vecName), text: t, date: iso(new Date()), mine: true }); store.set("vecReplies1", all); redraw(); } }, V.send),
+      h("button", { class: "btn soft", onclick: () => put(replyBox) }, V.fCancel)));
+    input.focus();
+  };
+  return h("article", { class: `vp t-${p.type}` },
+    h("div", { class: "vp-head" }, h("span", { class: "mono vp-type" }, V.type1[p.type]), p.example || p.local ? h("span", { class: `vp-tag${p.example ? "" : " mine"}` }, p.example ? V.example : V.local) : null),
+    p.crop ? h("div", { class: "vp-crop" }, tile(p.crop), h("b", {}, V.sown(cropLabel(p.crop), monL(p.sowMonth), p.sowYear)), p.area ? h("span", { class: "small" }, `${num(p.area)} ${c.units[p.unit] || p.unit || ""}`) : null) : null,
+    p.result ? h("span", { class: `badge ${VEC_BADGE[p.result]}` }, V.results[p.result]) : null,
+    vecText(p) ? h("p", { class: "vp-text" }, vecText(p)) : null,
+    vecAuthor(p, V),
+    p.replies.length ? h("ul", { class: "vp-replies", "aria-label": V.replies(p.replies.length) }, ...p.replies.map((x) => h("li", { class: x.role === "tecnico" ? "tech" : "" }, vecAuthor(x, V), h("p", {}, vecText(x))))) : null,
+    h("div", { class: "vp-acts" }, h("button", { class: "link", onclick: openReply }, icon("i-chat"), V.reply),
+      h("button", { class: "link quiet", onclick: () => { store.set("vecHidden1", [...store.get("vecHidden1", []), p.id]); if (VEC.server && !p.local) vecApi(`/${encodeURIComponent(p.id)}/report`, { device: vecDevice() }).catch(() => {}); redraw(); } }, V.report)),
+    replyBox);
+}
+function vecForm(P, done) {
+  const c = C(), V = c.vec, d = (state.vecDraft ||= { type: "asi_me_fue", crop: null, sowMonth: new Date(P.start + "T12:00:00").getMonth() + 1, result: null, text: "" });
+  const box = h("section", { class: "card vec-form", "aria-label": V.publish }), msg = h("p", { class: "err", role: "status" });
+  const crops = [...new Set([...(P.current || []), ...P.crops])].filter((x) => x !== "mulch");
+  const draw = () => {
+    const text = h("textarea", { id: "vecText", rows: 3, maxlength: 280, placeholder: V.fPh[d.type], oninput: (e) => { d.text = e.target.value; } }); text.value = d.text;
+    const name = h("input", { id: "vecName", autocomplete: "given-name", oninput: (e) => { state.vecName = e.target.value; store.set("vecName1", state.vecName); } }); name.value = state.vecName || "";
+    put(box,
+      h("b", { class: "card-h" }, V.fType),
+      h("div", { class: "seg vec-seg" }, ...["asi_me_fue", "aviso", "pregunta"].map((k) => h("button", { "aria-pressed": String(d.type === k), onclick: () => { d.type = k; draw(); } }, V.type1[k]))),
+      d.type === "asi_me_fue" ? [
+        h("b", {}, V.fCrop), h("div", { class: "row wrap", style: { gap: "8px" } }, ...crops.map((id) => h("button", { class: "chip", "aria-pressed": String(d.crop === id), onclick: () => { d.crop = id; draw(); } }, tile(id), cropLabel(id)))),
+        h("label", { class: "vec-field" }, h("b", {}, V.fMonth), h("select", { onchange: (e) => { d.sowMonth = +e.target.value; } }, ...S().monthsLong.map((m, i) => h("option", { value: i + 1, selected: d.sowMonth === i + 1 || null }, cap(m))))),
+        h("b", {}, V.fResult), h("div", { class: "opts" }, ...["bien", "regular", "perdio"].map((k) => h("button", { class: "opt", "aria-pressed": String(d.result === k), onclick: () => { d.result = k; draw(); } }, V.results[k])))] : null,
+      h("label", { class: "vec-field", for: "vecText" }, h("b", {}, V.fText[d.type])), text,
+      h("label", { class: "vec-field", for: "vecName" }, h("b", {}, V.fName)), name, h("p", { class: "small" }, V.fNameHelp),
+      msg,
+      h("div", { class: "row wrap", style: { gap: "10px" } },
+        h("button", { class: "btn lime", onclick: async (e) => {
+          const t = d.text.trim();
+          if (d.type === "asi_me_fue" ? !(d.crop && d.result) : !t) { msg.textContent = d.type === "asi_me_fue" ? `${V.fCrop} ${V.fResult}` : V.fNeed; return; }
+          const now = new Date(), y = d.sowMonth > now.getMonth() + 1 ? now.getFullYear() - 1 : now.getFullYear();
+          const post = { id: "u" + now.getTime(), type: d.type, zone: zoneKey(P.place), text: t, author: maskName(state.vecName), date: iso(now), replies: [],
+            ...(d.type === "asi_me_fue" ? { crop: d.crop, sowMonth: d.sowMonth, sowYear: y, result: d.result } : {}) };
+          const btn = e.currentTarget; btn.disabled = true;
+          if (VEC.server) try { await vecApi("", { ...post, author: state.vecName }); state.vecDraft = null; done("server"); return; } catch { /* keep it on this phone */ }
+          btn.disabled = false;
+          store.set("vecMine1", [post, ...store.get("vecMine1", [])]); state.vecDraft = null; done("local");
+        } }, V.fSubmit),
+        h("button", { class: "btn soft", onclick: () => { state.vecDraft = null; done(null); } }, V.fCancel)));
+  };
+  draw();
+  return box;
+}
+async function viewVecinos(arg) {
+  await loadVecinos(state.plan.place);
+  const c = C(), V = c.vec, P = state.plan, z = nearPilot(P.place);
+  state.vecName ??= store.get("vecName1", "");
+  if (arg && arg !== state.vecArg) { state.vecArg = arg; state.vecCrop = CROP_LOOK[arg] ? arg : null; state.vecType = "asi_me_fue"; }
+  state.vecType ||= "all";
+  const feed = h("div", { class: "vec-feed" }), side = h("div", { class: "vec-side" }), note = h("p", { class: "vec-saved", role: "status" });
+  const draw = () => {
+    const all = vecPosts(P.place), cropsIn = [...new Set(all.filter((p) => p.crop).map((p) => p.crop))];
+    const list = all.filter((p) => (state.vecType === "all" || p.type === state.vecType) && (!state.vecCrop || p.crop === state.vecCrop));
+    put(side,
+      h("div", { class: "res-title" }, h("h1", { class: "display" }, V.title), h("p", {}, z ? V.lead(cap(z)) : V.leadFar)),
+      state.vecForm ? vecForm(P, async (saved) => { state.vecForm = false; if (saved === "server") await loadVecinos(P.place, true); note.textContent = saved === "server" ? V.savedServer : saved ? V.saved : ""; draw(); })
+        : h("button", { class: "btn lime big", onclick: () => { state.vecForm = true; note.textContent = ""; draw(); } }, icon("i-plus"), V.publish),
+      note,
+      h("div", { class: "vec-filters" },
+        h("div", { class: "seg", role: "group", "aria-label": V.title }, ...["all", "asi_me_fue", "aviso", "pregunta"].map((k) => h("button", { "aria-pressed": String(state.vecType === k), onclick: () => { state.vecType = k; draw(); } }, V.types[k]))),
+        cropsIn.length > 1 ? h("div", { class: "row wrap", style: { gap: "6px" } },
+          h("button", { class: "chip", "aria-pressed": String(!state.vecCrop), onclick: () => { state.vecCrop = null; draw(); } }, V.allCrops),
+          ...cropsIn.map((id) => h("button", { class: "chip", "aria-pressed": String(state.vecCrop === id), onclick: () => { state.vecCrop = id; draw(); } }, tile(id), cropLabel(id)))) : null),
+      h("p", { class: "vec-note" }, icon("i-agronomist"), h("span", {}, V.peer)),
+      h("p", { class: "vec-note" }, icon("i-info"), h("span", {}, VEC.server ? V.demoServer : V.demo)));
+    put(feed, ...(list.length ? list.map((p) => vecCard(p, draw)) : [h("div", { class: "card vec-empty" }, h("p", {}, all.length ? V.emptyFilter : V.empty))]));
+  };
+  draw();
+  put($("#view"), h("div", { class: "res vec" }, resHead(P), h("div", { class: "vec-grid" }, side, feed)));
 }
 
 /* ================= router ================= */
@@ -846,31 +1569,91 @@ function route() {
   const [r = "", arg] = location.hash.replace(/^#\/?/, "").split("/");
   if (RESULTS.includes(r) && !state.plan) return { r: "planear" };
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
-  return { r: ["", "planear", "bootcamp", ...RESULTS].includes(r) ? r : "", arg };
+  if (r === "aviso" && !(link.alert && state.plan)) return { r: state.plan ? "plan" : "planear" };
+  return { r: ["", "planear", "bootcamp", "aviso", ...RESULTS].includes(r) ? r : "", arg };
+}
+const TAB_ORDER = ["plan", "terreno", "probar", "comparar", "vecinos"];
+const tabIx = (r) => TAB_ORDER.indexOf(r === "pasado" ? "plan" : r);
+const EASE_OUT = "cubic-bezier(.16, 1, .3, 1)";
+const activeRect = (box, sel) => box?.querySelector(sel)?.getBoundingClientRect();
+// The active background travels from the previous choice instead of jumping; navs are rebuilt on every route.
+function slidePill(nav, from, sel = '[aria-current="page"]') {
+  const to = nav?.querySelector(sel);
+  if (!from || !to || !MOTION()) return;
+  const n = nav.getBoundingClientRect(), b = to.getBoundingClientRect();
+  if (Math.abs(from.left - b.left) < 1) return;
+  const ghost = h("span", { class: "tab-ghost", "aria-hidden": "true", style: { left: `${b.left - n.left}px`, top: `${b.top - n.top}px`, width: `${b.width}px`, height: `${b.height}px` } });
+  nav.prepend(ghost);
+  to.classList.add("sliding", "dim");
+  // The label turns active halfway, when the pill is under it, so it never sits light-on-light
+  setTimeout(() => to.classList.remove("dim"), 140);
+  ghost.animate([{ transform: `translateX(${from.left - b.left}px)`, width: `${from.width}px` }, { transform: "none", width: `${b.width}px` }], { duration: 320, easing: EASE_OUT })
+    // The ghost leaves only after the tab's own background has faded back in under it
+    .finished.then(() => { to.classList.remove("sliding"); setTimeout(() => ghost.remove(), 200); });
 }
 function renderChrome(r) {
   const c = C(), P = state.plan, isRes = RESULTS.includes(r);
+  const fromTop = activeRect($("#topbar .tabs"), '[aria-current="page"]'), fromBottom = activeRect($("#bottom-nav"), '[aria-current="page"]');
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
-  const tabs = [["plan", c.nav.plan, "i-sprout"], ["terreno", c.nav.plot, "i-pin"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["pasado", c.nav.past, "i-history"]];
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : c.planTitle}`)),
-    isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, l))) : null,
-    h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "15px" } }, c.changeData) : null, langBtn()));
-  put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, icon(ic), l)));
+  const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
+  // Off the results there are no tabs, so the bar carries a way back: to the plan when there is one, else home
+  const back = isRes ? null : h("a", { class: "round", href: (r === "planear" || r === "aviso") && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : c.planTitle}`)),
+    isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
+    h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null,
+      linked() && hasWhatsApp() ? h("a", { class: "round", href: waUrl(), "aria-label": c.wa.back, title: c.wa.back }, icon("i-chat")) : null, langBtn()));
+  put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, icon(ic), l)));
+  slidePill($("#topbar .tabs"), fromTop);
+  slidePill($("#bottom-nav"), fromBottom);
   if (r !== "planear") put($("#map-overlay"));
+}
+let shownRoute = null;
+// Between tabs the new screen enters from the side of the tab that was pressed; the year-by-year view rises from the plan.
+function enterView(prev, r) {
+  if (MOTION() && (prev === "planear" || prev === "") && r === "plan") return revealPlan();
+  if (!MOTION() || prev === r || !RESULTS.includes(prev) || !RESULTS.includes(r) || tabIx(prev) < 0 || tabIx(r) < 0) return;
+  const d = Math.sign(tabIx(r) - tabIx(prev)), v = $("#view");
+  v.getAnimations().forEach((a) => a.cancel());
+  v.animate([{ opacity: 0, transform: d ? `translateX(${d * 28}px)` : "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 280, easing: EASE_OUT });
+}
+// Arriving at a new plan is rare and is what the farmer came for: its parts come in one after another.
+function revealPlan() {
+  const parts = document.querySelectorAll("#view .res-head, #view .nino-note, #view .pv-a, #view .pv-right, #view .pv-b, #view .pv-cards .strat, #view .pv-foot, #view .res.pv > .hint, #view .res.pv > .card");
+  parts.forEach((el, i) => el.animate([{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 480, delay: Math.min(i, 8) * 55, easing: EASE_OUT, fill: "backwards" }));
 }
 async function render() {
   const { r, arg } = route();
+  const prev = shownRoute;
+  shownRoute = r;
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
-  try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
+  try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
+  document.documentElement.classList.toggle("motion", MOTION());
+  // Source notes open on tap; a tap anywhere else closes them
+  document.addEventListener("click", () => document.querySelectorAll('.source[aria-expanded="true"]').forEach((b) => b.setAttribute("aria-expanded", "false")));
   put($("#view"), loading());
   try { await loadBase(); } catch { put($("#view"), errorCard(C().climateError, start)); return; }
+  try {
+    if (await initLink()) {
+      // A farmer from WhatsApp: their lot from Rooti, in Spanish unless they switched, on the page the button named
+      if (store.get("lang", null) == null) state.lang = "es";
+      state.plan = link.plan; state.custom = null; state.draft = null;
+      if (!location.hash.replace(/^#\/?/, "")) history.replaceState(null, "", "#/" + (link.alert && link.plan ? "aviso" : link.plan ? "plan" : "planear/1"));
+    }
+  } catch (e) {
+    const W = C().wa;
+    put($("#view"), e.status === 403
+      ? h("div", { class: "res" }, brand(), h("section", { class: "card" }, h("b", { class: "card-h" }, W.expiredTitle), h("p", {}, W.expiredText), hasWhatsApp() ? h("a", { class: "btn dark big", href: waUrl() }, icon("i-chat"), W.back) : null))
+      : errorCard(C().climateError, start));
+    return;
+  }
   if (state.plan) state.mode = defaultMode(state.plan);
-  addEventListener("hashchange", () => { render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
+  // A new signed link on an open page (another WhatsApp button, same tab) only changes the fragment: start over with it
+  addEventListener("hashchange", () => { if (location.hash.startsWith("#t=")) return location.reload(); state.drawing = false; document.body.classList.remove("drawing"); state.addCorner = null; render(); scrollTo(0, 0); $("#view").scrollTo?.(0, 0); });
   let w = desktop(); addEventListener("resize", () => { if (desktop() !== w) { w = desktop(); if (viewer) { viewer.destroy(); viewer = null; lotEntity = null; pickBound = false; } render(); } });
   render();
 }
