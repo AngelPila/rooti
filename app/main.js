@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=22";
-import { COPY } from "./copy.js?v=32";
+import { COPY } from "./copy.js?v=40";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -15,7 +15,7 @@ const UNITS = { ha: 1, cuadra: 0.7056, m2: 0.0001, acre: 0.4047 };
 const STEP = { ha: 0.5, cuadra: 1, m2: 100, acre: 1 };
 const CEREALS = new Set(["rice", "maize", "sorghum", "wheat", "barley"]);
 const GREEN = new Set(["jack_bean", "velvet_bean"]);
-const RESULTS = ["plan", "terreno", "probar", "comparar", "pasado", "pasaporte"];
+const RESULTS = ["plan", "terreno", "probar", "comparar", "pasado", "pasaporte", "vecinos"];
 
 /* ---------------- state ---------------- */
 const store = {
@@ -76,7 +76,7 @@ function h(tag, attrs = {}, ...kids) {
   return n;
 }
 const put = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false));
-const FILLED = new Set(["i-maize", "i-rice", "i-soybean", "i-straw", "i-rain", "i-sun", "i-sow", "i-harvest", "i-plot", "i-care", "i-water", "i-nino", "i-income", "i-soil", "i-agronomist", "i-month", "i-shield", "i-arrow", "i-info", "i-check", "i-x"]);
+const FILLED = new Set(["i-neighbors", "i-maize", "i-rice", "i-soybean", "i-straw", "i-rain", "i-sun", "i-sow", "i-harvest", "i-plot", "i-care", "i-water", "i-nino", "i-income", "i-soil", "i-agronomist", "i-month", "i-shield", "i-arrow", "i-info", "i-check", "i-x"]);
 const ALIAS = { "i-sprout": "i-sow", "i-drops": "i-water", "i-waves": "i-water", "i-coin": "i-income", "i-alert": "i-care", "i-user": "i-agronomist", "i-wheat": "i-harvest", "i-calendar": "i-month", "i-cloud-sun": "i-sun", "i-leaf": "i-sow" };
 function icon(id, cls = "icon") {
   id = ALIAS[id] || id;
@@ -517,10 +517,11 @@ function normals(clim) {
 // The plan as a route: crop, then the months spelled out
 // Plans longer than a year show the first year; the rest opens on request so the route still reads at a glance
 function routeEl(r, f) {
-  const N = r.period.length, D = C().ds, long = N > 12, all = !long || state.routeAll;
+  const N = r.period.length, D = C().ds, long = N > 12, all = !long || state.routeAll, vseen = new Set();
   const box = h("div", { class: "route" }, ...plotsOf(f).map(({ pc, name }) => h("div", { class: "rt-plot" }, h("span", { class: "rt-lab" }, `${name} · ${fmtArea(pc.share)}`),
     h("ol", { class: "rt-steps" }, ...runsOf(pc, N).filter((ru) => all || ru.t0 < 12).flatMap((ru, i) => [i ? icon("i-arrow", "icon rt-arrow") : null,
-      h("li", { class: ru.c === "bare" ? "bare" : "" }, tile(ru.c), h("p", {}, h("b", {}, cropLabel(ru.c)), h("span", {}, monthsText(r, ru))))])))));
+      h("li", { class: ru.c === "bare" ? "bare" : "" }, tile(ru.c), h("p", {}, h("b", {}, cropLabel(ru.c)), h("span", {}, monthsText(r, ru))))])),
+    vecChips(r, pc, all, vseen))));
   if (long) box.append(h("button", { class: "link", style: { alignSelf: "flex-start" }, onclick: () => { state.routeAll = !all; box.replaceWith(routeEl(r, f)); } },
     all ? D.routeFirst : D.routeAll(Math.ceil(N / 12))));
   return box;
@@ -665,7 +666,7 @@ function sourceNote(r, f) {
 function viewPlan() {
   return withResults(async (r) => {
     const c = C(), D = c.ds, P = state.plan, N = r.period.length, multi = r.samples.length > 1;
-    const [plans, ids] = await Promise.all([namedPlans(P), ideas(r)]);
+    const [plans, ids] = await Promise.all([namedPlans(P), ideas(r), loadVecinos()]);
     if (!plans.length) { put($("#view"), h("div", { class: "res" }, resHead(P), h("div", { class: "card" }, h("p", {}, c.noPlans), h("a", { class: "btn dark", href: "#/planear" }, c.changeData)))); return; }
     if (!plans.some((x) => x.key === state.pick)) state.pick = plans[0].key;
     const cur = () => plans.find((x) => x.key === state.pick);
@@ -712,7 +713,7 @@ function viewPlan() {
               h("div", { class: "pv-acts" }, h("button", { class: "btn soft", onclick: () => explainSheet(D.names[cur().key], cur().f, r) }, D.whyRisks), saveBtn,
                 h("button", { class: "round", "aria-label": c.listen, title: c.listen, onclick: () => speak(`${D.names[cur().key]}. ${routeWords(r, cur().f)}. ${c.verdict[cur().f.verdict]}.`) }, icon("i-volume")))),
             h("div", { class: "pv-b" },
-              multi ? [stat, h("div", { class: "pv-block" }, dots, legend)] : h("p", { class: "small" }, D.realOnly),
+              multi ? [stat, h("div", { class: "pv-block" }, dots, legend, h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r")))] : h("p", { class: "small" }, D.realOnly),
               h("div", { class: "pv-block" }, coverLab, squares))),
           h("div", { class: "pv-right" }, cal, h("div", { class: "pv-block" }, h("b", {}, D.plansTitle(plans.filter((x) => x.key !== "today").length, plans.some((x) => x.key === "today"))), cards))),
         h("div", { class: "pv-foot" }, unknownChips(r, plans[0].f), sourceNote(r, plans[0].f))),
@@ -1057,6 +1058,130 @@ function updateMap(pl, verdict) {
   viewer.scene.requestRender();
 }
 
+/* ================= Vecinos: what farmers nearby saw, next to the satellite data ================= */
+// Demo: example posts ship in data/vecinos.json (marked example), the farmer's own posts and replies stay in localStorage.
+// The post shape is the one the WhatsApp bot will store in rooti.db, so the feed can switch to a server without changes.
+const VEC = { posts: null };
+const loadVecinos = () => (VEC.load ||= fetch("data/vecinos.json?v=1").then(ok).then((d) => { VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true })); }).catch(() => { VEC.posts = []; }));
+const zoneKey = (pl) => nearPilot(pl) || `pt:${pl.lat.toFixed(1)},${pl.lon.toFixed(1)}`;
+const vecText = (x) => x.text ?? (es() ? x.text_es : x.text_en) ?? "";
+const maskName = (n) => { const w = (n || "").trim().split(/\s+/).filter(Boolean); return !w.length ? C().vec.anon : w.length === 1 ? cap(w[0]) : `${cap(w[0])} ${w[w.length - 1][0].toUpperCase()}.`; };
+const monthGap = (a, b) => { const d = Math.abs(a - b) % 12; return Math.min(d, 12 - d); };
+function vecPosts(pl) {
+  const z = zoneKey(pl), hidden = new Set(store.get("vecHidden1", [])), extra = store.get("vecReplies1", {});
+  return [...store.get("vecMine1", []), ...(VEC.posts || [])].filter((p) => p.zone === z)
+    .map((p) => ({ ...p, hidden: hidden.has(p.id), replies: [...(p.replies || []), ...(extra[p.id] || [])] }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+// Reports of the same crop sown within a month of the plan's month, in the plot's zone
+const vecMatch = (pl, crop, m) => vecPosts(pl).filter((p) => p.type === "asi_me_fue" && !p.hidden && p.crop === crop && p.sowMonth && monthGap(p.sowMonth, m) <= 1);
+// Never lets a problem with the neighbours' data break the plan screen
+function vecChips(r, pc, all, seen) {
+  try { return vecChipsOf(r, pc, all, seen); } catch (e) { console.error(e); return null; }
+}
+function vecChipsOf(r, pc, all, seen = new Set()) {
+  if (!VEC.posts) return null;
+  const V = C().vec, out = [];
+  for (const ru of runsOf(pc, r.period.length)) {
+    if (ru.c === "bare" || ru.c === "mulch" || (!all && ru.t0 >= 12)) continue;
+    const m = r.period[ru.t0].m, k = `${ru.c}@${m}`;
+    if (seen.has(k)) continue; seen.add(k);
+    const rep = vecMatch(state.plan.place, ru.c, m);
+    if (!rep.length) continue;
+    const n = { bien: 0, regular: 0, perdio: 0 }; rep.forEach((p) => { n[p.result] = (n[p.result] || 0) + 1; });
+    const lv = ru.st && ru.st.fail != null ? level(ru.st) : null, check = n.perdio / rep.length >= 1 / 3 && lv !== "danger";
+    out.push(h("a", { class: `vec-chip${check ? " check" : ""}`, href: `#/vecinos/${ru.c}` }, icon("i-neighbors"),
+      h("span", {}, h("b", {}, V.chip(rep.length, cropName(ru.c).toLowerCase(), monL(m))), " · ", ["bien", "regular", "perdio"].filter((x) => n[x]).map((x) => V.chipCount[x](n[x])).join(", "),
+        check ? h("em", {}, V.chipCheck) : null), icon("i-chev-r")));
+  }
+  return out.length ? h("div", { class: "vec-chips" }, ...out) : null;
+}
+const VEC_BADGE = { bien: "good", regular: "care", perdio: "danger" };
+function vecAuthor(x, V) {
+  return h("p", { class: "vp-by" }, h("b", {}, x.author), x.role === "tecnico" ? h("span", { class: "vp-tech" }, icon("i-agronomist"), V.tech) : null, h("span", {}, fmtDate(x.date)));
+}
+function vecCard(p, redraw) {
+  const c = C(), V = c.vec;
+  if (p.hidden) return h("article", { class: "vp hidden" }, h("p", { class: "small" }, V.reported), h("button", { class: "link", onclick: () => { store.set("vecHidden1", store.get("vecHidden1", []).filter((x) => x !== p.id)); redraw(); } }, V.undoReport));
+  const replyBox = h("div", { class: "vp-reply" });
+  const openReply = () => {
+    const input = h("textarea", { rows: 2, maxlength: 280, placeholder: V.replyPh, "aria-label": V.reply });
+    put(replyBox, input, h("div", { class: "row", style: { gap: "8px" } },
+      h("button", { class: "btn lime", onclick: () => { const t = input.value.trim(); if (!t) { input.focus(); return; }
+        const all = store.get("vecReplies1", {}); (all[p.id] ||= []).push({ author: maskName(state.vecName), text: t, date: iso(new Date()), mine: true }); store.set("vecReplies1", all); redraw(); } }, V.send),
+      h("button", { class: "btn soft", onclick: () => put(replyBox) }, V.fCancel)));
+    input.focus();
+  };
+  return h("article", { class: `vp t-${p.type}` },
+    h("div", { class: "vp-head" }, h("span", { class: "mono vp-type" }, V.type1[p.type]), h("span", { class: `vp-tag${p.example ? "" : " mine"}` }, p.example ? V.example : V.local)),
+    p.crop ? h("div", { class: "vp-crop" }, tile(p.crop), h("b", {}, V.sown(cropLabel(p.crop), monL(p.sowMonth), p.sowYear)), p.area ? h("span", { class: "small" }, `${num(p.area)} ${c.units[p.unit] || p.unit || ""}`) : null) : null,
+    p.result ? h("span", { class: `badge ${VEC_BADGE[p.result]}` }, V.results[p.result]) : null,
+    vecText(p) ? h("p", { class: "vp-text" }, vecText(p)) : null,
+    vecAuthor(p, V),
+    p.replies.length ? h("ul", { class: "vp-replies", "aria-label": V.replies(p.replies.length) }, ...p.replies.map((x) => h("li", { class: x.role === "tecnico" ? "tech" : "" }, vecAuthor(x, V), h("p", {}, vecText(x))))) : null,
+    h("div", { class: "vp-acts" }, h("button", { class: "link", onclick: openReply }, icon("i-chat"), V.reply),
+      h("button", { class: "link quiet", onclick: () => { store.set("vecHidden1", [...store.get("vecHidden1", []), p.id]); redraw(); } }, V.report)),
+    replyBox);
+}
+function vecForm(P, done) {
+  const c = C(), V = c.vec, d = (state.vecDraft ||= { type: "asi_me_fue", crop: null, sowMonth: new Date(P.start + "T12:00:00").getMonth() + 1, result: null, text: "" });
+  const box = h("section", { class: "card vec-form", "aria-label": V.publish }), msg = h("p", { class: "err", role: "status" });
+  const crops = [...new Set([...(P.current || []), ...P.crops])].filter((x) => x !== "mulch");
+  const draw = () => {
+    const text = h("textarea", { id: "vecText", rows: 3, maxlength: 280, placeholder: V.fPh[d.type], oninput: (e) => { d.text = e.target.value; } }); text.value = d.text;
+    const name = h("input", { id: "vecName", autocomplete: "given-name", oninput: (e) => { state.vecName = e.target.value; store.set("vecName1", state.vecName); } }); name.value = state.vecName || "";
+    put(box,
+      h("b", { class: "card-h" }, V.fType),
+      h("div", { class: "seg vec-seg" }, ...["asi_me_fue", "aviso", "pregunta"].map((k) => h("button", { "aria-pressed": String(d.type === k), onclick: () => { d.type = k; draw(); } }, V.type1[k]))),
+      d.type === "asi_me_fue" ? [
+        h("b", {}, V.fCrop), h("div", { class: "row wrap", style: { gap: "8px" } }, ...crops.map((id) => h("button", { class: "chip", "aria-pressed": String(d.crop === id), onclick: () => { d.crop = id; draw(); } }, tile(id), cropLabel(id)))),
+        h("label", { class: "vec-field" }, h("b", {}, V.fMonth), h("select", { onchange: (e) => { d.sowMonth = +e.target.value; } }, ...S().monthsLong.map((m, i) => h("option", { value: i + 1, selected: d.sowMonth === i + 1 || null }, cap(m))))),
+        h("b", {}, V.fResult), h("div", { class: "opts" }, ...["bien", "regular", "perdio"].map((k) => h("button", { class: "opt", "aria-pressed": String(d.result === k), onclick: () => { d.result = k; draw(); } }, V.results[k])))] : null,
+      h("label", { class: "vec-field", for: "vecText" }, h("b", {}, V.fText[d.type])), text,
+      h("label", { class: "vec-field", for: "vecName" }, h("b", {}, V.fName)), name, h("p", { class: "small" }, V.fNameHelp),
+      msg,
+      h("div", { class: "row wrap", style: { gap: "10px" } },
+        h("button", { class: "btn lime", onclick: () => {
+          const t = d.text.trim();
+          if (d.type === "asi_me_fue" ? !(d.crop && d.result) : !t) { msg.textContent = d.type === "asi_me_fue" ? `${V.fCrop} ${V.fResult}` : V.fNeed; return; }
+          const now = new Date(), y = d.sowMonth > now.getMonth() + 1 ? now.getFullYear() - 1 : now.getFullYear();
+          const post = { id: "u" + now.getTime(), type: d.type, zone: zoneKey(P.place), text: t, author: maskName(state.vecName), date: iso(now), replies: [],
+            ...(d.type === "asi_me_fue" ? { crop: d.crop, sowMonth: d.sowMonth, sowYear: y, result: d.result } : {}) };
+          store.set("vecMine1", [post, ...store.get("vecMine1", [])]); state.vecDraft = null; done(true);
+        } }, V.fSubmit),
+        h("button", { class: "btn soft", onclick: () => { state.vecDraft = null; done(false); } }, V.fCancel)));
+  };
+  draw();
+  return box;
+}
+async function viewVecinos(arg) {
+  await loadVecinos();
+  const c = C(), V = c.vec, P = state.plan, z = nearPilot(P.place);
+  state.vecName ??= store.get("vecName1", "");
+  if (arg && arg !== state.vecArg) { state.vecArg = arg; state.vecCrop = CROP_LOOK[arg] ? arg : null; state.vecType = "asi_me_fue"; }
+  state.vecType ||= "all";
+  const feed = h("div", { class: "vec-feed" }), side = h("div", { class: "vec-side" }), note = h("p", { class: "vec-saved", role: "status" });
+  const draw = () => {
+    const all = vecPosts(P.place), cropsIn = [...new Set(all.filter((p) => p.crop).map((p) => p.crop))];
+    const list = all.filter((p) => (state.vecType === "all" || p.type === state.vecType) && (!state.vecCrop || p.crop === state.vecCrop));
+    put(side,
+      h("div", { class: "res-title" }, h("h1", { class: "display" }, V.title), h("p", {}, z ? V.lead(cap(z)) : V.leadFar)),
+      state.vecForm ? vecForm(P, (saved) => { state.vecForm = false; note.textContent = saved ? V.saved : ""; draw(); })
+        : h("button", { class: "btn lime big", onclick: () => { state.vecForm = true; note.textContent = ""; draw(); } }, icon("i-plus"), V.publish),
+      note,
+      h("div", { class: "vec-filters" },
+        h("div", { class: "seg", role: "group", "aria-label": V.title }, ...["all", "asi_me_fue", "aviso", "pregunta"].map((k) => h("button", { "aria-pressed": String(state.vecType === k), onclick: () => { state.vecType = k; draw(); } }, V.types[k]))),
+        cropsIn.length > 1 ? h("div", { class: "row wrap", style: { gap: "6px" } },
+          h("button", { class: "chip", "aria-pressed": String(!state.vecCrop), onclick: () => { state.vecCrop = null; draw(); } }, V.allCrops),
+          ...cropsIn.map((id) => h("button", { class: "chip", "aria-pressed": String(state.vecCrop === id), onclick: () => { state.vecCrop = id; draw(); } }, tile(id), cropLabel(id)))) : null),
+      h("p", { class: "vec-note" }, icon("i-agronomist"), h("span", {}, V.peer)),
+      h("p", { class: "vec-note" }, icon("i-info"), h("span", {}, V.demo)));
+    put(feed, ...(list.length ? list.map((p) => vecCard(p, draw)) : [h("div", { class: "card vec-empty" }, h("p", {}, all.length ? V.emptyFilter : V.empty))]));
+  };
+  draw();
+  put($("#view"), h("div", { class: "res vec" }, resHead(P), h("div", { class: "vec-grid" }, side, feed)));
+}
+
 /* ================= router ================= */
 function route() {
   const [r = "", arg] = location.hash.replace(/^#\/?/, "").split("/");
@@ -1068,18 +1193,18 @@ function renderChrome(r) {
   const c = C(), P = state.plan, isRes = RESULTS.includes(r);
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
-  const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["pasado", c.nav.past, "i-history"]];
+  const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
   put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtDate(P.start)} – ${fmtDate(P.end)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : c.planTitle}`)),
-    isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, l))) : null,
+    isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null, langBtn()));
-  put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k ? "page" : null }, icon(ic), l)));
+  put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, icon(ic), l)));
   if (r !== "planear") put($("#map-overlay"));
 }
 async function render() {
   const { r, arg } = route();
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte };
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: viewBootcamp, plan: viewPlan, terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg) };
   try { await views[r](); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
