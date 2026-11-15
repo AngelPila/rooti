@@ -5,10 +5,12 @@ import json
 import os
 import subprocess
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
 from rooti_bot import config, store
 
 ENGINE = config.BOT_DIR / "engine" / "rooti.mjs"
+PLAN_VERSION = 2  # Invalidate plans calculated from the old monthly weather inputs.
 
 
 class EngineError(Exception):
@@ -35,7 +37,12 @@ def run(request: dict, timeout: int = 180) -> dict:
 def cold(farmer: dict) -> bool:
     """True when the lot's plan is not saved yet, so asking for it means waiting on NASA."""
     saved = store.saved_plan(farmer["phone"])
-    return not saved or saved[0] != {**store.lot_inputs(farmer), "mode": "auto"}
+    return not saved or saved[0] != _plan_inputs(farmer)
+
+
+def _plan_inputs(farmer: dict) -> dict:
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    return {**store.lot_inputs(farmer), "mode": "auto", "plan_version": PLAN_VERSION, "climate_month": month}
 
 
 @contextmanager
@@ -53,12 +60,12 @@ def _one_at_a_time(phone: str):
 
 def plan_for(farmer: dict, *, fresh: bool = False, mode: str = "auto") -> dict:
     """The lot's plan. The first one takes up to a minute (NASA POWER and SoilGrids); after that it is read from
-    the database until the lot changes, so an answer never waits on NASA."""
+    the database until the lot, planner version or calendar month changes."""
     if farmer.get("lat") is None or not farmer.get("crops"):
         raise EngineError("Todavía no sé dónde está el lote o qué siembra.")
     if fresh or mode != "auto":
         return run({"cmd": "plan", "lot": store.lot_inputs(farmer), "mode": mode})
-    inputs = {**store.lot_inputs(farmer), "mode": mode}
+    inputs = _plan_inputs(farmer)
     with _one_at_a_time(farmer["phone"]):
         saved = store.saved_plan(farmer["phone"])
         if saved and saved[0] == inputs:

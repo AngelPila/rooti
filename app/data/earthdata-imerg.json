@@ -1,0 +1,36 @@
+{
+  "source": "https://cmr.earthdata.nasa.gov/mcp/v1",
+  "retrievedAt": "2026-11-15T18:28:32.640Z",
+  "collections": [
+    {
+      "bounding_box": [
+        -180,
+        -90,
+        180,
+        90
+      ],
+      "concept_id": "C2723754864-GES_DISC",
+      "entry_title": "GPM IMERG Final Precipitation L3 1 day 0.1 degree x 0.1 degree V07 (GPM_3IMERGDF)",
+      "is_ongoing": false,
+      "short_name": "GPM_3IMERGDF",
+      "time_end": "2025-09-30T23:59:59.999000Z",
+      "time_start": "1998-01-01T00:00:00Z",
+      "version": "07"
+    },
+    {
+      "bounding_box": [
+        -180,
+        -90,
+        180,
+        90
+      ],
+      "concept_id": "C2723754859-GES_DISC",
+      "entry_title": "GPM IMERG Late Precipitation L3 1 day 0.1 degree x 0.1 degree V07 (GPM_3IMERGDL)",
+      "is_ongoing": true,
+      "short_name": "GPM_3IMERGDL",
+      "time_end": null,
+      "time_start": "1998-01-01T00:00:00Z",
+      "version": "07"
+    }
+  ]
+}

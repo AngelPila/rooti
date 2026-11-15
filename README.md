@@ -12,7 +12,7 @@ Pilot zones: Daule, Babahoyo and Quevedo (rice and maize on the Ecuadorian coast
 cd app && python3 -m http.server 8765    # then open http://localhost:8765
 ```
 
-On the landing page, tap one of the examples — **Daule, Ecuador (rice in El Niño)**, **Quevedo, Ecuador (maize and soybean)** or **Iowa, USA (corn and soybean)**. Their climate and plot data ship with the app (`app/data/demo/`), so they work without internet. Any other place on Earth fetches NASA POWER and soil data live. Add `?lang=en` or `?lang=es` to force a language.
+On the landing page, tap one of the examples — **Daule, Ecuador (rice in El Niño)**, **Quevedo, Ecuador (maize and soybean)** or **Iowa, USA (corn and soybean)**. Climate is fetched from NASA POWER when online, including for examples. The examples have bundled historical monthly climate and plot data (`app/data/demo/`) for offline use. Add `?lang=en` or `?lang=es` to force a language.
 
 Submission texts, demo script and judging notes: [`docs/SUBMISSION.md`](docs/SUBMISSION.md). Sources: [`docs/REFERENCES.md`](docs/REFERENCES.md). Use of AI: [`SI_USAGE.md`](SI_USAGE.md).
 
@@ -47,14 +47,17 @@ The bootcamp saves lesson progress and the quiz badge in the current browser. It
 8. **What if.** Each plan replayed on every real sequence of years since 1981.
 
 How the global planner works (`app/climate.js`, `app/planner.js`):
-- **NASA POWER** monthly climate for the point, 1981 to last month (monthly API plus daily data for the current year), fetched live from the browser. ET0 is FAO-56 Penman-Monteith from POWER's monthly means (`T2M`, `T2M_RANGE`, `RH2M`, `WS2M`, `ALLSKY_SFC_SW_DWN`).
+- **NASA POWER** daily climate for the point, from 1981 through the latest complete month available. ET0 is FAO-56 Penman–Monteith from daily temperature, humidity, wind and radiation (`T2M`, `T2M_MIN`, `T2M_MAX`, `RH2M`, `WS2M`, `ALLSKY_SFC_SW_DWN`). When radiation is missing, Hargreaves ET0 uses temperature and a calendar month correction derived from overlapping POWER days. The monthly POWER series is a fallback if the daily series is unavailable or incomplete.
+- **NASA Earthdata MCP** (`app/earthdata.mjs`) queries the CMR catalog for daily GPM IMERG Final and Late collections. The Node and WhatsApp web servers expose this metadata at `/api/nasa/imerg`. The headless bot calls MCP directly. Static hosting and temporary MCP outages use the checked-in [catalog response](app/data/earthdata-imerg.json). The planner uses the catalog to bound the IMERG request and retrieves the numeric series from POWER (`IMERG_PRECTOT`, ~10 km, UTC). It uses IMERG for a month when every day has a valid value. Earlier or incomplete IMERG months use POWER corrected precipitation (`PRECTOTCORR`, ~50 km). POWER serves both Final and Late runs in this series. A catalog match alone does not establish that a day has usable rain data.
 - Months that already happened use the real climate. Future months are tested on every real run of consecutive years since 1981 (about 40), optionally only dry, wet or strong El Niño years.
 - The plot changes the plan: water left in the soil after the rains counts for the next crop (bucket sized by soil texture), crops that cannot stand standing water can drown in very wet months on plots that hold water, soil pH outside a crop's range lowers its harvest, and bare soil on a slope loses more.
 - Strategies shown side by side: the recommended farm plan, what the farmer does today (their crops, no straw cover) and other rotations, each with why, risks, what we don't know and questions for the agronomist.
-- Each planting: water need = FAO-56 crop coefficients × ET0; lost when rain covers under 20 % of the need (no irrigation), or when a month is colder or hotter than the crop's ECOCROP limits (with a margin, since these are monthly means); yield share = FAO-33 Ky response.
+- Each planting: daily crop demand = FAO-56 crop coefficient for its stage × daily ET0. A soil water balance tracks available water, root-zone depletion, drainage and ponding. Relative yield uses FAO-33 Ky with temperature, pH and waterlogging penalties. A rainfed crop with less than 20% of its demand met fails. The daily model flags three consecutive days of severe ponding, daily mean temperature outside ECOCROP's growth limits, or temperature extremes beyond those limits by a margin. These are screening rules, not calibrated damage thresholds. With monthly fallback data the engine evaluates whole-month balances and cannot infer daily spells.
 - The best sequence is found by dynamic programming over months, weighing harvests, water deficit, failures, bare-soil months (rain on bare soil, bare soil in the sun) and rotation rules (no crop back to back, legume after a cereal, not two cereals in a row), by the farmer's priority (soil, water or income). Straw left after a cereal covers the soil if "keep the straw" is picked.
 - Wheat, barley, potato, sunflower and chickpea were added for use outside the tropics with approximate FAO-56 / ECOCROP values (flagged in the app).
 - Pilot zones (Daule, Babahoyo, Quevedo) keep the soil passport (MODIS fires) and Ecuador prices.
+
+The web views and WhatsApp planner share the same climate loader and planting simulation. Sowing and harvest are still presented by month. No machine learning model was fitted for crop planning. The input series describe weather, not field-level sowing dates, management, measured yield or losses. The water balance and rotation scoring keep those assumptions inspectable. Crop coefficients and risk thresholds would need field records for local calibration and validation. The separate experimental rainy-season classifier remains outside the crop planner.
 
 ## El Niño 2026–27: what changes on the coast
 
@@ -164,8 +167,8 @@ docker run --rm -v "$PWD/../fieldshift-data:/src:ro" -v "$PWD:/proj" spaceapps-g
 
 ## Honest limits
 
-- Climate data describe about 50 km around the lot, not the lot itself.
-- NASA POWER rainfall looks too low in some years (for example 2005 and 2007). Cross-checking with **GPM IMERG** (10 km) is in progress.
+- NASA POWER meteorology describes about 50 km around the lot. IMERG rainfall describes about 10 km. Both describe an area larger than the lot, and the historical rain series mixes sources as coverage changes.
+- Some extremes may still be underestimated. Check rainfall against local gauges before using the regional estimates to calibrate crop losses.
 - At 250 m, MODIS NDVI mixes fields with trees, so it cannot confirm what a single plot does. That would need Sentinel-2 at 10 m.
 - Prices, costs and yields are national or provincial averages, not the farmer's own. Rice and soybean costs are the weakest numbers.
 - Velvet bean and jack bean have no FAO water figures. A generic cover-crop coefficient (0.9) is assumed and stated as an assumption.

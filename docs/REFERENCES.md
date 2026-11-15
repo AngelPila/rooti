@@ -6,6 +6,10 @@
 - MODIS MOD13Q1 / MYD13Q1 v061 Vegetation Indices, 16-day, 250 m. Didan, K. (2021). NASA EOSDIS LP DAAC. doi:10.5067/MODIS/MOD13Q1.061.
 - Landsat 5, 7, 8 (NASA/USGS), through: Pekel, J.-F. et al. (2016). High-resolution mapping of global surface water and its long-term changes. Nature 540, 418–422 (JRC Global Surface Water v1.4).
 - NASA Earthdata CMR MCP server: https://cmr.earthdata.nasa.gov/mcp/v1
+- Earthdata MCP connection and catalog tools: https://nasa.github.io/earthdata-mcp/
+- NASA POWER daily point API: https://power.larc.nasa.gov/docs/services/api/temporal/daily/
+- NASA POWER meteorological sources and `IMERG_PRECTOT` coverage, resolution and latency: https://power.larc.nasa.gov/docs/methodology/data/sources_meteorology/#imerg-integrated-multi-satellite-retrievals-for-gpm
+- GPM IMERG daily V07, Final (`C2723754864-GES_DISC`) and Late (`C2723754859-GES_DISC`): https://gpm.nasa.gov/data/directory. The checked-in MCP catalog response stores the retrieval date and CMR coverage metadata.
 
 ## Partner and other data
 - ESA Copernicus DEM GLO-30/GLO-90 (2021), via Open-Meteo Elevation API: https://open-meteo.com/en/docs/elevation-api

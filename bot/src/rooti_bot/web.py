@@ -24,6 +24,8 @@ log = logging.getLogger("rooti.web")
 HANDOFFS_PER_HOUR = 10
 _hits: dict[str, list[float]] = {}
 _lock = threading.Lock()
+_nasa_lock = threading.Lock()
+_nasa_cache = (0.0, None)
 
 
 def _session(token: str) -> dict:
@@ -79,6 +81,21 @@ def _allowed(key: str) -> bool:
 def mount(api: FastAPI) -> None:
     # Only the handoff is called from another site (the public website); the rest is the app on this same origin.
     api.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["POST"], allow_headers=["Content-Type"])
+
+    @api.get("/api/nasa/imerg")
+    def nasa_catalog():
+        global _nasa_cache
+        with _nasa_lock:
+            expires, catalog = _nasa_cache
+            if expires <= time.monotonic():
+                try:
+                    catalog = engine.run({"cmd": "imerg_catalog"}, timeout=14)
+                except engine.EngineError:
+                    catalog = None
+                _nasa_cache = (time.monotonic() + (3600 if catalog else 60), catalog)
+        if not catalog:
+            raise HTTPException(503, "Earthdata MCP unavailable")
+        return JSONResponse(catalog, headers={"Cache-Control": "public, max-age=3600"})
 
     @api.get("/data/bot.json")
     @api.get("/app/data/bot.json")

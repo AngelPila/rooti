@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import * as rooti from "./rooti.mjs";
+import { imergCatalog } from "../app/earthdata.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP = path.resolve(process.env.APP_DIR || path.join(HERE, "..", "app"));
@@ -178,6 +179,10 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   try {
     if (url.pathname === "/healthz") return send(res, 200, { ok: true, db: !!db });
+    if (req.method === "GET" && url.pathname === "/api/nasa/imerg") {
+      const catalog = await imergCatalog().catch(() => null);
+      return catalog ? send(res, 200, catalog, { "cache-control": "public, max-age=3600" }) : send(res, 503, { error: "Earthdata MCP unavailable" });
+    }
     if (url.pathname.startsWith("/api/vecinos")) return await api(req, res, url);
     if (url.pathname === "/api/rooti" || url.pathname.startsWith("/api/rooti/")) return await rootiApi(req, res, url);
     if (url.pathname === "/data/bot.json" && process.env.ROOTI_BOT_URL) return send(res, 200, { url: process.env.ROOTI_BOT_URL, whatsapp: (process.env.ROOTI_WHATSAPP || "").replace(/\D/g, "") });

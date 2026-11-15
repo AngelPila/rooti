@@ -1,5 +1,5 @@
-import { fetchClimate } from "./climate.js?v=22";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
+import { fetchClimate } from "./climate.js?v=24";
+import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=36";
 import { COPY } from "./copy.js?v=53";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
@@ -159,7 +159,11 @@ async function loadBase() {
 }
 function climate(pl) {
   const k = `${pl.lat.toFixed(2)},${pl.lon.toFixed(2)}`, dk = demoKey(pl);
-  return (DATA.clim[k] ||= (dk ? loadDemo(dk).then((d) => d.clim) : fetchClimate(pl.lat, pl.lon)).catch((e) => { delete DATA.clim[k]; throw e; }));
+  const live = () => fetchClimate(pl.lat, pl.lon).catch((error) => {
+    if (!dk) throw error;
+    return loadDemo(dk).then((d) => d.clim);
+  });
+  return (DATA.clim[k] ||= live().catch((e) => { delete DATA.clim[k]; throw e; }));
 }
 // Plot data: elevation, slope and soil for any point; in the pilot zones our own soil and satellite water data.
 async function terrain(pl) {
