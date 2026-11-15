@@ -49,6 +49,10 @@ Rules learned from design reviews. Each one comes from a correction the product 
   Why: confirmed choice ("ok lo recomendado"): icons must stay sharp at 16px, recolor with the theme, and a watermark cannot fit on an icon.
   <!-- 2026-11-15 -->
 
+- **"How it works" is four small cards in one row: an AI illustration with no text inside (same family as the demo cards), the step number and title, two lines of text. Never AI screenshots of the UI, and never schematic diagrams drawn in code.** The "Generada con IA" mark is an HTML label over the image, so it stays sharp.
+  Why: "se ve feo y aparte las capturas se ven borrosas"; "ocupa mucho"; "los assets son horribles... usa las imagenes" (reference: startuparena.gg "How it works").
+  <!-- 2026-11-15 -->
+
 ## Motion
 Applied from the `remove-animations`, `choreograph` and `mobile-native` skills at the owner's request ("instala esos y aplicalos").
 - **Nothing fades in on scroll, numbers count only when their value changes, and no loop runs on a persistent element (the loader is the exception).**
