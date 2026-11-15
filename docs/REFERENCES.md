@@ -37,6 +37,12 @@
 - [FAO, Climate-smart soil and land management](https://elearning.fao.org/course/view.php?id=435) and its [Spanish edition](https://elearning.fao.org/course/view.php?id=496&lang=es). Free training on soil, erosion, and water management.
 - [W.carter, Corn in a field by Myrstigen 1](https://commons.wikimedia.org/wiki/File:Corn_in_a_field_by_Myrstigen_1.jpg). Bootcamp header photo, CC BY-SA 4.0.
 
+## Rooti in the app (`app/rooti.js`, `server/rooti.mjs`)
+
+- [DeepSeek API](https://api-docs.deepseek.com/) (`deepseek-chat`): the model behind Rooti, the same one as on WhatsApp.
+- [Groq](https://console.groq.com/docs/speech-to-text) Whisper large-v3-turbo: speech to text for what the farmer says into the microphone.
+- The browser's own speech synthesis (Web Speech API) reads Rooti's answers aloud.
+
 ## WhatsApp agent (`bot/`)
 
 - Rooti's WhatsApp agent is adapted from Vinci, the maintainer's own WhatsApp assistant (bridge patch, plugin patterns, deploy layout, E2E harness).
