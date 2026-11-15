@@ -1,4 +1,4 @@
-import { BOOTCAMP, CROP_GUIDE, SOURCES } from "./bootcamp-content.js?v=2";
+import { BOOTCAMP, CROP_GUIDE } from "./bootcamp-content.js?v=3";
 
 const PROGRESS_KEY = "bootcamp1";
 const PHOTO_SOURCE = "https://commons.wikimedia.org/wiki/File:Corn_in_a_field_by_Myrstigen_1.jpg";
@@ -9,7 +9,7 @@ export function createBootcamp({ h, put, icon, tile, store, speak }) {
   const isComplete = (index) => progress.completed.includes(index);
   const external = (label, href) => h("a", { href, target: "_blank", rel: "noopener noreferrer" }, label);
 
-  return function bootcampPage(lang, crops, planLabel, onPlan) {
+  return function bootcampPage(lang, crops, planLabel, onPlan, section) {
     const text = BOOTCAMP[lang];
     const last = text.lessons.length - 1;
     const path = h("ol", { class: "bc-path", "aria-label": text.path });
@@ -167,44 +167,55 @@ export function createBootcamp({ h, put, icon, tile, store, speak }) {
             h("p", {}, lang === "es" ? es : en))));
     });
 
-    return h("div", { class: "bootcamp" },
-      h("header", { class: "bc-hero" },
+    const hero = h("header", { class: "bc-hero" },
         h("div", { class: "bc-intro" },
           h("p", { class: "bc-kicker" }, text.meta),
           h("h1", { class: "display" }, text.title),
           h("p", {}, text.intro),
           h("div", { class: "bc-hero-actions" },
-            h("button", { type: "button", class: "btn bc-start", onclick: () => renderLesson(progress.current, true) },
+            h("a", { class: "btn bc-start", href: "#/bootcamp/capsulas" },
               startLabel, icon("i-arrow-r")),
-            h("button", { type: "button", class: "btn bc-crop-jump", onclick: () => cropTitle.focus() }, icon("i-sprout"), text.cropTitle)),
+          ),
         ),
         h("figure", {},
           h("img", { src: "img/maize.jpg", alt: "" }),
           h("figcaption", {}, external(text.credit, PHOTO_SOURCE)),
-        ),
-      ),
-      h("div", { class: "bc-course" },
-        h("aside", { class: "bc-sidebar" }, count, meter, path),
-        card,
-      ),
-      h("section", { class: "bc-catalog", "aria-labelledby": "bc-crops-title" },
-        h("header", {}, cropTitle, h("p", {}, text.cropIntro)),
-        h("ul", { class: "bc-crop-grid" }, cropCards),
-        h("div", { class: "bc-sequence" },
-          h("h3", {}, icon("i-leaf"), " ", text.straw),
-          h("p", {}, text.strawNote))),
-      h("section", { class: "bc-resources" },
-        h("h2", { class: "display" }, text.courses),
+        ));
+    const course = h("section", { class: "bc-resources", "aria-labelledby": "bc-courses-title" },
+        h("div", { class: "bc-section-heading" },
+          h("p", { class: "bc-kicker" }, text.coursesKicker),
+          h("h2", { class: "display", id: "bc-courses-title" }, text.courses),
+          h("p", {}, text.coursesIntro)),
         h("ul", { class: "bc-resource-cards" }, text.resources.map(([provider, name, description, url]) =>
           h("li", { class: "card" },
             h("p", { class: "bc-kicker" }, provider),
             h("h3", {}, external(name, url)),
             h("p", {}, description),
-          ))),
-        h("h3", {}, text.guides),
-        h("ul", { class: "bc-source-list" }, text.local.map(([label, url]) => h("li", {}, external(label, url)))),
-        h("p", { class: "small" }, text.references + " · ", external("SARE · Crop Rotation on Organic Farms", SOURCES.sare)),
-      ),
+            h("a", { class: "bc-course-link", href: url, target: "_blank", rel: "noopener noreferrer" }, text.visitCourse, icon("i-arrow-r")),
+          ))));
+    const capsules = h("div", { class: "bc-course" },
+        h("aside", { class: "bc-sidebar" }, count, meter, path),
+        card,
+      );
+    const cropCatalog = h("section", { class: "bc-catalog", "aria-labelledby": "bc-crops-title" },
+        h("header", {}, cropTitle, h("p", {}, text.cropIntro)),
+        h("ul", { class: "bc-crop-grid" }, cropCards),
+        h("div", { class: "bc-sequence" },
+          h("h3", {}, icon("i-leaf"), " ", text.straw),
+          h("p", {}, text.strawNote)));
+
+    if (section === "capsulas") return h("div", { class: "bootcamp bootcamp-lessons" },
+      h("div", { class: "bc-subnav" },
+        h("a", { class: "btn light", href: "#/bootcamp" }, icon("i-back"), text.backToHome),
+        h("span", { class: "bc-kicker" }, text.lessonPath)),
+      h("header", { class: "bc-content-heading" },
+        h("p", { class: "bc-kicker" }, text.meta),
+        h("h1", { class: "display" }, text.capsuleTitle),
+        h("p", {}, text.capsuleIntro)),
+      capsules,
+      cropCatalog,
     );
+
+    return h("div", { class: "bootcamp bootcamp-home" }, hero, course);
   };
 }

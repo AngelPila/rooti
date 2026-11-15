@@ -190,9 +190,41 @@ body.r-bootcamp { background: var(--cream); }
 .bc-source-list { display: flex; gap: 8px 18px; flex-wrap: wrap; }
 .bc-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
+.bootcamp-home { gap: clamp(28px, 5vw, 56px); }
+.bootcamp-home .bc-hero { min-height: 390px; grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr); }
+.bootcamp-home .bc-intro { padding: clamp(28px, 6vw, 72px); }
+.bootcamp-home .bc-hero h1 { max-width: 11ch; }
+.bootcamp-home .bc-hero figure { min-height: 360px; }
+.bootcamp-home .bc-start { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-width: 220px; font-size: 17px; font-weight: 700; text-decoration: none; box-shadow: 0 8px 22px #07190d38; }
+.bootcamp-home .bc-start:hover { background: #ffe7ae; transform: translateY(-1px); }
+.bc-section-heading { display: grid; gap: 8px; max-width: 680px; }
+.bc-section-heading .bc-kicker { margin: 0; }
+.bc-section-heading h2 { font-size: clamp(30px, 4vw, 48px); }
+.bc-section-heading > p:last-child { color: var(--ink2); font-size: 17px; line-height: 1.5; }
+.bc-resource-cards { list-style: none; padding: 0; margin: 8px 0 0; align-items: stretch; }
+.bc-resource-cards .card { min-height: 245px; padding: 22px; border: 1px solid #dbe1d5; box-shadow: 0 5px 18px #24351f08; }
+.bc-resource-cards .card h3 { font-size: 21px; line-height: 1.25; }
+.bc-resource-cards .card h3 a { color: var(--field); text-decoration-color: #9cb89a; text-decoration-thickness: 2px; }
+.bc-resource-cards .card > p:not(.bc-kicker) { color: var(--ink2); line-height: 1.5; }
+.bc-resource-cards .bc-kicker { margin: 0; text-transform: uppercase; letter-spacing: .06em; }
+.bc-course-link { display: inline-flex; align-items: center; gap: 8px; margin-top: auto; color: var(--field); font-weight: 700; text-decoration: none; }
+.bc-course-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.bootcamp-lessons { gap: 22px; }
+.bc-subnav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bc-subnav .btn { min-height: 44px; text-decoration: none; }
+.bc-subnav .bc-kicker { margin: 0; }
+.bc-content-heading { display: grid; gap: 8px; padding: clamp(22px, 4vw, 36px); border-radius: 20px; background: linear-gradient(120deg, #e8f0df, #f8f5e9); }
+.bc-content-heading .bc-kicker { margin: 0; }
+.bc-content-heading h1 { max-width: 18ch; font-size: clamp(32px, 4.5vw, 54px); }
+.bc-content-heading > p:last-child { max-width: 62ch; color: var(--ink2); font-size: 17px; line-height: 1.5; }
+.bootcamp-lessons .bc-course { margin-top: 2px; }
+
 @media (max-width: 720px) {
   .bc-hero, .bc-course, .bc-resource-cards, .bc-facts { grid-template-columns: minmax(0, 1fr); }
   .bc-hero figure { min-height: 112px; }
+  .bootcamp-home .bc-hero { min-height: 0; }
+  .bootcamp-home .bc-hero figure { min-height: 190px; }
+  .bootcamp-home .bc-resource-cards .card { min-height: 0; }
   .bc-intro { padding: 22px; }
   .bc-course { gap: 14px; }
   .bc-path { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -203,4 +235,5 @@ body.r-bootcamp { background: var(--cream); }
   .bc-crop-grid { grid-template-columns: minmax(0, 1fr); }
   .bc-hero-actions > .btn { width: 100%; }
   .bc-practice { padding: 12px; }
+  .bc-subnav { align-items: flex-start; flex-direction: column; }
 }
