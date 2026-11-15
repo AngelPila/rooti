@@ -1,0 +1,6 @@
+# Only server/ and app/ go into the web image
+*
+!server/
+!app/
+server/node_modules
+app/data/raw

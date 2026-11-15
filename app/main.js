@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=22";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=22";
-import { COPY } from "./copy.js?v=40";
+import { COPY } from "./copy.js?v=41";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=22";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -1061,17 +1061,35 @@ function updateMap(pl, verdict) {
 /* ================= Vecinos: what farmers nearby saw, next to the satellite data ================= */
 // Demo: example posts ship in data/vecinos.json (marked example), the farmer's own posts and replies stay in localStorage.
 // The post shape is the one the WhatsApp bot will store in rooti.db, so the feed can switch to a server without changes.
-const VEC = { posts: null };
-const loadVecinos = () => (VEC.load ||= fetch("data/vecinos.json?v=1").then(ok).then((d) => { VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true })); }).catch(() => { VEC.posts = []; }));
+// With the server (Coolify: server/server.mjs + Postgres) posts are shared; without it (static host, no signal)
+// the app falls back to the example posts and this phone's storage, so the feed and the plan chips always work.
+const VEC = { posts: null, server: false, zone: null, load: null };
+const vecDevice = () => { let d = store.get("vecDevice1", null); if (!d) { d = globalThis.crypto?.randomUUID?.() || String(Math.random()).slice(2); store.set("vecDevice1", d); } return d; };
+async function vecApi(path, body) {
+  const t = (ms) => (AbortSignal.timeout ? AbortSignal.timeout(ms) : undefined);
+  const r = await fetch("api/vecinos" + path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: t(8000) } : { signal: t(4000) });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+function loadVecinos(pl = state.plan?.place, fresh = false) {
+  const z = pl ? zoneKey(pl) : null;
+  if (!fresh && VEC.load && VEC.zone === z) return VEC.load;
+  VEC.zone = z;
+  return (VEC.load = (async () => {
+    if (z) try { const d = await vecApi(`?zone=${encodeURIComponent(z)}`); VEC.posts = d.posts || []; VEC.server = true; return; } catch { /* no server: examples and this phone */ }
+    VEC.server = false;
+    try { const d = await fetch("data/vecinos.json?v=1").then(ok); VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true })); } catch { VEC.posts = []; }
+  })());
+}
 const zoneKey = (pl) => nearPilot(pl) || `pt:${pl.lat.toFixed(1)},${pl.lon.toFixed(1)}`;
 const vecText = (x) => x.text ?? (es() ? x.text_es : x.text_en) ?? "";
 const maskName = (n) => { const w = (n || "").trim().split(/\s+/).filter(Boolean); return !w.length ? C().vec.anon : w.length === 1 ? cap(w[0]) : `${cap(w[0])} ${w[w.length - 1][0].toUpperCase()}.`; };
 const monthGap = (a, b) => { const d = Math.abs(a - b) % 12; return Math.min(d, 12 - d); };
 function vecPosts(pl) {
   const z = zoneKey(pl), hidden = new Set(store.get("vecHidden1", [])), extra = store.get("vecReplies1", {});
-  return [...store.get("vecMine1", []), ...(VEC.posts || [])].filter((p) => p.zone === z)
+  return [...store.get("vecMine1", []).map((p) => ({ ...p, local: true })), ...(VEC.posts || [])].filter((p) => p.zone === z)
     .map((p) => ({ ...p, hidden: hidden.has(p.id), replies: [...(p.replies || []), ...(extra[p.id] || [])] }))
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort((a, b) => (b.ts || b.date).localeCompare(a.ts || a.date));
 }
 // Reports of the same crop sown within a month of the plan's month, in the plot's zone
 const vecMatch = (pl, crop, m) => vecPosts(pl).filter((p) => p.type === "asi_me_fue" && !p.hidden && p.crop === crop && p.sowMonth && monthGap(p.sowMonth, m) <= 1);
@@ -1107,20 +1125,22 @@ function vecCard(p, redraw) {
   const openReply = () => {
     const input = h("textarea", { rows: 2, maxlength: 280, placeholder: V.replyPh, "aria-label": V.reply });
     put(replyBox, input, h("div", { class: "row", style: { gap: "8px" } },
-      h("button", { class: "btn lime", onclick: () => { const t = input.value.trim(); if (!t) { input.focus(); return; }
+      h("button", { class: "btn lime", onclick: async (e) => { const t = input.value.trim(); if (!t) { input.focus(); return; }
+        e.currentTarget.disabled = true;
+        if (VEC.server && !p.local) try { await vecApi(`/${encodeURIComponent(p.id)}/replies`, { author: state.vecName, text: t }); await loadVecinos(state.plan.place, true); redraw(); return; } catch { /* keep it on this phone */ }
         const all = store.get("vecReplies1", {}); (all[p.id] ||= []).push({ author: maskName(state.vecName), text: t, date: iso(new Date()), mine: true }); store.set("vecReplies1", all); redraw(); } }, V.send),
       h("button", { class: "btn soft", onclick: () => put(replyBox) }, V.fCancel)));
     input.focus();
   };
   return h("article", { class: `vp t-${p.type}` },
-    h("div", { class: "vp-head" }, h("span", { class: "mono vp-type" }, V.type1[p.type]), h("span", { class: `vp-tag${p.example ? "" : " mine"}` }, p.example ? V.example : V.local)),
+    h("div", { class: "vp-head" }, h("span", { class: "mono vp-type" }, V.type1[p.type]), p.example || p.local ? h("span", { class: `vp-tag${p.example ? "" : " mine"}` }, p.example ? V.example : V.local) : null),
     p.crop ? h("div", { class: "vp-crop" }, tile(p.crop), h("b", {}, V.sown(cropLabel(p.crop), monL(p.sowMonth), p.sowYear)), p.area ? h("span", { class: "small" }, `${num(p.area)} ${c.units[p.unit] || p.unit || ""}`) : null) : null,
     p.result ? h("span", { class: `badge ${VEC_BADGE[p.result]}` }, V.results[p.result]) : null,
     vecText(p) ? h("p", { class: "vp-text" }, vecText(p)) : null,
     vecAuthor(p, V),
     p.replies.length ? h("ul", { class: "vp-replies", "aria-label": V.replies(p.replies.length) }, ...p.replies.map((x) => h("li", { class: x.role === "tecnico" ? "tech" : "" }, vecAuthor(x, V), h("p", {}, vecText(x))))) : null,
     h("div", { class: "vp-acts" }, h("button", { class: "link", onclick: openReply }, icon("i-chat"), V.reply),
-      h("button", { class: "link quiet", onclick: () => { store.set("vecHidden1", [...store.get("vecHidden1", []), p.id]); redraw(); } }, V.report)),
+      h("button", { class: "link quiet", onclick: () => { store.set("vecHidden1", [...store.get("vecHidden1", []), p.id]); if (VEC.server && !p.local) vecApi(`/${encodeURIComponent(p.id)}/report`, { device: vecDevice() }).catch(() => {}); redraw(); } }, V.report)),
     replyBox);
 }
 function vecForm(P, done) {
@@ -1141,21 +1161,24 @@ function vecForm(P, done) {
       h("label", { class: "vec-field", for: "vecName" }, h("b", {}, V.fName)), name, h("p", { class: "small" }, V.fNameHelp),
       msg,
       h("div", { class: "row wrap", style: { gap: "10px" } },
-        h("button", { class: "btn lime", onclick: () => {
+        h("button", { class: "btn lime", onclick: async (e) => {
           const t = d.text.trim();
           if (d.type === "asi_me_fue" ? !(d.crop && d.result) : !t) { msg.textContent = d.type === "asi_me_fue" ? `${V.fCrop} ${V.fResult}` : V.fNeed; return; }
           const now = new Date(), y = d.sowMonth > now.getMonth() + 1 ? now.getFullYear() - 1 : now.getFullYear();
           const post = { id: "u" + now.getTime(), type: d.type, zone: zoneKey(P.place), text: t, author: maskName(state.vecName), date: iso(now), replies: [],
             ...(d.type === "asi_me_fue" ? { crop: d.crop, sowMonth: d.sowMonth, sowYear: y, result: d.result } : {}) };
-          store.set("vecMine1", [post, ...store.get("vecMine1", [])]); state.vecDraft = null; done(true);
+          const btn = e.currentTarget; btn.disabled = true;
+          if (VEC.server) try { await vecApi("", { ...post, author: state.vecName }); state.vecDraft = null; done("server"); return; } catch { /* keep it on this phone */ }
+          btn.disabled = false;
+          store.set("vecMine1", [post, ...store.get("vecMine1", [])]); state.vecDraft = null; done("local");
         } }, V.fSubmit),
-        h("button", { class: "btn soft", onclick: () => { state.vecDraft = null; done(false); } }, V.fCancel)));
+        h("button", { class: "btn soft", onclick: () => { state.vecDraft = null; done(null); } }, V.fCancel)));
   };
   draw();
   return box;
 }
 async function viewVecinos(arg) {
-  await loadVecinos();
+  await loadVecinos(state.plan.place);
   const c = C(), V = c.vec, P = state.plan, z = nearPilot(P.place);
   state.vecName ??= store.get("vecName1", "");
   if (arg && arg !== state.vecArg) { state.vecArg = arg; state.vecCrop = CROP_LOOK[arg] ? arg : null; state.vecType = "asi_me_fue"; }
@@ -1166,7 +1189,7 @@ async function viewVecinos(arg) {
     const list = all.filter((p) => (state.vecType === "all" || p.type === state.vecType) && (!state.vecCrop || p.crop === state.vecCrop));
     put(side,
       h("div", { class: "res-title" }, h("h1", { class: "display" }, V.title), h("p", {}, z ? V.lead(cap(z)) : V.leadFar)),
-      state.vecForm ? vecForm(P, (saved) => { state.vecForm = false; note.textContent = saved ? V.saved : ""; draw(); })
+      state.vecForm ? vecForm(P, async (saved) => { state.vecForm = false; if (saved === "server") await loadVecinos(P.place, true); note.textContent = saved === "server" ? V.savedServer : saved ? V.saved : ""; draw(); })
         : h("button", { class: "btn lime big", onclick: () => { state.vecForm = true; note.textContent = ""; draw(); } }, icon("i-plus"), V.publish),
       note,
       h("div", { class: "vec-filters" },
@@ -1175,7 +1198,7 @@ async function viewVecinos(arg) {
           h("button", { class: "chip", "aria-pressed": String(!state.vecCrop), onclick: () => { state.vecCrop = null; draw(); } }, V.allCrops),
           ...cropsIn.map((id) => h("button", { class: "chip", "aria-pressed": String(state.vecCrop === id), onclick: () => { state.vecCrop = id; draw(); } }, tile(id), cropLabel(id)))) : null),
       h("p", { class: "vec-note" }, icon("i-agronomist"), h("span", {}, V.peer)),
-      h("p", { class: "vec-note" }, icon("i-info"), h("span", {}, V.demo)));
+      h("p", { class: "vec-note" }, icon("i-info"), h("span", {}, VEC.server ? V.demoServer : V.demo)));
     put(feed, ...(list.length ? list.map((p) => vecCard(p, draw)) : [h("div", { class: "card vec-empty" }, h("p", {}, all.length ? V.emptyFilter : V.empty))]));
   };
   draw();

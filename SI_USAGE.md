@@ -34,3 +34,5 @@ The automatic log only records requests made with Claude Code started inside thi
 | 2026-11-14 (this commit) | Offline demo examples, browser language, submission texts in English, references, this log |
 | 2026-11-15 01:46 | okay, trabajaremos sobre ese main, agregando algo como un foro/red social entre agricultores, ayudame a plantearla bien antes de aplicarla |
 | 2026-11-15 01:57 | si |
+| 2026-11-15 02:16 | pregunta, todo eso lo podemos guardar en una bd vdd? |
+| 2026-11-15 02:18 | dale, igual ten en cuenta q lo vamos a desplegar en coolify |
