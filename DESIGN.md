@@ -44,6 +44,10 @@ Rules learned from design reviews. Each one comes from a correction the product 
   Why: "no hagamos elegir por plan btw quita esto"; the farmer picks from results, not from an abstract priority.
   <!-- 2026-11-15 -->
 
+- **When Rooti points at something on the page, it gets one lime patch with about 10px of room and a thin forest edge. Never a tight double ring that touches the text inside.**
+  Why: "esto se ve feo al momento de interactuar con el agente" (the lime + forest ring cut into "TODA LA FINCA").
+  <!-- 2026-11-15 -->
+
 ## Icons and images
 - **UI icons are hand-drawn SVG symbols on a 24 grid, filled shapes with cuts like the logo, using `currentColor`. Never AI-generated raster icons, except the seven hero badges (`img/badges/`), which the owner chose over SVG; they are declared in the footer credits and `img/badges/PROMPTS.md`.** AI images are only for large illustrations, and each one carries a visible "IMAGEN GENERADA CON IA" watermark (competition rule).
   Why: confirmed choice ("ok lo recomendado"): icons must stay sharp at 16px, recolor with the theme, and a watermark cannot fit on an icon.
