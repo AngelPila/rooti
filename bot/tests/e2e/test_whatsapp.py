@@ -192,7 +192,7 @@ def test_farmer_on_whatsapp(tmp_path):
             "ROOTI_PROVIDER": "fakellm", "ROOTI_MODEL": "fake",
             "ROOTI_CALL_URL": f"http://127.0.0.1:{call_port}", "ROOTI_FORECAST_URL": f"{forecast.base}/v1/forecast",
             "ROOTI_NOW": f"{date.today().isoformat()}T09:00:00", "GROQ_API_KEY": "e2e", "DEEPSEEK_API_KEY": "e2e",
-            "HERMES_STATE_DB_GUARD_BYPASS": "1", "PYTHONUNBUFFERED": "1",
+            "HERMES_STATE_DB_GUARD_BYPASS": "1", "PYTHONUNBUFFERED": "1", "ROOTI_CHAT_QUIET_S": "3",
         })
         if (Path.home() / ".hermes" / "tools").is_dir():  # Hermes' Python and Node, not a copy per test
             env["HERMES_RUNTIME_DIR"] = str(Path.home() / ".hermes" / "tools")
@@ -309,13 +309,21 @@ def test_farmer_on_whatsapp(tmp_path):
         assert status == 200 and page["plan"]["place"]["lat"] == DAULE[0] and page["plan"]["crops"] == ["rice", "maize", "soybean"]
         assert page["plan"]["unit"] == "cuadra" and page["plan"]["waterlog"] == "no" and page["alert"] is None
 
-        # The farmer draws the plot on the map and corrects the size: saved, and Rooti confirms in the chat.
+        # The farmer draws the plot on the map and corrects the size a few times: every save is kept, and Rooti
+        # confirms once in the chat, with how the lot ended up.
         corners = [[-79.9805, -1.8595], [-79.9790, -1.8595], [-79.9790, -1.8610], [-79.9805, -1.8610]]
         drawn = {**page["plan"], "area": 4, "lot": corners}
         mark = wa.mark()
-        assert http("PUT", f"{site}/api/lot", drawn, token=page_token)[0] == 200
+        for area in (2, 3, 4):
+            assert http("PUT", f"{site}/api/lot", {**drawn, "area": area}, token=page_token)[0] == 200
         confirmed = wa.wait_for(lambda: [m for m in wa.messages_to(FARMER, mark) if m["path"] == "send-url-button"], 120)
         assert confirmed, wa.messages_to(FARMER, mark)
+        time.sleep(5)
+        assert len(wa.messages_to(FARMER, mark)) == 1, wa.messages_to(FARMER, mark)
+        mark = wa.mark()
+        assert http("PUT", f"{site}/api/lot", drawn, token=page_token)[0] == 200
+        time.sleep(5)
+        assert not wa.messages_to(FARMER, mark), "saving the same lot again says nothing in the chat"
         assert "recibí su lote: 4 cuadras en Daule, con arroz, maíz duro amarillo y soya" in confirmed[0]["message"], confirmed
         assert confirmed[0]["buttonText"] == "Ver mi plan"
         lot = db.execute("SELECT area, plot FROM farmers WHERE phone = ?", (FARMER,)).fetchone()
@@ -328,6 +336,11 @@ def test_farmer_on_whatsapp(tmp_path):
         picked = wa.wait_for(lambda: wa.messages_to(FARMER, mark), 30)
         assert picked and picked[0]["message"].startswith("Anotado: eligió «El más seguro». Maíz, diciembre a marzo.")
         assert "¿Quiere que le avise" in picked[0]["message"]
+        mark = wa.mark()
+        assert http("POST", f"{site}/api/choice", {"key": "safe", "name": "El más seguro",
+                                                  "route": "Maíz, diciembre a marzo"}, token=page_token)[0] == 200
+        time.sleep(5)
+        assert not wa.messages_to(FARMER, mark), "picking the same plan again says nothing in the chat"
 
         # 5. A group is not one farmer's lot: no answer.
         mark = wa.mark()

@@ -10,6 +10,7 @@ and the call page (/llamada) share one address.
 
 The page sends its signed link (calls.token) in X-Rooti-Token."""
 import logging
+import os
 import threading
 import time
 
@@ -22,7 +23,11 @@ from rooti_bot import bridge, calls, config, engine, lots, store
 
 log = logging.getLogger("rooti.web")
 HANDOFFS_PER_HOUR = 10
+# The page saves on every tweak (each answer, each «Listo», each undo); the chat hears once, after this much quiet.
+CHAT_QUIET_S = float(os.environ.get("ROOTI_CHAT_QUIET_S", "45"))
+LOT_KEYS = ("lat", "lon", "place", "crops", "current", "irrigation", "plot", "area", "unit", "waterlog")
 _hits: dict[str, list[float]] = {}
+_pending: dict[tuple[str, str], threading.Timer] = {}
 _lock = threading.Lock()
 
 
@@ -33,18 +38,32 @@ def _session(token: str) -> dict:
         raise HTTPException(403, f"Enlace no válido: {exc}") from None
 
 
-def _later(work, *args) -> None:
-    """Chat messages go out after the page got its answer: the bridge or the planner never make the page wait."""
+def _later(phone: str, work) -> None:
+    """One chat message per burst of saves: a newer save of the same kind replaces the one still waiting, so the
+    farmer reads only how the lot or the plan ended up. It never makes the page wait on the bridge or the planner."""
+    key = (phone, work.__name__)
+
     def run():
+        with _lock:
+            if _pending.get(key) is not timer:
+                return
+            del _pending[key]
         try:
-            work(*args)
+            work(phone)
         except Exception as exc:  # the farmer still has the page; the chat message is a courtesy
             log.error("%s: %s", work.__name__, exc)
-    threading.Thread(target=run, daemon=True).start()
+
+    timer = threading.Timer(CHAT_QUIET_S, run)
+    timer.daemon = True
+    with _lock:
+        if key in _pending:
+            _pending[key].cancel()
+        _pending[key] = timer
+    timer.start()
 
 
-def _confirm_lot(phone: str, fields: dict) -> None:
-    lot = lots.describe(fields)
+def _confirm_lot(phone: str) -> None:
+    lot = lots.describe(store.get(phone) or {})
     try:
         engine.plan_for(store.get(phone))
     except engine.EngineError as exc:
@@ -55,7 +74,11 @@ def _confirm_lot(phone: str, fields: dict) -> None:
                               "tiene para volver a verlo cuando quiera.", "Ver mi plan", calls.page(phone, "plan"))
 
 
-def _confirm_choice(phone: str, chosen: dict, ask_alerts: bool) -> None:
+def _confirm_choice(phone: str) -> None:
+    farmer = store.get(phone) or {}
+    chosen, ask_alerts = farmer.get("chosen") or {}, not farmer.get("alerts_ok")
+    if not chosen.get("name"):
+        return
     text = f"Anotado: eligió «{chosen['name']}»."
     if chosen.get("route"):
         text += f" {chosen['route']}."
@@ -105,9 +128,10 @@ def mount(api: FastAPI) -> None:
             fields = lots.from_app(await request.json())
         except (lots.LotError, ValueError) as exc:
             raise HTTPException(400, str(exc)) from None
-        store.update(session["phone"], **fields)
-        if fields.get("crops"):
-            _later(_confirm_lot, session["phone"], fields)
+        before = store.get(session["phone"]) or {}
+        farmer = store.update(session["phone"], **fields)
+        if fields.get("crops") and any(before.get(k) != farmer.get(k) for k in LOT_KEYS):
+            _later(session["phone"], _confirm_lot)
         return {"saved": sorted(fields)}
 
     @api.post("/api/choice")
@@ -118,8 +142,10 @@ def mount(api: FastAPI) -> None:
                   "route": str(body.get("route", ""))[:400], "at": time.time()}
         if not chosen["key"] or not chosen["name"]:
             raise HTTPException(400, "falta el plan")
-        farmer = store.update(session["phone"], chosen=chosen)
-        _later(_confirm_choice, session["phone"], chosen, not farmer["alerts_ok"])
+        before = (store.get(session["phone"]) or {}).get("chosen") or {}
+        store.update(session["phone"], chosen=chosen)
+        if before.get("key") != chosen["key"]:
+            _later(session["phone"], _confirm_choice)
         return {"saved": True}
 
     @api.post("/api/handoff")
