@@ -5,7 +5,9 @@ are stand-ins (fakes.py). One farmer in Daule:
 1. writes «hola»: the turn opens with what Rooti knows (nothing yet) and Rooti asks for the plot's location;
 2. shares the location, then says what they grow: the lot is saved and its plan computed, and while it computes
    Rooti says it is checking (the model's own words only go out when the turn ends);
-3. asks when to sow rice: the answer comes from cuando_sembrar on that plan;
+3. asks when to sow rice: the answer comes from cuando_sembrar on that plan; every answer so far was text only,
+   with no «⏳ Working» bubble while the plan computed; asked for voice, Rooti answers with a voice note too, and
+   back to text when asked «por escrito»;
 4. asks to talk: the «📞 Hablar con Rooti» button arrives right after Rooti's answer, never before it, with a signed
    link; the next turns know which buttons the farmer already has;
 5. a group message gets no answer; «/ayuda» is chat, not a Hermes command; when the model fails, the farmer gets a
@@ -216,6 +218,7 @@ def test_farmer_on_whatsapp(tmp_path):
                                         "models": ["fake"]}}
         cfg["model"]["context_length"] = 256_000
         cfg["stt"]["enabled"] = False
+        cfg["agent"]["gateway_notify_interval"] = 1  # Hermes' «⏳ Working» bubble every second, if it were on
         cfg["tts"] = {"provider": "e2e", "providers": {"e2e": {"type": "command", "output_format": "ogg",
                                                               "command": f"cp {voice_note} {{output_path}}",
                                                               "voice_compatible": True}}}
@@ -282,6 +285,19 @@ def test_farmer_on_whatsapp(tmp_path):
         tool_calls = [c["function"]["name"] for r in llm.requests for m in r["messages"]
                       for c in m.get("tool_calls") or []]
         assert any(n.endswith("cuando_sembrar") for n in tool_calls)
+        so_far = wa.messages_to(FARMER)
+        assert not [m for m in so_far if m["path"] == "send-media"], "a written question gets a written answer"
+        assert not [m for m in so_far if "⏳" in (m.get("message") or "")], "no Hermes progress bubble"
+
+        # Voice only when asked, until the farmer asks for text again.
+        mark = wa.mark()
+        wa.say(FARMER, "respóndame por voz, ¿cuándo siembro el arroz?")
+        paths = lambda: [m["path"] for m in wa.messages_to(FARMER, mark)]
+        assert wa.wait_for(lambda: "send-media" in paths() and "send" in paths(), 120), wa.messages_to(FARMER, mark)
+        mark = wa.mark()
+        reply(lambda: wa.say(FARMER, "ya por escrito nomás, ¿cuándo siembro el arroz?"))
+        time.sleep(3)
+        assert "send-media" not in paths(), wa.messages_to(FARMER, mark)
         assert not any("_canal" in json.dumps(t) for t in turns[-1].get("tools") or []), \
             "el modelo nunca ve de qué chat es el lote"
 
