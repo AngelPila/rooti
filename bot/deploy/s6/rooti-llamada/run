@@ -1,0 +1,5 @@
+#!/command/with-contenv sh
+# The live call page and its WebRTC answerer (call_server.py), in Pipecat's own venv. Coolify publishes port 7860.
+export HOME=/opt/data
+cd /opt/data || exit 1
+exec s6-setuidgid hermes /opt/rooti/bot/.venv-call/bin/rooti-bot llamada --host 0.0.0.0 --puerto 7860

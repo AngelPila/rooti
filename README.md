@@ -90,6 +90,7 @@ How the global planner works (`app/climate.js`, `app/planner.js`):
   - Weak numbers are flagged in the app (soybean cost is from ~2015).
   - With 2024–2026 costs, typical rice and maize margins come out **negative** (about −800 and −480 USD/ha), in line with what growers' unions reported. Costs come from press statements and may include land rent.
 - `app/` is a static site: HTML, vanilla JS and **CesiumJS** (Esri World Imagery, OpenStreetMap fallback).
+- `bot/` is Rooti on WhatsApp: farmers ask by text or voice note and get answers from the same planner, plus opt-in alerts and a live voice call. See [`bot/README.md`](bot/README.md).
 - `data-pipeline/` holds the download scripts (NASA POWER, MODIS, SoilGrids, DEM, ONI) and their README with known caveats. `env/Dockerfile` is the reproducible Python environment they run in.
 
 ## Run locally
@@ -112,12 +113,40 @@ docker run --rm --network rooti-dev -p 3000:3000 -e DATABASE_URL=postgres://post
 Without the API (the static server above) Vecinos still works: it shows the example posts and keeps what you post on
 that phone.
 
+### Rooti in the app
+
+Rooti, the assistant from WhatsApp, also lives in the app: the avatar in the lower right corner opens a conversation
+by text or by holding the microphone. It reads what the farmer has on screen, and acts on the page through the same
+functions the buttons use:
+
+| Tool | What happens on the page |
+|---|---|
+| `show_on_page` | Opens a screen and marks what Rooti is talking about (a crop in the route, the years, an idea) |
+| `change_plot` | Changes the plot as the farmer said it ("son tres cuadras") and computes the plan again, with **Undo** |
+| `try_idea` | Tests irrigation, straw, a legume or other years on the Try screen; the farmer applies it with a button |
+| `offer_whatsapp` | A button to keep going on WhatsApp, where the alerts are |
+
+Rooti never publishes on Vecinos or sends anything on its own. On the phone, after it changes the page, the sheet
+drops to a bar so the page stays in view; on a computer the panel sits beside the page.
+
+Both servers that serve the app answer it with the same API (`/api/rooti`): the bot's container, which serves the
+public website (`bot/src/rooti_bot/web_agent.py`), and the Node server (`server/rooti.mjs`). Each needs
+`DEEPSEEK_API_KEY` (the same model as the WhatsApp bot) and, for voice, `GROQ_API_KEY` (Whisper); without the model key
+the avatar does not show. The prompt and tools are `bot/hermes/rooti/WEB.md` and `web-tools.json`, next to the persona
+(`SOUL.md`) both channels share.
+
+```bash
+cd server && pnpm install && DEEPSEEK_API_KEY=... GROQ_API_KEY=... node server.mjs   # open http://localhost:3000
+python -m pytest tests/e2e    # headless browser and a fake model; needs pytest and playwright
+```
+
 ## Deploy on Coolify
 
 1. **Database:** New resource → Database → PostgreSQL 16. Copy its *internal* connection URL.
 2. **App:** New resource → this repository, build pack **Dockerfile**, Dockerfile location `server/Dockerfile`,
    base directory `/` (the build needs both `server/` and `app/`). Port **3000**.
-3. **Environment:** `DATABASE_URL` = the internal URL from step 1. Nothing else is needed.
+3. **Environment:** `DATABASE_URL` = the internal URL from step 1. For Rooti in the app, also `DEEPSEEK_API_KEY`
+   and `GROQ_API_KEY` (the same keys as the WhatsApp bot).
 4. Health check path `/healthz`. On the first start the server creates the tables (`server/schema.sql`) and loads
    the example posts from `app/data/vecinos.json` once, marked as examples.
 

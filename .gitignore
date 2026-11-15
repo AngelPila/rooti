@@ -6,3 +6,4 @@ data-cache/
 logs/
 # AI originals without the required visible watermark
 design/system/assets/raw/
+__pycache__/

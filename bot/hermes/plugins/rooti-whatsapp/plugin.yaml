@@ -1,0 +1,12 @@
+# {{MARKER}}
+name: rooti-whatsapp
+version: 0.1.0
+description: "Rooti en WhatsApp, sin el modelo: solo chats privados, transcribe audios reenviados, junta una pregunta partida en varias burbujas, esconde los avisos internos de Hermes, le pasa a cada herramienta de Rooti el chat de quien pregunta y abre cada turno con el lote del agricultor."
+author: rooti
+kind: standalone
+provides_hooks:
+  - pre_gateway_dispatch
+  - pre_tool_call
+  - pre_llm_call
+platforms:
+  - linux

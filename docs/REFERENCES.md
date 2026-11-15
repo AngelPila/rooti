@@ -37,6 +37,23 @@
 - [FAO, Climate-smart soil and land management](https://elearning.fao.org/course/view.php?id=435) and its [Spanish edition](https://elearning.fao.org/course/view.php?id=496&lang=es). Free training on soil, erosion, and water management.
 - [W.carter, Corn in a field by Myrstigen 1](https://commons.wikimedia.org/wiki/File:Corn_in_a_field_by_Myrstigen_1.jpg). Bootcamp header photo, CC BY-SA 4.0.
 
+## Rooti in the app (`app/rooti.js`, `server/rooti.mjs`)
+
+- [DeepSeek API](https://api-docs.deepseek.com/) (`deepseek-chat`): the model behind Rooti, the same one as on WhatsApp.
+- [Groq](https://console.groq.com/docs/speech-to-text) Whisper large-v3-turbo: speech to text for what the farmer says into the microphone.
+- The browser's own speech synthesis (Web Speech API) reads Rooti's answers aloud only where the server has no voice (the Node server); the bot's server speaks them with edge-tts.
+
+## WhatsApp agent (`bot/`)
+
+- Rooti's WhatsApp agent is adapted from Vinci, the maintainer's own WhatsApp assistant (bridge patch, plugin patterns, deploy layout, E2E harness).
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent), Nous Research (MIT): the agent runtime, its WhatsApp bridge (Baileys, unofficial client) and its speech-to-text and voice-reply features.
+- [Pipecat](https://github.com/pipecat-ai/pipecat) 1.16 (BSD-2-Clause): the live call pipeline and its SmallWebRTC transport (aiortc).
+- [Silero VAD](https://github.com/snakers4/silero-vad) (MIT): detects when the farmer speaks during a call.
+- [Groq](https://console.groq.com/docs/speech-to-text) Whisper large-v3-turbo: speech to text for voice notes and calls.
+- [edge-tts](https://github.com/rany2/edge-tts) 7.3.1 (LGPL-3.0) with Microsoft Edge's `es-EC-LuisNeural` voice: Rooti's spoken answers.
+- [Open-Meteo Forecast API](https://open-meteo.com/en/docs) (CC BY 4.0): daily rain forecast for heavy-rain alerts. Forecasts are not NASA data.
+- The heavy-rain alert fires at 40 mm in a day. That threshold is a prototype choice, still to be checked against INAMHI's (Instituto Nacional de Meteorología e Hidrología) own warning levels.
+
 ## Design system (`design/system/`)
 
 - Visual direction inspired by [overstory.com](https://www.overstory.com/) (layout, palette structure, motion). No code, fonts or images copied.
@@ -49,3 +66,15 @@
 - [node-postgres (`pg`)](https://github.com/brianc/node-postgres) 8.13.1, MIT, the Postgres client of the Vecinos API.
 - [Node.js](https://nodejs.org/) 22 and [PostgreSQL](https://www.postgresql.org/) 16 official Docker images (`node:22-alpine`, `postgres:16-alpine`).
 - The example posts in `app/data/vecinos.json` are illustrative, written for the demo; they are labelled "Ejemplo" in the app and are not real farmer reports.
+
+## The plot in 3D (*Su terreno*)
+- Terrain: [Terrain Tiles on AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Mapzen/Tilezen, Terrarium encoding), mostly built from NASA SRTM; read in the browser with CesiumJS `CustomHeightmapTerrainProvider`, not exaggerated.
+- Crop heights: Allen et al. (1998), *FAO Irrigation and Drainage Paper 56*, Table 12, "maximum crop height". Jack bean and velvet bean are estimated. Heights are drawn ×k (shown on screen) so they read against the plot's size.
+- Water left on the plot each month: rain minus ET₀ minus what the plot drains, the same rule the planner uses (NASA POWER monthly rain and ET₀, ~50 km cells).
+
+## Su terreno in 3D (`app/soil3d.js`, mocks in `prototypes/soil3d/`)
+- [three.js](https://threejs.org/) 0.160.0 (MIT), loaded from jsDelivr: the 3D scene and orbit controls.
+- Esri World Imagery tiles: the satellite photo draped on the terrain.
+- [Terrain Tiles on AWS Open Data](https://registry.opendata.aws/terrain-tiles/) (Terrarium encoding, mostly NASA SRTM): the relief, exaggerated on purpose and labelled as such.
+- Plant height on the surface is estimated from the photo's excess-green index; it is a visual aid, not a measurement.
+- Soil, soil water, rain and greenness come from `app/data/daule.json` (ISRIC SoilGrids, NASA GLDAS, NASA POWER, NASA MODIS NDVI).

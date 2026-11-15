@@ -1,0 +1,141 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "show_on_page",
+      "description": "Open a screen of the page and mark what you are talking about, so the farmer sees it while reading your answer. Call it whenever your answer refers to something on the page.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "screen"
+        ],
+        "properties": {
+          "screen": {
+            "type": "string",
+            "enum": [
+              "plan",
+              "plot",
+              "try",
+              "compare",
+              "past",
+              "neighbors",
+              "planner",
+              "course"
+            ],
+            "description": "plan: the recommended plans, route, years and calendar. plot: soil, slope, climate. try: ideas that would do better and the best sowing months. compare: build your own plan. past: every run of real years. neighbors: what farmers nearby report. planner: where, when, crops and land. course: the free course."
+          },
+          "mark": {
+            "type": "string",
+            "description": "What to mark. On plan: route, years, calendar, cover, plans, unknowns, nino, or crop-<crop id> (e.g. crop-maize). On try: sow, or idea-<irrigation|straw|legume|instead|nino|dry|all>."
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "change_plot",
+      "description": "Change the farmer's plot data with only what they just said, and recompute the plan. The page shows the change with an Undo button.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "place": {
+            "type": "string",
+            "description": "Town or area of the plot, e.g. 'Daule'"
+          },
+          "area": {
+            "type": "number",
+            "description": "Size of the plot, in unit"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "ha",
+              "cuadra",
+              "m2",
+              "acre"
+            ]
+          },
+          "crops": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Crop ids the plan may use, from the list in the page context"
+          },
+          "current": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Crop ids the farmer grows today"
+          },
+          "irrigation": {
+            "type": "boolean"
+          },
+          "floods": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "sometimes",
+              "no"
+            ],
+            "description": "Whether the plot floods in the rainy season"
+          },
+          "start": {
+            "type": "string",
+            "description": "First month of the plan, YYYY-MM"
+          },
+          "end": {
+            "type": "string",
+            "description": "Last month of the plan, YYYY-MM"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "try_idea",
+      "description": "Test a 'what if' on the farmer's plan with the planner and open it on the Try screen. It does not change the plan: the farmer decides with a button.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "idea"
+        ],
+        "properties": {
+          "idea": {
+            "type": "string",
+            "enum": [
+              "irrigation",
+              "straw",
+              "legume",
+              "instead",
+              "nino",
+              "dry",
+              "all"
+            ],
+            "description": "irrigation, straw (keep the straw), legume (add a legume), instead (another crop for one that does badly), nino (only El Niño years), dry (only dry years), all (every year)"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "offer_whatsapp",
+      "description": "Show a button to keep going with Rooti on WhatsApp, where Rooti sends heavy-rain and time-to-sow alerts for this plot. Only when the farmer wants alerts or to continue on WhatsApp.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    }
+  }
+]

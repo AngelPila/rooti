@@ -30,7 +30,7 @@ export function monthsBetween(start, end) {
 export const cropMonths = (crop) => Math.max(2, Math.round((mid(crop.cycle_days) ?? 120) / 30.4));
 
 // The climate each sample sees, month by month over the period.
-export function samples(clim, period, mode = "all") {
+export function samples(clim, period, mode = "all", ninoOffset = 0) {
   const y0 = period[0].y, span = period[period.length - 1].y - y0;
   const observed = (p) => mkey(p.y, p.m) <= clim.last && clim.months[mkey(p.y, p.m)];
   if (period.every(observed)) return [{ base: null, months: period.map((p) => ({ ...clim.months[mkey(p.y, p.m)], obs: true })) }];
@@ -39,7 +39,7 @@ export function samples(clim, period, mode = "all") {
     const months = period.map((p) => (observed(p) ? { ...clim.months[mkey(p.y, p.m)], obs: true } : clim.months[mkey(b + p.y - y0, p.m)]));
     if (months.every((c) => c && c.et0 != null)) out.push({ base: b, months });
   }
-  if (mode === "nino") { const n = out.filter((s) => NINO_ONSET.includes(s.base)); if (n.length >= 3) out = n; }
+  if (mode === "nino") { const n = out.filter((s) => NINO_ONSET.includes(s.base + ninoOffset)); if (n.length >= 3) out = n; }
   else if (mode === "dry" || mode === "wet") {
     const rain = (s) => s.months.reduce((t, c) => t + (c.obs ? 0 : c.rain), 0);
     const sorted = [...out].sort((a, b) => rain(a) - rain(b)), k = Math.max(3, Math.round(out.length / 3));
@@ -96,9 +96,9 @@ const bareCell = (c) => (c.rain >= 40
 const coverCell = (c) => ({ crop: "mulch", kind: "covered", sev: 0, rain: c.rain, need: 0, obs: !!c.obs });
 const levelOf = (k, sev) => (k === "ok" || k === "covered" ? "good" : sev >= 0.8 ? "danger" : "care");
 
-export function plan(clim, crops, picked, { start, end, irrigation = false, priority = "soil", mode = "all", site = null, current = null }) {
+export function plan(clim, crops, picked, { start, end, irrigation = false, priority = "soil", mode = "all", ninoOffset = 0, site = null, current = null }) {
   const period = monthsBetween(start, end), N = period.length;
-  const S = samples(clim, period, mode);
+  const S = samples(clim, period, mode, ninoOffset);
   if (!S.length) return { period, samples: S, plans: [] };
   const W = PRIORITY_WEIGHTS[priority], Wsum = W.water + W.soil + W.income;
   const useMulch = picked.includes("mulch"), ids = picked.filter((id) => id !== "mulch" && crops[id]);
@@ -187,10 +187,11 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
     const parcels = parcelsIn.map((pc, k) => {
       const steps = [], errors = [];
       let end = 0;
-      for (const st of [...pc.steps].sort((a, b) => a.t0 - b.t0)) {
+      const ordered = pc.steps.map((step, index) => ({ step, index })).sort((a, b) => a.step.t0 - b.step.t0);
+      for (const { step: st, index } of ordered) {
         const row = tab[st.crop]?.[st.t0];
-        if (!row) { errors.push({ ...st, why: "no_time" }); continue; }
-        if (st.t0 < end) { errors.push({ ...st, why: "overlap" }); continue; }
+        if (!row) { errors.push({ ...st, index, why: "no_time" }); continue; }
+        if (st.t0 < end) { errors.push({ ...st, index, why: "overlap" }); continue; }
         steps.push({ crop: st.crop, t0: st.t0, t1: st.t0 + row.L }); end = st.t0 + row.L;
       }
       return { share: (pc.share || 0) / tot, d: describe({ steps, v: 0 }, k, opt.noMulch), errors };

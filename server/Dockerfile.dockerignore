@@ -1,6 +1,7 @@
-# Only server/ and app/ go into the web image
+# Only server/, app/ and Rooti's persona go into the web image
 *
 !server/
 !app/
+!bot/hermes/rooti/
 server/node_modules
 app/data/raw
