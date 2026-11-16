@@ -48,6 +48,7 @@ CALL_BIN = BOT_DIR / ".venv-call" / "bin"
 FARMER = "593981234567@s.whatsapp.net"
 NEWCOMER = "593987654321@s.whatsapp.net"
 DAULE = (-1.86, -79.98)
+BABAHOYO = (-1.80, -79.53)  # another NASA POWER cell (0.25°): nothing earlier in the test fetched its climate
 # The plot's soil and slope as SoilGrids and Open-Meteo gave them: SoilGrids takes up to a minute, NASA POWER is live.
 TERRAIN = {"elevation": 1, "slopePct": 1.5, "soil": {"clay": 33.4, "sand": 45.2, "phh2o": 6.2, "soc": 32.5,
                                                     "nitrogen": 2.3, "offsetKm": 6}}
@@ -173,7 +174,8 @@ def test_farmer_on_whatsapp(tmp_path):
     session.mkdir(parents=True)
     (session / "creds.json").write_text(json.dumps({"me": {"id": f"{FakeWhatsApp.BOT.split('@')[0]}:7@s.whatsapp.net"}}))
     data.mkdir()
-    (data / "engine-cache.json").write_text(json.dumps({f"rooti:terrain:{DAULE[0]:.3f},{DAULE[1]:.3f}": json.dumps(TERRAIN)}))
+    (data / "engine-cache.json").write_text(json.dumps({f"rooti:terrain:{lat:.3f},{lon:.3f}": json.dumps(TERRAIN)
+                                                        for lat, lon in (DAULE, BABAHOYO)}))
     voice_note = tmp_path / "voz.ogg"
     subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:a",
                     "libopus", str(voice_note)], check=True)
@@ -272,7 +274,8 @@ def test_farmer_on_whatsapp(tmp_path):
                                     if m["path"] == "send" and "revisé su lote" in m["message"]], 180)
         assert done, wa.messages_to(FARMER, mark)
         said = [m["message"] for m in wa.messages_to(FARMER, mark) if m["path"] == "send"]
-        assert said[0] == "Déjeme revisar su lote con los datos de la NASA, un ratito 🌱", said
+        # The wait message goes out only while NASA POWER is slow to answer (here the soil is already cached).
+        assert said[:-1] in ([], ["Déjeme revisar su lote con los datos de la NASA, un ratito 🌱"]), said
         db = sqlite3.connect(data / "rooti.db")
         lot = db.execute("SELECT lat, lon, crops, area, unit, waterlog FROM farmers WHERE phone = ?", (FARMER,)).fetchone()
         assert lot == (DAULE[0], DAULE[1], '["rice", "maize", "soybean"]', 3.0, "cuadra", 0), lot
@@ -314,7 +317,7 @@ def test_farmer_on_whatsapp(tmp_path):
         last_turn = "\n".join(text_of(m) for m in [r for r in llm.requests if r.get("tools")][-1]["messages"])
         assert "Botones que ya le llegaron hoy" in last_turn and "«Marcar mi lote»" in last_turn, \
             "the turn knows which pages the farmer already has"
-        assert plan_btn["buttonText"] == "Ver mi plan" and plan_btn["url"].endswith("&r=plan")
+        assert plan_btn["buttonText"] == "Ver mi plan" and plan_btn["url"].endswith("&r=resumen")
         page_token = token_of(plan_btn["url"])
         status, html = http("GET", f"{site}/")
         assert status == 200 and 'src="main.js' in html, "the page is the web app itself"
@@ -411,15 +414,24 @@ def test_farmer_on_whatsapp(tmp_path):
         assert not wa.messages_to(FARMER, mark), "quien ya abrió la llamada no recibe recordatorio"
 
         # 10. The public website hands a lot to WhatsApp: a code the newcomer sends, and Rooti already has the lot.
-        website = {"place": {"name": "Daule", "lat": DAULE[0], "lon": DAULE[1]}, "crops": ["maize", "soybean"],
+        # Its NASA data is fetched while the farmer opens WhatsApp, so the first plan does not wait on NASA.
+        website = {"place": {"name": "Babahoyo", "lat": BABAHOYO[0], "lon": BABAHOYO[1]}, "crops": ["maize", "soybean"],
                    "current": ["maize"], "area": 2, "unit": "ha", "irrigation": False, "waterlog": "sometimes",
                    "lot": corners}
         status, handed = http("POST", f"{site}/api/handoff", website)
         assert status == 200 and re.fullmatch(r"RT-[A-HJ-NP-Z2-9]{4}", handed["code"]), handed
+        climate_key = f"rooti:clim:v2:{round(BABAHOYO[0] * 4) / 4:.2f},{round(BABAHOYO[1] * 4) / 4:.2f}"
+        cache = data / "engine-cache.json"
+        deadline = time.time() + 120
+        while climate_key not in json.loads(cache.read_text()) and time.time() < deadline:
+            time.sleep(0.5)
+        assert climate_key in json.loads(cache.read_text()), "el código de la web adelanta el clima de NASA del lote"
+        assert f"rooti:terrain:{DAULE[0]:.3f},{DAULE[1]:.3f}" in json.loads(cache.read_text()), \
+            "adelantar un lote no borra lo que otro motor ya guardó"
         welcome = reply(lambda: wa.say(NEWCOMER, f"Hola Rooti, mi lote es {handed['code']}"), chat=NEWCOMER)
         assert welcome[-1]["message"] == "¡Buenas, veci! Ya tengo su lote de la página.", welcome
         lot = db.execute("SELECT lat, crops, area, unit, waterlog, plot FROM farmers WHERE phone = ?", (NEWCOMER,)).fetchone()
-        assert lot == (DAULE[0], '["maize", "soybean"]', 2.0, "ha", 1, json.dumps(corners)), lot
+        assert lot == (BABAHOYO[0], '["maize", "soybean"]', 2.0, "ha", 1, json.dumps(corners)), lot
         stranger = "593980000001@s.whatsapp.net"
         again = reply(lambda: wa.say(stranger, f"mi lote es {handed['code']}"), chat=stranger)
         assert again[-1]["message"] == "Ese código no me sirve, marque su lote otra vez.", "a code brings a lot only once"

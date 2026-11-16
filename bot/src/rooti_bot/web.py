@@ -71,7 +71,7 @@ def _confirm_lot(phone: str) -> None:
         bridge.send_text(phone, f"Listo, recibí su lote: {lot}. Su plan está en la página; si quiere, pregúnteme aquí.")
         return
     bridge.send_button(phone, f"Listo, recibí su lote: {lot}. Ya revisé su plan con los datos de la NASA: aquí lo "
-                              "tiene para volver a verlo cuando quiera.", "Ver mi plan", calls.page(phone, "plan"))
+                              "tiene para volver a verlo cuando quiera.", "Ver mi plan", calls.page(phone, "resumen"))
 
 
 def _confirm_choice(phone: str) -> None:
@@ -130,6 +130,8 @@ def mount(api: FastAPI) -> None:
             raise HTTPException(400, str(exc)) from None
         before = store.get(session["phone"]) or {}
         farmer = store.update(session["phone"], **fields)
+        if (before.get("lat"), before.get("lon")) != (farmer.get("lat"), farmer.get("lon")):
+            engine.warm(farmer["lat"], farmer["lon"])  # the chat may ask before the confirmation's plan below
         if fields.get("crops") and any(before.get(k) != farmer.get(k) for k in LOT_KEYS):
             _later(session["phone"], _confirm_lot)
         return {"saved": sorted(fields)}
@@ -159,6 +161,7 @@ def mount(api: FastAPI) -> None:
         except (lots.LotError, ValueError) as exc:
             raise HTTPException(400, str(exc)) from None
         number = config.whatsapp_number()
+        engine.warm(fields["lat"], fields["lon"])  # while the farmer opens WhatsApp and sends the code
         return {"code": store.add_handoff(fields), "whatsapp": number}
 
     # Links sent before the website moved to the root still open

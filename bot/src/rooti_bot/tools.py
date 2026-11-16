@@ -13,6 +13,7 @@ from rooti_bot import calls, config, engine, store
 log = logging.getLogger("rooti.tools")
 ON_CHAT = contextvars.ContextVar("on_chat", default=False)  # a WhatsApp turn (mcp_server), not the live call
 WAIT_TEXT = "Déjeme revisar su lote con los datos de la NASA, un ratito 🌱"
+WAIT_AFTER_S = 2.5  # a plan from fetched data is ready well before this
 WAIT_EVERY_S = 300  # a second plan try right after a slow first one does not repeat the same sentence
 BUTTON_FALLBACK_S = 120  # a turn that ends without text still gets its button
 _waited: dict[str, float] = {}
@@ -90,17 +91,29 @@ def _crops(values, field) -> list[str]:
 
 
 def _plan(farmer: dict) -> dict:
-    """The saved plan; when it has to be computed (up to a minute and a half), the farmer hears so first: the model's
-    own words only go out once the turn is over."""
-    if (ON_CHAT.get() and farmer.get("lat") is not None and farmer.get("crops") and engine.cold(farmer)
-            and time.time() - _waited.get(farmer["phone"], 0) > WAIT_EVERY_S):
-        from rooti_bot import bridge
-        _waited[farmer["phone"]] = time.time()
-        try:
-            bridge.send_text(farmer["phone"], WAIT_TEXT)
-        except Exception as exc:
-            log.warning("no pude avisar que espere: %s", exc)
-    return engine.plan_for(farmer)
+    """The saved plan; when computing it waits on NASA (up to a minute and a half), the farmer hears so first: the
+    model's own words only go out once the turn is over. With the data already fetched it takes a fraction of a
+    second, and no wait message goes out."""
+    if not (ON_CHAT.get() and farmer.get("lat") is not None and farmer.get("crops") and engine.cold(farmer)):
+        return engine.plan_for(farmer)
+    timer = threading.Timer(WAIT_AFTER_S, _say_wait, (farmer["phone"],))
+    timer.daemon = True
+    timer.start()
+    try:
+        return engine.plan_for(farmer)
+    finally:
+        timer.cancel()
+
+
+def _say_wait(phone: str) -> None:
+    if time.time() - _waited.get(phone, 0) <= WAIT_EVERY_S:
+        return
+    from rooti_bot import bridge
+    _waited[phone] = time.time()
+    try:
+        bridge.send_text(phone, WAIT_TEXT)
+    except Exception as exc:
+        log.warning("no pude avisar que espere: %s", exc)
 
 
 def save_lot(farmer_id: str, args: dict) -> dict:
@@ -224,7 +237,7 @@ def plan_button(farmer_id: str, args: dict) -> dict:
     if not store.saved_plan(farmer_id):
         raise ToolError("Todavía no hay plan: primero guarda la ubicación y los cultivos del lote.")
     return _button(farmer_id, args.get("texto") or "Aquí tiene su plan, con los tres caminos para comparar.",
-                   "Ver mi plan", lambda: calls.page(farmer_id, "plan"))
+                   "Ver mi plan", lambda: calls.page(farmer_id, "resumen"))
 
 
 LOT_PROPS = {
@@ -272,8 +285,8 @@ TOOLS = [
                        "el mapa y elige sus cultivos. Para un agricultor nuevo que todavía no te dio su lote, salvo "
                        "que prefiera escribir.",
          lot_button, {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
-    Tool("boton_plan", "Manda, después de tu respuesta, el botón «Ver mi plan»: los tres caminos lado a lado, el "
-                       "calendario y los años, para elegir uno. Solo si quiere verlo, compararlo o elegir; nunca en "
+    Tool("boton_plan", "Manda, después de tu respuesta, el botón «Ver mi plan»: lo que toca sembrar ahora, la ruta "
+                       "del año y los caminos para elegir uno. Solo si quiere verlo, compararlo o elegir; nunca en "
                        "lugar de explicarle tú.", plan_button,
          {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
 ]

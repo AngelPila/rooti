@@ -2,17 +2,26 @@
 // climate.js keeps its 7-day NASA POWER cache in localStorage: here a JSON file (ROOTI_ENGINE_CACHE) stands in.
 //   {"cmd":"plan","lot":{lat,lon,crops,current,area,unit,irrigation,waterlog,priority},"mode":"auto"}
 //   {"cmd":"year","lot":{lat,lon}}
+//   {"cmd":"warm","lot":{lat,lon}}   fetches the climate and the soil into the cache, so the plan that follows is instant
 import { readFileSync, writeFileSync, renameSync } from "node:fs";
 
 const CACHE = process.env.ROOTI_ENGINE_CACHE;
 if (CACHE) {
-  let items = {};
-  try { items = JSON.parse(readFileSync(CACHE, "utf8")); } catch { /* first run */ }
-  const save = () => { writeFileSync(`${CACHE}.tmp`, JSON.stringify(items)); renameSync(`${CACHE}.tmp`, CACHE); };
+  const load = () => { try { return JSON.parse(readFileSync(CACHE, "utf8")); } catch { return {}; } };
+  const items = load();
+  // Several engines run at once (a warm-up, the chat, the page): each change goes onto what is on disk now,
+  // so one engine's write does not drop what another one just fetched.
+  const save = (change) => {
+    change(items);
+    const disk = load();
+    change(disk);
+    writeFileSync(`${CACHE}.${process.pid}.tmp`, JSON.stringify(disk));
+    renameSync(`${CACHE}.${process.pid}.tmp`, CACHE);
+  };
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: {
     getItem: (k) => (k in items ? items[k] : null),
-    setItem: (k, v) => { items[k] = String(v); save(); },
-    removeItem: (k) => { delete items[k]; save(); },
+    setItem: (k, v) => save((m) => { m[k] = String(v); }),
+    removeItem: (k) => save((m) => { delete m[k]; }),
   } });
 }
 const { fetchClimate } = await import("../../app/climate.js");
@@ -117,9 +126,15 @@ async function yearCmd(lot) {
   };
 }
 
+async function warmCmd(lot) {
+  const [, terrain] = await Promise.all([fetchClimate(lot.lat, lot.lon), terrainOf(lot)]);
+  return { ok: true, soil: !!terrain?.soil };
+}
+
 const req = JSON.parse(readFileSync(0, "utf8") || "{}");
 try {
-  const out = req.cmd === "plan" ? await planCmd(req.lot, req.mode) : req.cmd === "year" ? await yearCmd(req.lot) : { error: `unknown cmd ${req.cmd}` };
+  const out = req.cmd === "plan" ? await planCmd(req.lot, req.mode) : req.cmd === "year" ? await yearCmd(req.lot)
+    : req.cmd === "warm" ? await warmCmd(req.lot) : { error: `unknown cmd ${req.cmd}` };
   process.stdout.write(JSON.stringify(out));
 } catch (e) {
   process.stdout.write(JSON.stringify({ error: `No pude calcular: ${e.message}` }));

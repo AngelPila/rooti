@@ -1,0 +1,46 @@
+{
+ "generator": "Built-in image_gen (OpenAI image generation through Codex)",
+ "note": "Example neighbor profile pictures; each file has a visible IA badge added after generation.",
+ "images": [
+  {
+   "name": "jm",
+   "prompt": "Use case: illustration-story. Create one raster asset for Rooti Vecinos. Flat editorial illustration with sophisticated cut-paper forms, soft fine grain texture, no outlines, warm daylight, matching botanical editorial illustrations rice.jpg and maize.jpg: forest #153E32, cream #F3F0E5, parchment #E9E5D5, lime #C8FF9E, maize yellow #E6AE2E, rice teal #2E9E92, soybean #78B957, earth #B8643A. Ecuador coastal flat lowlands Daule/Babahoyo/Quevedo, no mountains. People are dignified montubio smallholders, natural proportions, brown skin, straw hats and work shirts. No text, letters, numbers, logos, flags or watermark; watermark will be composited separately. Square head-and-shoulders portrait of older man 70, kindly weathered face, straw hat, forest work shirt; flat parchment background.",
+   "generator": "Built-in image_gen"
+  },
+  {
+   "name": "rc",
+   "prompt": "Use case: illustration-story. Create one raster asset for Rooti Vecinos. Flat editorial illustration with sophisticated cut-paper forms, soft fine grain texture, no outlines, warm daylight, matching botanical editorial illustrations rice.jpg and maize.jpg: forest #153E32, cream #F3F0E5, parchment #E9E5D5, lime #C8FF9E, maize yellow #E6AE2E, rice teal #2E9E92, soybean #78B957, earth #B8643A. Ecuador coastal flat lowlands Daule/Babahoyo/Quevedo, no mountains. People are dignified montubio smallholders, natural proportions, brown skin, straw hats and work shirts. No text, letters, numbers, logos, flags or watermark; watermark will be composited separately. Square head-and-shoulders portrait of woman 50, straw hat, teal work shirt, warm confident expression; flat parchment background.",
+   "generator": "Built-in image_gen"
+  },
+  {
+   "name": "jp",
+   "prompt": "Use case: illustration-story. Create one raster asset for Rooti Vecinos. Flat editorial illustration with sophisticated cut-paper forms, soft fine grain texture, no outlines, warm daylight, matching botanical editorial illustrations rice.jpg and maize.jpg: forest #153E32, cream #F3F0E5, parchment #E9E5D5, lime #C8FF9E, maize yellow #E6AE2E, rice teal #2E9E92, soybean #78B957, earth #B8643A. Ecuador coastal flat lowlands Daule/Babahoyo/Quevedo, no mountains. People are dignified montubio smallholders, natural proportions, brown skin, straw hats and work shirts. No text, letters, numbers, logos, flags or watermark; watermark will be composited separately. Square head-and-shoulders portrait of young man 25, straw hat, earth work shirt; flat parchment background.",
+   "generator": "Built-in image_gen"
+  },
+  {
+   "name": "pa",
+   "prompt": "Use case: illustration-story. Create one raster asset for Rooti Vecinos. Flat editorial illustration with sophisticated cut-paper forms, soft fine grain texture, no outlines, warm daylight, matching botanical editorial illustrations rice.jpg and maize.jpg: forest #153E32, cream #F3F0E5, parchment #E9E5D5, lime #C8FF9E, maize yellow #E6AE2E, rice teal #2E9E92, soybean #78B957, earth #B8643A. Ecuador coastal flat lowlands Daule/Babahoyo/Quevedo, no mountains. People are dignified montubio smallholders, natural proportions, brown skin, straw hats and work shirts. No text, letters, numbers, logos, flags or watermark; watermark will be composited separately. Square head-and-shoulders portrait of woman agronomist 35, field vest over cream shirt, holding plain notebook visible at chest, clearly professional technician; flat pale teal background.",
+   "generator": "Built-in image_gen"
+  },
+  {
+   "name": "cb",
+   "prompt": "Use case: illustration-story. Create one raster asset for Rooti Vecinos. Flat editorial illustration with sophisticated cut-paper forms, soft fine grain texture, no outlines, warm daylight, matching botanical editorial illustrations rice.jpg and maize.jpg: forest #153E32, cream #F3F0E5, parchment #E9E5D5, lime #C8FF9E, maize yellow #E6AE2E, rice teal #2E9E92, soybean #78B957, earth #B8643A. Ecuador coastal flat lowlands Daule/Babahoyo/Quevedo, no mountains. People are dignified montubio smallholders, natural proportions, brown skin, straw hats and work shirts. No text, letters, numbers, logos, flags or watermark; watermark will be composited separately. Square head-and-shoulders portrait of man 60, gray moustache, straw hat, yellow work shirt; flat parchment background.",
+   "generator": "Built-in image_gen"
+  },
+  {
+   "name": "fa",
+   "prompt": "Use case: illustration-story. Create one raster asset for Rooti Vecinos. Flat editorial illustration with sophisticated cut-paper forms, soft fine grain texture, no outlines, warm daylight, matching botanical editorial illustrations rice.jpg and maize.jpg: forest #153E32, cream #F3F0E5, parchment #E9E5D5, lime #C8FF9E, maize yellow #E6AE2E, rice teal #2E9E92, soybean #78B957, earth #B8643A. Ecuador coastal flat lowlands Daule/Babahoyo/Quevedo, no mountains. People are dignified montubio smallholders, natural proportions, brown skin, straw hats and work shirts. No text, letters, numbers, logos, flags or watermark; watermark will be composited separately. Square head-and-shoulders portrait of man 45, clean shaven, straw hat, teal work shirt; flat parchment background.",
+   "generator": "Built-in image_gen"
+  },
+  {
+   "name": "lv",
+   "prompt": "Use case: illustration-story. Create one raster asset for Rooti Vecinos. Flat editorial illustration with sophisticated cut-paper forms, soft fine grain texture, no outlines, warm daylight, matching botanical editorial illustrations rice.jpg and maize.jpg: forest #153E32, cream #F3F0E5, parchment #E9E5D5, lime #C8FF9E, maize yellow #E6AE2E, rice teal #2E9E92, soybean #78B957, earth #B8643A. Ecuador coastal flat lowlands Daule/Babahoyo/Quevedo, no mountains. People are dignified montubio smallholders, natural proportions, brown skin, straw hats and work shirts. No text, letters, numbers, logos, flags or watermark; watermark will be composited separately. Square head-and-shoulders portrait of woman 30, dark tied hair, straw hat, earth work shirt; flat parchment background.",
+   "generator": "Built-in image_gen"
+  },
+  {
+   "name": "mt",
+   "prompt": "Use case: illustration-story. Create one raster asset for Rooti Vecinos. Flat editorial illustration with sophisticated cut-paper forms, soft fine grain texture, no outlines, warm daylight, matching botanical editorial illustrations rice.jpg and maize.jpg: forest #153E32, cream #F3F0E5, parchment #E9E5D5, lime #C8FF9E, maize yellow #E6AE2E, rice teal #2E9E92, soybean #78B957, earth #B8643A. Ecuador coastal flat lowlands Daule/Babahoyo/Quevedo, no mountains. People are dignified montubio smallholders, natural proportions, brown skin, straw hats and work shirts. No text, letters, numbers, logos, flags or watermark; watermark will be composited separately. Square head-and-shoulders portrait of woman 60, gray streaked tied hair, straw hat, forest work shirt; flat parchment background.",
+   "generator": "Built-in image_gen"
+  }
+ ]
+}

@@ -1,8 +1,8 @@
 {
-  "_note": "Example posts for the Vecinos demo. They are illustrative, not real reports: every post carries example=true and the app labels it. Names are masked (first name or title plus initials). Months are 1-12; sowYear is the year the crop was sown.",
+  "_note": "Example posts for the Vecinos demo. They are illustrative, not real reports: every post carries example=true and the app labels it. Names are masked (first name or title plus initials). Months are 1-12; sowYear is the year the crop was sown; same is how many neighbors said it happened to them too.",
   "posts": [
     {
-      "id": "d1", "type": "aviso", "zone": "daule", "author": "Don J. M.", "date": "2026-11-12",
+      "id": "d1", "type": "aviso", "same": 6, "zone": "daule", "author": "Don J. M.", "date": "2026-11-12",
       "text_es": "Se llenó el estero de la parte baja con el aguaje y la lluvia de esta semana. Si tiene lote en lo bajo, limpie los drenajes antes de enero.",
       "text_en": "The creek in the low part filled up with this week's high tide and rain. If your plot is low-lying, clear the drains before January.",
       "replies": [
@@ -10,37 +10,37 @@
       ]
     },
     {
-      "id": "d2", "type": "asi_me_fue", "zone": "daule", "crop": "maize", "sowMonth": 12, "sowYear": 2025, "result": "perdio", "area": 1.5, "unit": "ha", "author": "L. V.", "date": "2026-04-20",
+      "id": "d2", "type": "asi_me_fue", "same": 4, "zone": "daule", "crop": "maize", "sowMonth": 12, "sowYear": 2025, "result": "perdio", "area": 1.5, "unit": "ha", "author": "L. V.", "date": "2026-04-20",
       "text_es": "Sembré maíz en diciembre en la parte baja. En febrero se encharcó dos semanas y se pudrió casi todo.",
       "text_en": "I sowed maize in December on the low ground. In February it sat in water for two weeks and almost all of it rotted.",
       "replies": []
     },
     {
-      "id": "d3", "type": "asi_me_fue", "zone": "daule", "crop": "maize", "sowMonth": 1, "sowYear": 2026, "result": "bien", "area": 2, "unit": "ha", "author": "Don F. A.", "date": "2026-05-08",
+      "id": "d3", "type": "asi_me_fue", "same": 2, "zone": "daule", "crop": "maize", "sowMonth": 1, "sowYear": 2026, "result": "bien", "area": 2, "unit": "ha", "author": "Don F. A.", "date": "2026-05-08",
       "text_es": "Maíz en enero en loma, con buena semilla. Cosecha normal, el agua no se quedó.",
       "text_en": "Maize in January on higher ground, good seed. A normal harvest, the water drained off.",
       "replies": []
     },
     {
-      "id": "d4", "type": "asi_me_fue", "zone": "daule", "crop": "maize", "sowMonth": 12, "sowYear": 2025, "result": "regular", "area": 1, "unit": "ha", "author": "Doña M. T.", "date": "2026-04-02",
+      "id": "d4", "type": "asi_me_fue", "same": 5, "zone": "daule", "crop": "maize", "sowMonth": 12, "sowYear": 2025, "result": "regular", "area": 1, "unit": "ha", "author": "Doña M. T.", "date": "2026-04-02",
       "text_es": "Me fue más o menos. Hubo mucho gusano cogollero en enero y gasté más en fumigar.",
       "text_en": "It went so-so. Lots of fall armyworm in January and I spent more on spraying.",
       "replies": []
     },
     {
-      "id": "d5", "type": "asi_me_fue", "zone": "daule", "crop": "rice", "sowMonth": 1, "sowYear": 2026, "result": "bien", "area": 3, "unit": "ha", "author": "Don C. B.", "date": "2026-05-15",
+      "id": "d5", "type": "asi_me_fue", "same": 3, "zone": "daule", "crop": "rice", "sowMonth": 1, "sowYear": 2026, "result": "bien", "area": 3, "unit": "ha", "author": "Don C. B.", "date": "2026-05-15",
       "text_es": "Arroz de invierno, sembrado en enero. Buena cosecha, unos 60 sacos por cuadra.",
       "text_en": "Rainy-season rice, sown in January. A good harvest, about 60 sacks per cuadra.",
       "replies": []
     },
     {
-      "id": "d6", "type": "asi_me_fue", "zone": "daule", "crop": "rice", "sowMonth": 4, "sowYear": 2026, "result": "regular", "area": 3, "unit": "ha", "author": "Don C. B.", "date": "2026-08-22",
+      "id": "d6", "type": "asi_me_fue", "same": 2, "zone": "daule", "crop": "rice", "sowMonth": 4, "sowYear": 2026, "result": "regular", "area": 3, "unit": "ha", "author": "Don C. B.", "date": "2026-08-22",
       "text_es": "La segunda de arroz, en abril. Salió, pero tuve que bombear agua del río en junio y julio.",
       "text_en": "Second rice crop, in April. It made it, but I had to pump water from the river in June and July.",
       "replies": []
     },
     {
-      "id": "d7", "type": "asi_me_fue", "zone": "daule", "crop": "soybean", "sowMonth": 12, "sowYear": 2025, "result": "bien", "area": 1, "unit": "ha", "author": "J. P.", "date": "2026-04-10",
+      "id": "d7", "type": "asi_me_fue", "same": 1, "zone": "daule", "crop": "soybean", "sowMonth": 12, "sowYear": 2025, "result": "bien", "area": 1, "unit": "ha", "author": "J. P.", "date": "2026-04-10",
       "text_es": "Probé soya después del arroz por primera vez. Salió bien y el arroz que vino después se vio más verde.",
       "text_en": "I tried soybean after rice for the first time. It went well and the rice that followed looked greener.",
       "replies": []
@@ -55,7 +55,7 @@
       ]
     },
     {
-      "id": "d9", "type": "aviso", "zone": "daule", "author": "Ing. P. A.", "role": "tecnico", "date": "2026-11-08",
+      "id": "d9", "type": "aviso", "same": 11, "zone": "daule", "author": "Ing. P. A.", "role": "tecnico", "date": "2026-11-08",
       "text_es": "Con El Niño que viene, guarde semilla por si tiene que volver a sembrar. No queme la paja: déjela sobre el lote.",
       "text_en": "With the El Niño coming, keep some seed in case you have to sow again. Don't burn the straw: leave it on the plot.",
       "replies": []
