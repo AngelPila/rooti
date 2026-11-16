@@ -130,6 +130,7 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
       let bestR = { v: idle.v + (cover ? 0.02 : -0.6 * W.soil * bareSev[t]) / Wsum, steps: idle.steps };
       for (const id of allowed) {
         if (!started && firstForced && id !== firstForced) continue;
+        if (id === prev && allowed.length > 1) continue; // never the same crop back to back when there is another one
         const row = tab[id]?.[t];
         if (!row) continue;
         const c = crops[id];
@@ -237,7 +238,7 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
   let farm = null;
   if (uniqL.length) {
     const w = uniqL.map((r) => Math.exp(1.5 * r.v)), ws = w.reduce((a, b) => a + b, 0);
-    let sh = w.map((x) => Math.max(0.15, x / ws)); const t2 = sh.reduce((a, b) => a + b, 0); sh = sh.map((x) => x / t2);
+    const sh = w.map((x) => 0.15 + (1 - 0.15 * w.length) * (x / ws));
     farm = evalFarm(uniqL.map((r, k) => ({ share: sh[k], steps: r.steps.map((x) => ({ crop: x.crop, t0: x.t0 })) })));
   }
   const asFarm = (r) => evalFarm([{ share: 1, steps: r.steps.map((x) => ({ crop: x.crop, t0: x.t0 })) }]);

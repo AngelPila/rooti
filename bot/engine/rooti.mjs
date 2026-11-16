@@ -74,7 +74,7 @@ async function planCmd(lot, mode = "auto") {
   const used = mode === "auto" ? (ninoByDefault(lot, start) ? "nino" : "all") : mode;
   const [clim, terrain] = await Promise.all([fetchClimate(lot.lat, lot.lon), terrainOf(lot)]);
   const site = siteOf(terrain, lot);
-  const r = plan(clim, CROPS, picked, { start, end, irrigation: !!lot.irrigation, priority: lot.priority || "soil", mode: used, site, current: lot.current || [] });
+  const r = plan(clim, CROPS, picked, { start, end, irrigation: !!lot.irrigation, priority: lot.priority || "soil", mode: used, site, current: lot.current || [], ninoOffset: used === "nino" ? 2026 - Number(start.slice(0, 4)) : 0 });
   const n = r.samples.length, first = r.samples[0]?.base ?? 1981, area = Number(lot.area) || 0, unit = UNIT_HA[lot.unit] ? lot.unit : "ha";
   const land = (share) => (area ? `${round(share * area)} ${UNIT_NAME[unit]}` : `${Math.round(share * 100)} % del lote`);
   const farm = r.farm && {
