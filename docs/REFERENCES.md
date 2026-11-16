@@ -61,6 +61,8 @@
 - Crop illustrations (maize, rice, soybean, straw mulch) generated with AI (OpenAI image generation through Codex). Each carries a visible "IMAGEN GENERADA CON IA" watermark. The app uses the same files on the landing page (`app/img/illu/`).
 - "How it works" illustrations on the landing page (plot on the map, climate reading, plan comparison, Rooti on WhatsApp) generated with AI (OpenAI image generation through Codex), each with a visible "IMAGEN GENERADA CON IA" watermark. Files and exact prompts: `app/img/how/` and `app/img/how/PROMPTS.md`.
 - Profile pictures of the example neighbors in Vecinos (`app/img/vecinos/`) generated with AI (OpenAI image generation through Codex). Each carries a visible "IA" badge, and the Vecinos page says the pictures are AI-generated. Prompts: `app/img/vecinos/PROMPTS.json`.
+- Weather and crop badges in the landing hero (`app/img/badges/`) generated with AI (OpenAI image generation through Codex). They are 48 px icons, too small for a legible watermark, so they are declared here and in the footer credits. Prompts: `app/img/badges/PROMPTS.md`.
+- The landing demo cards use the crop illustrations without the baked-in watermark (`*-clean.png`) so their text stays readable; the app lays an "AI-generated" label over each one.
 - Icons and the vector logo mark were drawn by hand for this project.
 - Agent skills in `.claude/skills/` (learn-taste, mobile-native, break-ui, remove-animations, find-animation-opportunities, choreograph, prototype) copied from [emilkowalski/skills](https://github.com/emilkowalski/skills) (MIT), commit 0f2e23b. License in `.claude/skills/EMIL-SKILLS-LICENSE`.
 

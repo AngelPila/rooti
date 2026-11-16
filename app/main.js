@@ -3,7 +3,7 @@ import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=37";
 import { COPY } from "./copy.js?v=62";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=25";
 import { STR } from "./i18n.js?v=22";
-import { createBootcamp } from "./bootcamp.js?v=4";
+import { createBootcamp } from "./bootcamp.js?v=5";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
 import { createRooti } from "./rooti.js?v=5";
 import { createVoice } from "./voice.js?v=1";
@@ -385,7 +385,7 @@ function viewLanding() {
         h("div", { class: "how-img" }, h("img", { src: `img/how/${art}.webp`, alt, loading: "lazy" }), h("span", { class: "ai-mark mono" }, D.aiMark)),
         h("b", {}, h("i", {}, `${i + 1}.`), " ", t), h("p", {}, d)))),
       h("h2", { class: "h2" }, D.examplesTitle),
-      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).filter((k) => k !== "iowa").map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.jpg`, alt: "", loading: "lazy" }),
+      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).filter((k) => k !== "iowa").map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.jpg`, alt: "", loading: "lazy" }), h("span", { class: "ai-mark ai-top mono" }, D.aiMark),
         h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),
       h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "how-img" }, h("img", { src: "img/how/bootcamp.webp", alt: "", loading: "lazy" }), h("span", { class: "ai-mark mono" }, D.aiMark)),
         h("span", { class: "txt" }, h("span", { class: "mono" }, D.bootKicker), h("b", {}, D.bootTitle), h("p", {}, D.bootLead), h("span", { class: "btn dark" }, D.bootCta, icon("i-arrow-r")))))),

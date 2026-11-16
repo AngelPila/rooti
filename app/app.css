@@ -240,6 +240,7 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 .how-img { position: relative; overflow: hidden; height: 160px; border-radius: 14px; background: var(--parchment); }
 .how-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ai-mark { position: absolute; right: 8px; bottom: 8px; padding: 4px 7px; border-radius: 6px; background: rgba(251, 250, 244, .88); color: var(--forest); font-size: 9px; }
+.ai-mark.ai-top { top: 12px; right: 12px; bottom: auto; z-index: 2; }
 @media (hover: hover) and (pointer: fine) { .how:hover { box-shadow: 0 0 0 5px rgba(21, 62, 50, .05), 0 24px 48px -30px rgba(21, 62, 50, .4); } }
 .l-demos { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .demo-card { position: relative; display: block; border: 0; padding: 0; border-radius: var(--r-card-l); overflow: hidden; color: var(--cream); aspect-ratio: 4 / 4.4; text-align: left; background: var(--forest); }

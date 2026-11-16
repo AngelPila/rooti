@@ -421,3 +421,6 @@ body.r-bootcamp { background: var(--cream); }
   .bc-course-stat-grid > div { padding: 10px; }
   .bc-lesson-opening-copy { padding: 20px; }
 }
+
+/* AI illustrations carry their watermark in the top right corner: keep it in frame */
+.bc-hero img, .bc-path-image, .bc-lesson-opening > img { object-position: right top; }
