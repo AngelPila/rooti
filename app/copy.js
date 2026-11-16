@@ -193,10 +193,10 @@ export const COPY = {
       nextDays: "Lluvia de los próximos días", heavy: "Lluvia fuerte", mm: "mm", forecastSrc: "Pronóstico: Open-Meteo, para unos kilómetros alrededor del lote. Confirme con el INAMHI.", noForecast: "Ahora no pude traer el pronóstico.",
       todo: "Qué conviene hacer",
       tips: {
-        heavy_rain: [["i-water", "Si el lote se encharca, abra los drenajes antes de que llueva."], ["i-sow", "Si sembró hace poco, espere a que pase la lluvia para abonar: el agua se lleva el abono."], ["i-agronomist", "Si tiene dudas, llame a Rooti o a su técnico."]],
+        heavy_rain: [["i-water", "Si el lote se encharca, abra los drenajes antes de que llueva."], ["i-sow", "Si sembró hace poco, espere a que pase la lluvia para abonar: el agua se lleva el abono."], ["i-agronomist", "Si tiene dudas, escríbale a Rooti o a su técnico."]],
         sow_window: [["i-rain", "Mire la lluvia de estos días antes de sembrar: con el suelo húmedo la semilla nace mejor."], ["i-month", "Su plan dice qué y cuándo: ábralo para ver el calendario completo."], ["i-agronomist", "Confirme la semilla y el abono con su técnico."]],
       },
-      call: "Hablar con Rooti", seePlan: "Ver mi plan",
+      seePlan: "Ver mi plan",
     },
     sum: {
       eyebrow: "Su plan", others: "Otros caminos", detail: "Ver todo el detalle", noNext: "Su plan ya terminó: márquelo de nuevo con las fechas que vienen.",
@@ -395,10 +395,10 @@ export const COPY = {
       nextDays: "Rain in the coming days", heavy: "Heavy rain", mm: "mm", forecastSrc: "Forecast: Open-Meteo, for a few kilometres around the plot. Check with INAMHI.", noForecast: "Could not load the forecast right now.",
       todo: "What to do",
       tips: {
-        heavy_rain: [["i-water", "If the plot floods, open the drains before the rain."], ["i-sow", "If you sowed recently, fertilize after the rain: water washes fertilizer away."], ["i-agronomist", "If in doubt, call Rooti or your agronomist."]],
+        heavy_rain: [["i-water", "If the plot floods, open the drains before the rain."], ["i-sow", "If you sowed recently, fertilize after the rain: water washes fertilizer away."], ["i-agronomist", "If in doubt, write to Rooti or your agronomist."]],
         sow_window: [["i-rain", "Check the rain of these days before sowing: seeds come up better in moist soil."], ["i-month", "Your plan says what and when: open it for the full calendar."], ["i-agronomist", "Check seed and fertilizer with your agronomist."]],
       },
-      call: "Talk to Rooti", seePlan: "See my plan",
+      seePlan: "See my plan",
     },
     sum: {
       eyebrow: "Your plan", others: "Other paths", detail: "See the full plan", noNext: "Your plan has ended: mark it again with the coming dates.",

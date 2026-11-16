@@ -1,6 +1,6 @@
 """Rooti's website and the pages farmers open from WhatsApp: the web app itself (app/, served at the root) signed in
-as one farmer, plus the small API it talks to. Mounted on the call server (call_server.app), so the website, the API
-and the call page (/llamada) share one address.
+as one farmer, plus the small API it talks to. Mounted on Rooti's web server (server.app), so the website and the
+API share one address.
 
 - GET  /data/bot.json       where this API is and Rooti's number, for the app's WhatsApp buttons
 - GET  /api/lot             the farmer's lot as the app keeps it, the plan they picked, the alert the link answers
@@ -119,7 +119,7 @@ def mount(api: FastAPI) -> None:
             store.mark_alert(alert["id"], "call_opened_at")
         return {"plan": lots.to_app(farmer), "chosen": (farmer or {}).get("chosen"),
                 "alert": alert and {k: alert[k] for k in ("kind", "key", "text", "created_at")},
-                "whatsapp": config.whatsapp_number(), "call": calls.link(session["phone"], alert and alert["id"])}
+                "whatsapp": config.whatsapp_number()}
 
     @api.put("/api/lot")
     async def put_lot(request: Request, x_rooti_token: str = Header("")):

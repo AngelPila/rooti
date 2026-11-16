@@ -1,6 +1,5 @@
-"""Rooti's tools, the same for the WhatsApp agent (mcp_server.py) and the live call (call_server.py). Each one acts
-on the farmer of the conversation, which the caller passes in; the model never names whose lot it is."""
-import contextvars
+"""Rooti's tools for the WhatsApp agent (mcp_server.py). Each one acts on the farmer of the conversation, which the
+caller passes in; the model never names whose lot it is."""
 import json
 import logging
 import threading
@@ -11,7 +10,6 @@ from typing import Callable
 from rooti_bot import calls, config, engine, store
 
 log = logging.getLogger("rooti.tools")
-ON_CHAT = contextvars.ContextVar("on_chat", default=False)  # a WhatsApp turn (mcp_server), not the live call
 WAIT_TEXT = "Déjeme revisar su lote con los datos de la NASA, un ratito 🌱"
 WAIT_AFTER_S = 2.5  # a plan from fetched data is ready well before this
 WAIT_EVERY_S = 300  # a second plan try right after a slow first one does not repeat the same sentence
@@ -94,7 +92,7 @@ def _plan(farmer: dict) -> dict:
     """The saved plan; when computing it waits on NASA (up to a minute and a half), the farmer hears so first: the
     model's own words only go out once the turn is over. With the data already fetched it takes a fraction of a
     second, and no wait message goes out."""
-    if not (ON_CHAT.get() and farmer.get("lat") is not None and farmer.get("crops") and engine.cold(farmer)):
+    if not (farmer.get("lat") is not None and farmer.get("crops") and engine.cold(farmer)):
         return engine.plan_for(farmer)
     timer = threading.Timer(WAIT_AFTER_S, _say_wait, (farmer["phone"],))
     timer.daemon = True
@@ -223,11 +221,6 @@ def send_queued(phone: str, ids: list[int] | None = None) -> int:
     return sent
 
 
-def call_button(farmer_id: str, args: dict) -> dict:
-    return _button(farmer_id, args.get("texto") or "Toque el botón y conversamos en vivo, como una llamada.",
-                   "📞 Hablar con Rooti", lambda: calls.link(farmer_id))
-
-
 def lot_button(farmer_id: str, args: dict) -> dict:
     return _button(farmer_id, args.get("texto") or "Toque el botón, marque su lote en el mapa y dígame qué siembra.",
                    "Marcar mi lote", lambda: calls.page(farmer_id, "planear/1"))
@@ -277,10 +270,6 @@ TOOLS = [
     Tool("explicar", "Explica un término (evapotranspiración, humedad del suelo, NDVI, balance hídrico, El Niño…) en "
                      "palabras simples.", explain,
          {"termino": {"type": "string"}}, ("termino",)),
-    Tool("boton_llamada", "Manda, después de tu respuesta, el botón «📞 Hablar con Rooti» para conversar en vivo. "
-                          "Solo si el agricultor quiere hablar, o si la conversación se enreda por escrito.",
-         call_button,
-         {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
     Tool("boton_lote", "Manda, después de tu respuesta, el botón «Marcar mi lote»: una página donde marca el lote en "
                        "el mapa y elige sus cultivos. Para un agricultor nuevo que todavía no te dio su lote, salvo "
                        "que prefiera escribir.",
@@ -290,19 +279,14 @@ TOOLS = [
                        "lugar de explicarle tú.", plan_button,
          {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
 ]
-CHAT_ONLY = {"boton_llamada", "boton_lote", "boton_plan"}  # the live call has no chat to put a button in
 BY_NAME = {t.name: t for t in TOOLS}
 
 
-def call(name: str, farmer_id: str, args: dict, *, chat: bool = False) -> object:
+def call(name: str, farmer_id: str, args: dict) -> object:
     tool = BY_NAME.get(name)
     if tool is None:
         raise ToolError(f"No existe la herramienta «{name}».")
     unknown = set(args) - set(tool.properties)
     if unknown:
         raise ToolError(f"Argumentos desconocidos para {name}: {', '.join(sorted(unknown))}.")
-    token = ON_CHAT.set(chat)
-    try:
-        return tool.handler(farmer_id, args)
-    finally:
-        ON_CHAT.reset(token)
+    return tool.handler(farmer_id, args)

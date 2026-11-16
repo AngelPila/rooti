@@ -152,7 +152,8 @@ def mark_alert(alert_id: int, field: str, at: float | None = None) -> None:
 
 
 def unopened_alerts(sent_before: float) -> list[dict]:
-    """Alerts sent before `sent_before` whose call nobody opened and that got no reminder yet."""
+    """Alerts sent before `sent_before` whose page nobody opened (call_opened_at, its first name) and that got no
+    reminder yet."""
     with connect() as db:
         rows = db.execute("SELECT * FROM alerts WHERE sent_at IS NOT NULL AND sent_at < ? AND call_opened_at IS NULL "
                           "AND reminded_at IS NULL", (sent_before,)).fetchall()

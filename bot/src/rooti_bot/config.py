@@ -19,7 +19,7 @@ def bridge_url() -> str:
 
 
 def call_url() -> str:
-    """The public address of the call page (deploy/s6/rooti-llamada behind Coolify's proxy)."""
+    """Rooti's public address: its website and pages (deploy/s6/rooti-web behind Coolify's proxy)."""
     return os.environ.get("ROOTI_CALL_URL", "").rstrip("/")
 
 

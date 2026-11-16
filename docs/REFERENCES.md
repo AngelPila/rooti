@@ -47,7 +47,6 @@
 
 - Rooti's WhatsApp agent is adapted from Vinci, the maintainer's own WhatsApp assistant (bridge patch, plugin patterns, deploy layout, E2E harness).
 - [Hermes Agent](https://github.com/NousResearch/hermes-agent), Nous Research (MIT): the agent runtime, its WhatsApp bridge (Baileys, unofficial client) and its speech-to-text and voice-reply features.
-- [Pipecat](https://github.com/pipecat-ai/pipecat) 1.16 (BSD-2-Clause): the live call pipeline and its SmallWebRTC transport (aiortc).
 - [Silero VAD](https://github.com/snakers4/silero-vad) (MIT): detects when the farmer speaks during a call.
 - [Groq](https://console.groq.com/docs/speech-to-text) Whisper large-v3-turbo: speech to text for voice notes and calls.
 - [edge-tts](https://github.com/rany2/edge-tts) 7.3.1 (LGPL-3.0) with Microsoft Edge's `es-EC-LuisNeural` voice: Rooti's spoken answers.
