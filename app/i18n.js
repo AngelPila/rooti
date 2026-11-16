@@ -112,7 +112,7 @@ export const STR = {
     months: ["E", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"],
     monthsLong: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
     unitHa: "ha", unitCuadra: "cuadras",
-    crops: { rice: "Arroz", maize: "Maíz", soybean: "Soya", peanut: "Maní", common_bean: "Fréjol", cowpea: "Caupí", sorghum: "Sorgo", jack_bean: "Canavalia", velvet_bean: "Mucuna", fallow: "suelo pelado", mulch: "dejar la paja", wheat: "Trigo", barley: "Cebada", potato: "Papa", sunflower: "Girasol", chickpea: "Garbanzo" },
+    crops: { rice: "Arroz", maize: "Maíz", soybean: "Soya", peanut: "Maní", common_bean: "Fréjol", cowpea: "Caupí", sorghum: "Sorgo", jack_bean: "Canavalia", velvet_bean: "Mucuna", fallow: "suelo pelado", mulch: "restos de cosecha", wheat: "Trigo", barley: "Cebada", potato: "Papa", sunflower: "Girasol", chickpea: "Garbanzo" },
     // global planner
     planTitle: "Planee su siembra",
     planLead: "Elija dónde, desde cuándo hasta cuándo y qué cultivos. Rooti arma las rotaciones solo con esos cultivos y las prueba con el clima real de la NASA.",
@@ -147,7 +147,7 @@ export const STR = {
     tryTitle: "Pruebe estas simulaciones", trySub: "Cosas que creemos que le irían mejor. Toque para probarlas.", tryBtn: "Probar",
     tryInstead: (a, b, v) => `${a} en vez de ${b.toLowerCase()}: hasta ${v} % de una cosecha en estas fechas.`,
     tryIrrigation: "Con riego: los cultivos que se secan aguantarían.", tryLegume: (c, v) => `Agregue ${c.toLowerCase()}: devuelve nitrógeno al suelo (hasta ${v} %).`,
-    tryMulch: (p) => `Deje la paja del cereal: el suelo queda pelado ${p} % del tiempo.`, tryCover: (c) => `Siembre ${c.toLowerCase()} para cubrir el suelo cuando no hay cultivo.`,
+    tryMulch: (p) => `Cubra con los restos del cereal: el suelo queda pelado ${p} % del tiempo.`, tryCover: (c) => `Siembre ${c.toLowerCase()} para cubrir el suelo cuando no hay cultivo.`,
     tryDry: "Pruebe el plan solo con años secos, para ver si aguanta.",
     buildTitle: "Arme su propio plan y compárelo", buildSub: "Empieza igual al recomendado. Cambie cultivos, meses o tierra y vea si le conviene.",
     addPlanting: "Agregar siembra", addPlot: "Agregar parcela", resetToRec: "Volver al recomendado", landUsed: (a, b) => `Usa ${a} de ${b}`,
