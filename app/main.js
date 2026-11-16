@@ -1,9 +1,9 @@
 import { fetchClimate } from "./climate.js?v=23";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=36";
-import { COPY } from "./copy.js?v=59";
+import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=37";
+import { COPY } from "./copy.js?v=62";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=25";
 import { STR } from "./i18n.js?v=22";
-import { createBootcamp } from "./bootcamp.js?v=3";
+import { createBootcamp } from "./bootcamp.js?v=4";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
 import { createRooti } from "./rooti.js?v=5";
 import { createVoice } from "./voice.js?v=1";
@@ -197,6 +197,17 @@ function terrain(pl, preload = false) {
       clearTimeout(deadline);
       deadline = setTimeout(() => controller.abort(), 5000);
     } };
+    // SoilGrids often takes longer than the 5 s the results screen waits. Keep asking in the background and, when the soil
+    // arrives, plans and the plot screen are worked out again with it instead of keeping the defaults for the whole visit.
+    promise.then((t) => {
+      if (t.soil) return;
+      fetchTerrain(pl.lat, pl.lon, null).then((t2) => {
+        if (!t2?.soil) return;
+        DATA.terrain[k] = { promise: Promise.resolve({ ...t2, pilotWater: t.pilotWater, zone: t.zone }), limitWait() {} };
+        memo.clear();
+        if (RESULTS.includes(location.hash.slice(2).split("/")[0])) render();
+      }).catch(() => {});
+    });
   }
   const request = DATA.terrain[k];
   if (!preload) request.limitWait();
@@ -374,11 +385,11 @@ function viewLanding() {
         h("div", { class: "how-img" }, h("img", { src: `img/how/${art}.webp`, alt, loading: "lazy" }), h("span", { class: "ai-mark mono" }, D.aiMark)),
         h("b", {}, h("i", {}, `${i + 1}.`), " ", t), h("p", {}, d)))),
       h("h2", { class: "h2" }, D.examplesTitle),
-      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.png`, alt: "", loading: "lazy" }),
+      h("div", { class: "l-demos" }, ...Object.keys(DEMOS).filter((k) => k !== "iowa").map((k) => h("button", { class: "demo-card", onclick: () => openDemo(k) }, h("img", { src: `img/illu/${ILLU[k]}-clean.jpg`, alt: "", loading: "lazy" }),
         h("span", { class: "txt" }, h("span", { class: "pill-eyebrow glass mono" }, D.demoTag[k]), h("b", { class: "h3" }, c.demo[k]), h("span", { class: "go" }, D.see, icon("i-arrow-r")))))),
       h("a", { class: "l-boot", href: "#/bootcamp" }, h("span", { class: "how-img" }, h("img", { src: "img/how/bootcamp.webp", alt: "", loading: "lazy" }), h("span", { class: "ai-mark mono" }, D.aiMark)),
         h("span", { class: "txt" }, h("span", { class: "mono" }, D.bootKicker), h("b", {}, D.bootTitle), h("p", {}, D.bootLead), h("span", { class: "btn dark" }, D.bootCta, icon("i-arrow-r")))))),
-    h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"))))));
+    h("footer", { class: "l-foot" }, h("div", { class: "l-wrap" }, lockup(true), h("div", { class: "credits" }, h("p", {}, D.credits), h("p", {}, "NASA Space Apps Challenge 2026 · Field Shift"), h("p", { class: "foot-links" }, h("a", { href: "https://github.com/AngelPila/rooti", target: "_blank", rel: "noopener" }, "GitHub"), " · ", h("a", { href: "https://github.com/AngelPila/rooti/blob/master/docs/REFERENCES.md", target: "_blank", rel: "noopener" }, es() ? "Fuentes de datos" : "Data sources"), " · ", h("a", { href: "https://github.com/AngelPila/rooti/blob/master/SI_USAGE.md", target: "_blank", rel: "noopener" }, es() ? "Uso de IA" : "Use of AI")))))));
   tilt(document.querySelectorAll(".how"));
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => mountHero(art, title));
 }
@@ -610,7 +621,9 @@ const outcomeShort = (pl, n) => (n === 1 ? (pl.fail >= 0.5 ? C().wasLost : `${Ma
   : pl.fail >= 0.5 ? C().lostShortS(...fracParts(pl.fail)) : pl.fail <= 0.001 ? C().allYearsS(Math.round(pl.yld * 100)) : pl.fail < 0.1 ? C().almostS(Math.round(pl.yld * 100)) : C().someYearsS(...fracParts(1 - pl.fail), Math.round(pl.yld * 100)));
 const majority = (ls) => { const d = ls.filter((l) => l === "danger").length, c = ls.filter((l) => l === "care").length; return d * 2 >= ls.length ? "danger" : (d + c) * 2 >= ls.length ? "care" : "good"; };
 const plantingsOf = (f) => Object.values(f.byCrop).flatMap((b) => b.plantings.map((p) => ({ ...p, crop: b.crop }))).sort((a, b) => a.t0 - b.t0 || a.crop.localeCompare(b.crop));
-const verdictEl = (v) => h("span", { class: `verdict v-${v}` }, h("i", { class: `sw ${v}` }), C().verdict[v]);
+// When harvests hold but the soil is left bare, the rating says so, or "so-so" with no losses reads as a contradiction
+const verdictWord = (f) => C().verdict[f.verdict] + (f.verdict !== "good" && f.anyLoss < 0.3 && f.bigLoss < 0.3 ? C().verdictSoil : "");
+const verdictEl = (v, f) => h("span", { class: `verdict v-${v}` }, h("i", { class: `sw ${v}` }), f ? verdictWord(f) : C().verdict[v]);
 const level = (st) => (st.fail >= 0.5 ? "danger" : st.fail > 0.15 || st.yld < 0.6 ? "care" : "good");
 // Colour and drawing for each crop; bare soil is terracotta
 const CROP_LOOK = {
@@ -671,15 +684,6 @@ function stepSheet(r, pc, st) {
   sheet(h("h2", { class: "display" }, `${cap(cropName(st.crop))} · ${fmtArea(pc.share)}`), h("p", { class: "small" }, span(r.period[st.t0], r.period[st.t1 - 1])),
     h("p", { style: { fontSize: "18px" } }, cap(outcome(st, r.samples.length))),
     h("p", { class: "small" }, C().rainVsNeed(Math.round(st.rain), Math.round(st.need))),
-    h("p", { class: "small" }, C().checkLocal));
-}
-function barSheet(r, f, k, s, pl) {
-  const name = k === "bare" ? C().lgBare : cap(cropName(k));
-  const from = r.period[pl ? pl.t0 : s.t0], to = r.period[pl ? pl.t1 - 1 : s.t1];
-  const st = pl && f.parcels.flatMap((p) => p.d.steps).find((x) => x.crop === k && x.t0 === pl.t0);
-  sheet(h("h2", { class: "display" }, `${name} · ${fmtArea(s.share)}`), h("p", { class: "small" }, span(from, to)),
-    h("p", { style: { fontSize: "18px" } }, pl ? cap(outcome(pl, r.samples.length)) : k === "mulch" ? cap(C().coversSoil) : C().lgBare),
-    st ? h("p", { class: "small" }, C().rainVsNeed(Math.round(st.rain), Math.round(st.need))) : null,
     h("p", { class: "small" }, C().checkLocal));
 }
 const resHead = (P) => h("div", { class: "res-head" }, h("div", { class: "grow" }, h("b", {}, `${P.place.name} · ${fmtArea(1)}`), h("small", {}, fmtSpan(P))),
@@ -876,7 +880,7 @@ function planCard(it, r, plans, onPick, best, choose) {
     h("span", { class: "cropline" }, ...order.slice(0, 4).map((c) => { const L = look(c); return h("span", { class: `cl-chip${c === "bare" ? " bare" : ""}` }, h("i", { style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, icon(L.icon)), cropLabel(c)); }),
       order.length > 4 ? h("span", { class: "cl-chip more", title: order.slice(4).map(cropLabel).join(", ") }, `+${order.length - 4}`) : null),
     plots.length > 1 ? h("span", { class: "cl-note" }, D.inPlots(plots.length)) : null,
-    h("span", { class: `badge ${f.verdict}` }, C().verdict[f.verdict]),
+    h("span", { class: `badge ${f.verdict}` }, verdictWord(f)),
     h("span", { class: "facts" }, r.samples.length > 1 ? h("span", {}, icon("i-care"), D.lossYears(lossYears)) : null, h("span", {}, icon("i-straw"), D.coverOf(cov, N))),
     choose ? h("span", { class: "go" }, D.seePlan, icon("i-arrow-r")) : null);
 }
@@ -928,7 +932,7 @@ function viewPlan(arg) {
     const saveBtn = h("button", { class: "round", "aria-label": c.save, title: c.save, onclick: () => { state.saved = { plan: P, at: Date.now() }; store.set("saved3", state.saved); put(saveBtn, icon("i-check")); } }, icon(isSaved() ? "i-check" : "i-bookmark"));
     const show = (anim) => {
       const it = cur(), f = it.f, good = f.per.filter((x) => yearLv(x) === "g").length, cov = coveredMonths(f, N).filter(Boolean).length;
-      put(verdictBox, h("span", { class: `badge ${f.verdict}` }, c.verdict[f.verdict]));
+      put(verdictBox, h("span", { class: `badge ${f.verdict}` }, verdictWord(f)));
       put(routeBox, routeEl(r, f));
       // The risks the challenge asks for sit in view, not behind a button; the full reasoning opens on request
       const e = explain(f, r), rk = e.risks.length ? [c.riskTitle, e.risks, "bad"] : [c.whyTitle, e.why, "good"];
@@ -965,7 +969,7 @@ function viewPlan(arg) {
           h("div", { class: "pv-left" },
             h("div", { class: "pv-a" }, head, h("div", { class: "pv-block" }, h("b", {}, D.whatWhen), routeBox), risks,
               h("div", { class: "pv-acts" }, h("button", { class: "btn soft", onclick: () => explainSheet(D.names[cur().key], cur().f, r) }, D.whyAll), saveBtn,
-                listenBtn(() => `${D.names[cur().key]}. ${routeWords(r, cur().f)}. ${c.verdict[cur().f.verdict]}.`, c.listen))),
+                listenBtn(() => `${D.names[cur().key]}. ${routeWords(r, cur().f)}. ${verdictWord(cur().f)}.`, c.listen))),
             h("div", { class: "pv-b" },
               multi ? [stat, h("div", { class: "pv-block" }, dots, legend, h("a", { class: "link", href: "#/pasado", style: { alignSelf: "flex-start" } }, c.vec.pastLink, icon("i-chev-r")))] : h("p", { class: "small" }, D.realOnly))),
           // Rooti still marks "cover": the calendar is where bare and covered months show now
@@ -1161,7 +1165,7 @@ function explain(f, r) {
 function explainSheet(title, f, r) {
   const e = explain(f, r), c = C();
   const list = (head, items, cls) => (items.length ? [h("b", { style: { marginTop: "6px" } }, head), h("ul", { class: `bul ${cls || ""}` }, ...items.map((x) => h("li", {}, x)))] : []);
-  sheet(h("h2", { class: "display" }, title), verdictEl(f.verdict), farmCalendar(r, f, { compact: true }),
+  sheet(h("h2", { class: "display" }, title), verdictEl(f.verdict, f), farmCalendar(r, f, { compact: true }),
     ...list(c.whyTitle, e.why, "good"), ...list(c.riskTitle, e.risks, "bad"), ...list(c.unknownTitle, e.unknown), ...list(c.askTitle, e.ask));
 }
 // Short, practical advice from the plot, the climate and the plan.
@@ -1260,13 +1264,11 @@ function viewTerreno() {
     const soilWord = (m) => (wetOf(m) >= 0.75 ? T.soilWet : wetOf(m) >= 0.4 ? T.soilMoist : T.soilDry);
     const st = { m: months.reduce((b, x, i) => (x.rain > months[b].rain ? i : b), 0), mode: "foto", water: true, roofs: true, lifted: true };
     let scene = null;
-    const hi = (key) => { scene?.highlight(key); document.querySelectorAll(".terreno .srow[data-k]").forEach((x) => x.classList.toggle("on", x.dataset.k === key)); };
+    const hi = (key) => { scene?.highlight(key); document.querySelectorAll(".terreno .bub[data-k]").forEach((x) => x.classList.toggle("on", x.dataset.k === key)); };
 
-    // One row per thing about the land: a traffic-light mark, the word, the number small, a classed bar where it helps
+    // One bubble per thing about the land, floating on the map: a traffic-light mark, the word, and the details (number, classed bar) on tap
     const G = c.soilGrade;
-    const mark = (g) => h("span", { class: `st st-${g}`, role: "img", "aria-label": G[g] }, { ok: "✓", watch: "!", bad: "✕" }[g]);
-    const row = (g, k, v, note, extra, key) => h("div", { class: "srow", "data-k": key, onmouseenter: key && (() => hi(key)), onmouseleave: key && (() => hi(null)) },
-      g ? mark(g) : h("span", { class: "st st-none" }), h("div", {}, h("small", {}, k), h("b", {}, v), note ? h("span", { class: "sn" }, note) : null, extra || null));
+    const mark = (g) => h("span", { class: `st st-${g || "none"}`, role: "img", "aria-label": g ? G[g] : "" }, g ? { ok: "✓", watch: "!", bad: "✕" }[g] : "");
     const gTex = !d ? null : d.texture === "sand" || d.texture === "clay" ? "watch" : "ok";
     const gPh = !d ? null : d.phClass === "good" ? "ok" : d.phClass.startsWith("very") ? "bad" : "watch";
     const gOm = !d ? null : d.omClass === "low" ? "watch" : "ok";
@@ -1274,6 +1276,35 @@ function viewTerreno() {
     const gSl = slope == null ? null : slope >= 8 ? "watch" : "ok";
     const wlSteps = h("div", { class: "scale", "aria-hidden": "true" }, h("div", { class: "scale-steps" }, ...[["low", "#DCEAF7"], ["medium", "#6BAED6"], ["high", "#08519C"]].map(([k, col]) => h("i", { class: k === wlK ? "on" : "", style: { background: col } }))),
       h("div", { class: "scale-w" }, h("span", {}, c.low), h("span", {}, c.medium), h("span", {}, c.high)));
+    const square = h("p", { class: "bub-note" }, icon("i-info"), h("span", {}, c.soilSquare));
+    const tips = tipsFor(r);
+    const items = [
+      { key: "soil", g: gTex, k: c.soilType, v: d ? c.texture[d.texture] : c.noData, note: d ? c.holds(d.awc) : null, extra: d ? square : null },
+      { key: "ph", g: gPh, k: c.acidity, v: d ? c.phWord[d.phClass] : c.noData, note: d ? `pH ${num(d.ph)}` : null,
+        extra: d ? scaleBar(4, 9, [[5, "#D7301F"], [5.5, "#FC8D59"], [7.3, "#1A9850"], [8, "#74ADD1"], [9, "#4575B4"]], d.ph, c.phScale) : null },
+      { key: "om", g: gOm, k: c.organic, v: d ? c.omWord[d.omClass] : c.noData, note: d ? `${num(d.om)} %` : null,
+        extra: d ? scaleBar(0, 8, [[2, "#FEC44F"], [4, "#EC7014"], [8, "#993404"]], d.om, c.omScale) : null },
+      { key: "water", g: gWl, k: c.waterlog, v: wlW, note: wlWhy,
+        extra: h("div", {}, wlSteps, h("div", { class: "q" }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); syncLot(); render(); }))) },
+      { key: "relief", g: gSl, k: c.relief, v: slopeW, note: [slope != null ? `${num(slope)} %` : null, tr?.elevation != null ? c.aboveSea(tr.elevation) : null].filter(Boolean).join(" · ") || null },
+      { key: "tips", ic: "i-bulb", k: c.tipsTitle, v: c.tipsCount(tips.length), extra: tipList(tips) },
+    ];
+    const panel = h("div", { class: "bub-panel", hidden: true, role: "dialog" });
+    let openKey = null;
+    const openBub = (key) => {
+      openKey = openKey === key ? null : key;
+      bubs.querySelectorAll(".bub").forEach((x) => x.setAttribute("aria-expanded", String(x.dataset.k === openKey)));
+      const it = items.find((x) => x.key === openKey);
+      hi(it && (it.key === "soil" || it.key === "water") ? it.key : null);
+      if (!it) { panel.hidden = true; return; }
+      put(panel, h("div", { class: "bub-ph" }, it.ic ? h("span", { class: "st st-none" }, icon(it.ic)) : mark(it.g), h("div", {}, h("small", {}, it.k), h("b", {}, it.v)),
+        h("button", { class: "bub-x", "aria-label": c.close || "×", onclick: () => openBub(openKey) }, "×")),
+        it.note && it.key !== "tips" ? h("p", { class: "bub-sn" }, it.note) : null, it.extra || null);
+      panel.hidden = false;
+    };
+    const bubs = h("div", { class: "bubs" }, ...items.map((it) => h("button", { class: "bub", "data-k": it.key, "aria-expanded": "false", onclick: () => openBub(it.key),
+      onmouseenter: () => (it.key === "soil" || it.key === "water") && !openKey && hi(it.key), onmouseleave: () => !openKey && hi(null) },
+      it.ic ? h("span", { class: "st st-none" }, icon(it.ic)) : mark(it.g), h("span", { class: "bub-t" }, h("small", {}, it.k), h("b", {}, it.v)))));
 
     const hMonth = h("h2", {}), hSub = h("p", {}), labelsEl = h("div", { class: "s3-labels" });
     const segBtn = (lab, on, fn, dot) => h("button", { "aria-pressed": String(on), onclick: fn }, dot ? h("span", { class: "dot", style: { background: dot } }) : null, lab);
@@ -1287,6 +1318,7 @@ function viewTerreno() {
       drawn ? null : h("div", { class: "s3-example" }, icon("i-info"), T.example),
       h("div", { class: "s3-src" }, T.src),
       h("div", { class: "s3-foot" }, strip),
+      bubs, panel,
       loader.el);
     const labels = () => {
       const f = st.water ? floodOf(st.m) : 0;
@@ -1304,19 +1336,7 @@ function viewTerreno() {
     };
     paint();
 
-    put($("#view"), h("div", { class: "terreno" }, stage, h("div", { class: "res terreno-cards" }, resHead(P),
-      h("div", { class: "col-left" },
-        h("section", { class: "card soil-card" }, h("h2", { class: "card-h" }, c.yourPlot),
-          row(gTex, c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null, null, "soil"),
-          row(gPh, c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null,
-            d ? scaleBar(4, 9, [[5, "#D7301F"], [5.5, "#FC8D59"], [7.3, "#1A9850"], [8, "#74ADD1"], [9, "#4575B4"]], d.ph, c.phScale) : null),
-          row(gOm, c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null,
-            d ? scaleBar(0, 8, [[2, "#FEC44F"], [4, "#EC7014"], [8, "#993404"]], d.om, c.omScale) : null),
-          row(gWl, c.waterlog, wlW, wlWhy, h("div", {}, wlSteps, h("div", { class: "q" }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); syncLot(); render(); }))), "water"),
-          row(gSl, c.relief, slopeW, [slope != null ? `${num(slope)} %` : null, tr?.elevation != null ? c.aboveSea(tr.elevation) : null].filter(Boolean).join(" · ") || null),
-          h("p", { class: "small soil-note" }, icon("i-info"), h("span", {}, c.soilSquare, " ", d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain)))),
-      h("div", { class: "col-right" },
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r)))))));
+    put($("#view"), h("div", { class: "terreno full" }, stage, h("div", { class: "res terreno-cards phone-only" }, resHead(P))));
 
     // The 3D loads after the page; without WebGL or the network the flat satellite map stays
     const [lon, lat] = lotCenter(pts);
@@ -1443,7 +1463,7 @@ function viewComparar() {
     const why = score >= 0 ? "" : mine.anyLoss > rec.anyLoss + 0.1
       ? (es() ? `Su plan pierde cosecha ${frac(mine.anyLoss).toLowerCase()} años; el recomendado, ${frac(rec.anyLoss).toLowerCase()}.` : `Your plan loses a harvest ${frac(mine.anyLoss).toLowerCase()} years; the recommended one, ${frac(rec.anyLoss).toLowerCase()}.`)
       : rec.harvest > mine.harvest ? (es() ? `Con el recomendado llega a cosecha ${fmtArea(rec.harvest - mine.harvest)} más.` : `The recommended plan brings ${fmtArea(rec.harvest - mine.harvest)} more to harvest.`) : "";
-    const calCard = (title, f) => h("section", { class: "card" }, h("div", { class: "row between" }, h("b", {}, title), verdictEl(f.verdict)), f.parcels.some((p) => p.d.steps.length) ? farmCalendar(r, f, { compact: true }) : h("p", { class: "small" }, c.noPlans));
+    const calCard = (title, f) => h("section", { class: "card" }, h("div", { class: "row between" }, h("b", {}, title), verdictEl(f.verdict, f)), f.parcels.some((p) => p.d.steps.length) ? farmCalendar(r, f, { compact: true }) : h("p", { class: "small" }, c.noPlans));
     put($("#view"), h("div", { class: "res cmp" },
       resHead(P),
       h("div", { class: "col-left wide" },
@@ -1914,6 +1934,7 @@ function renderChrome(r) {
   const fromTop = activeRect($("#topbar .tabs"), '[aria-current="page"]'), fromBottom = activeRect($("#bottom-nav"), '[aria-current="page"]');
   document.body.className = [`r-${r || "landing"}`, r ? "app-route" : "", isRes ? "results" : ""].filter(Boolean).join(" ");
   document.documentElement.lang = state.lang;
+  document.title = es() ? "Rooti · Siembre sabiendo" : "Rooti · Plant knowing";
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
   // Off the results there are no tabs, so the bar carries a way back: to the plan when there is one, else home
   const back = isRes ? null : h("a", { class: "round", href: ["planear", "aviso", "resumen"].includes(r) && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));

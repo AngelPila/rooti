@@ -7,3 +7,4 @@ logs/
 # AI originals without the required visible watermark
 design/system/assets/raw/
 __pycache__/
+.playwright-mcp/

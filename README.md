@@ -1,6 +1,6 @@
 # Rooti
 
-**What should I plant so my soil lasts longer?** Rooti compares crop-rotation plans for a smallholder's plot against 45 years of NASA climate data, month by month, and replays each plan over the real years 2001–2024.
+**What should I plant so my soil lasts longer?** Rooti compares crop-rotation plans for a smallholder's plot against 45 years of NASA climate data and replays each plan month by month on real weather: months that already happened use what really happened, and future months are tried against every real run of years since 1981.
 
 NASA Space Apps Challenge 2026 · *Field Shift: Adapting Farms with NASA Data* · Local event: Guayaquil, Ecuador.
 
@@ -61,7 +61,7 @@ How the global planner works (`app/climate.js`, `app/planner.js`):
 - **Years like this one by default.** NOAA (12 Nov 2026) and ERFEN (6 Nov 2026) expect a strong to very strong El Niño. For a plot on the Pacific coast of Ecuador or northern Peru and a plan that starts before May 2027, Rooti tests the plan on the 7 rainy seasons that followed past strong El Niños (1982-83, 1986-87, 1991-92, 1997-98, 2009-10, 2015-16, 2023-24) and says so in a yellow note. One tap switches to all years.
 - **Floods.** A month floods a non-rice crop when its rain, minus what evaporates, exceeds what the plot can drain: about 500 mm on a well-drained plot, about 215 mm on a flat, heavy one. So the extreme months of 1983 and 1998 (500–700 mm) drown maize and soybean in Daule even though Landsat shows the area as rarely under water. Rice is grown flooded and is not penalised.
 - **1981–1983 are back.** NASA POWER has no solar radiation before 1984, so those months use Hargreaves ET0 (temperature only), scaled month by month to Penman-Monteith over the years that have both. This brings 1982-83, the closest match to this year, into every test.
-- In the Daule example this moves land towards rice and flags maize in the rainy season as risky (lost 2 of 7 El Niño seasons).
+- In the Daule example this moves land towards rice and flags maize in the rainy season as risky (lost in some of the past strong El Niño seasons).
 
 ## How it works
 
@@ -72,7 +72,7 @@ How the global planner works (`app/climate.js`, `app/planner.js`):
   - **ISRIC SoilGrids 2.0** soil.
   - **Copernicus DEM** slope.
 - `app/data/crops.json` holds the crop parameters. Every value carries its source: FAO-56 crop coefficients, ECOCROP, FAO water manuals, INIAP.
-- `app/engine.js` is the rotation engine and runs in the browser:
+- `app/planner.js` is the rotation engine and runs in the browser:
   - **Water need** = crop coefficient × ET₀ of the season.
   - **Failure:** a rain-fed crop that gets less than 20 % of its water need is marked as failed.
   - **Soil risk** = rain on bare soil plus months of bare soil in the sun.

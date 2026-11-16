@@ -13,7 +13,7 @@ const CEREALS = new Set(["rice", "maize", "sorghum", "wheat", "barley"]);
 const GREEN_MANURE = new Set(["velvet_bean", "jack_bean"]);
 // El Niño events of moderate to very strong size (NOAA CPC ONI peak >= 1.5), by the year whose December starts the
 // rainy season they hit on the Pacific coast: 1982-83, 1986-87, 1991-92, 1997-98, 2009-10, 2015-16, 2023-24.
-export const NINO_ONSET = [1982, 1986, 1991, 1997, 2009, 2015, 2023];
+export const NINO_ONSET = [1982, 1991, 1997, 2009, 2015, 2023]; // ONI peak >= 1.5 (1986-87 peaks at 1.21 in data oni.csv)
 export const PRIORITY_WEIGHTS = { soil: { water: 1, soil: 3, income: 1 }, water: { water: 3, soil: 1, income: 1 }, income: { water: 1, soil: 1, income: 3 } };
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -205,10 +205,10 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
       }
       return { base: S[si].base, harvest, lostShare: planted ? lost / planted : 0, loss };
     });
-    const byCrop = {};
+    const byCrop = {}, onPlot = new Set();
     for (const pc of parcels) for (const st of pc.d.steps) {
       const row = tab[st.crop][st.t0], b = (byCrop[st.crop] ||= { crop: st.crop, area: 0, harvest: 0, plantings: [] });
-      b.area = Math.max(b.area, pc.share); b.harvest += pc.share * row.yld * (1 - 0) ; b.plantings.push({ share: pc.share, t0: st.t0, t1: st.t1, from: period[st.t0], to: period[st.t1 - 1], fail: row.fail, yld: row.yld });
+      if (!onPlot.has(st.crop + "|" + parcels.indexOf(pc))) { onPlot.add(st.crop + "|" + parcels.indexOf(pc)); b.area += pc.share; } b.harvest += pc.share * row.yld * (1 - 0) ; b.plantings.push({ share: pc.share, t0: st.t0, t1: st.t1, from: period[st.t0], to: period[st.t1 - 1], fail: row.fail, yld: row.yld });
     }
     const covered = parcels.reduce((x, pc) => x + pc.share * pc.d.covered, 0) / N;
     const anyLoss = mean(per.map((x) => (x.lostShare > 0 ? 1 : 0))), bigLoss = mean(per.map((x) => (x.lostShare >= 0.5 ? 1 : 0)));

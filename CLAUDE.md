@@ -22,7 +22,7 @@ Reto: "Field Shift: Adapting Farms with NASA Data". Herramienta de apoyo a la de
 ## Arquitectura
 - `../fieldshift-data/` → datos crudos y procesados (scripts en Docker `spaceapps-geo`).
 - `pipeline/build_app_data.py` → genera `app/data/<zona>.json` (climatología mensual, compuestos ENSO, curva NDVI, suelo, relieve).
-- `app/` → sitio **estático** (HTML + JS vanilla + CesiumJS con Esri World Imagery, sin API keys). El motor de recomendaciones corre en el navegador (`app/engine.js`) para que los sliders recalculen al instante.
+- `app/` → sitio **estático** (HTML + JS vanilla + CesiumJS con Esri World Imagery, sin API keys). El motor de recomendaciones corre en el navegador (`app/planner.js`) para que los sliders recalculen al instante.
 - `app/data/crops.json` → parámetros agronómicos **con fuente por cada valor**.
 
 ## Estilo
