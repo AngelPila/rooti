@@ -874,7 +874,8 @@ function planCard(it, r, plans, onPick, best, choose) {
   const order = [];
   for (let t = 0; t < N; t++) for (const { runs } of plots) { const c = runs.find((x) => x.t0 <= t && t < x.t1).c; if (!order.includes(c)) order.push(c); }
   const lossYears = f.per.filter((x) => x.lostShare > 0).length, cov = coveredMonths(f, N).filter(Boolean).length;
-  return h("button", { class: ["strat", best ? "best" : "", choose ? "choose" : ""].filter(Boolean).join(" "), ...(choose ? {} : { role: "radio", "aria-checked": String(it.key === state.pick) }), "data-id": it.key, onclick: () => onPick(it.key) },
+  const lead = order.find((x) => x !== "bare" && x !== "mulch") || "bare";
+  return h("button", { class: ["strat", best ? "best" : "", choose ? "choose" : ""].filter(Boolean).join(" "), style: { "--c": look(lead).color }, ...(choose ? {} : { role: "radio", "aria-checked": String(it.key === state.pick) }), "data-id": it.key, onclick: () => onPick(it.key) },
     h("span", { class: "spec mono" }, whyOf(it, plans), choose ? null : h("span", { class: "radio" })),
     h("span", { class: "pname" }, icon(NAMED_ICON[it.key]), D.names[it.key]),
     h("span", { class: "cropline" }, ...order.slice(0, 4).map((c) => { const L = look(c); return h("span", { class: `cl-chip${c === "bare" ? " bare" : ""}` }, h("i", { style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, icon(L.icon)), cropLabel(c)); }),
@@ -1995,6 +1996,8 @@ async function render() {
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
   rooti.route(r);
+  const pl = state.plan?.place, dk = pl && demoKey(pl), d = 0.01;
+  document.documentElement.style.setProperty("--sat", !pl ? "none" : dk ? `url(img/sat/${dk}.jpg)` : `url("${ESRI}/export?bbox=${[pl.lon - d * 2, pl.lat - d, pl.lon + d * 2, pl.lat + d].join(",")}&bboxSR=4326&size=1200,600&format=jpg&f=image")`);
   const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: () => viewBootcamp(arg, courseId, lessonNumber), plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso, resumen: viewResumen };
   try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
