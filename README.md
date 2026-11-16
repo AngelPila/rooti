@@ -128,29 +128,39 @@ functions the buttons use:
 | `show_on_page` | Opens a screen and marks what Rooti is talking about (a crop in the route, the years, an idea) |
 | `change_plot` | Changes the plot as the farmer said it ("son tres cuadras") and computes the plan again, with **Undo** |
 | `try_idea` | Tests irrigation, straw, a legume or other years on the Try screen; the farmer applies it with a button |
+| `try_change` | Compares the plans with other crops or irrigation ("¿y si siembro maní?"); applied only from its button |
+| `open_plan` | Opens one of the named plans ("el que más deja") |
+| `set_years` | Shows the plans tested on El Niño, dry, wet or all years, with **Undo** |
+| `this_year` | The last three months of rain against the normal (NASA POWER) |
 | `offer_whatsapp` | A button to keep going on WhatsApp, where the alerts are |
 
 Rooti never publishes on Vecinos or sends anything on its own. On the phone, after it changes the page, the sheet
-drops to a bar so the page stays in view; on a computer the panel sits beside the page.
+drops to a bar so the page stays in view; on a computer the panel sits beside the page. Its answer appears as the
+model writes it, and the conversation survives a reload of the tab.
 
-Both servers that serve the app answer it with the same API (`/api/rooti`): the bot's container, which serves the
-public website (`bot/src/rooti_bot/web_agent.py`), and the Node server (`server/rooti.mjs`). Each needs
-`DEEPSEEK_API_KEY` (the same model as the WhatsApp bot) and, for voice, `GROQ_API_KEY` (Whisper); without the model key
-the avatar does not show. The prompt and tools are `bot/hermes/rooti/WEB.md` and `web-tools.json`, next to the persona
-(`SOUL.md`) both channels share.
+One API answers it, the bot's (`bot/src/rooti_bot/web_agent.py`, `/api/rooti`): the website the bot's container
+serves asks it on its own address, and the Node server's pages ask it at `ROOTI_BOT_URL` (without it, no avatar). It
+needs `DEEPSEEK_API_KEY` (the same model as the WhatsApp bot) and, for voice, `GROQ_API_KEY` (Whisper). The prompt and
+tools are `bot/hermes/rooti/WEB.md`, `web-tools.json` and `glossary.json`, next to the persona (`SOUL.md`) both
+channels share. A farmer who opened the page from WhatsApp is the same farmer in both: the page's Rooti knows the
+chat's notes and chosen plan, and the chat knows what they asked on the page.
 
 ```bash
-cd server && pnpm install && DEEPSEEK_API_KEY=... GROQ_API_KEY=... node server.mjs   # open http://localhost:3000
-python -m pytest tests/e2e    # headless browser and a fake model; needs pytest and playwright
+cd server && pnpm install && ROOTI_BOT_URL=http://localhost:7860 node server.mjs   # open http://localhost:3000
+python -m pytest tests/e2e    # headless browser, the bot's server and a fake model; needs pytest and playwright
+python ../bot/evals/web_agent.py --url http://localhost:7860   # the real model on 16 farmer questions
 ```
+
+How it is doing (questions, seconds to a full answer, tools that failed, the latest questions), in the bot
+container's terminal: `rooti-bot web-turnos [--dias 7] [--ultimas 10]`.
 
 ## Deploy on Coolify
 
 1. **Database:** New resource → Database → PostgreSQL 16. Copy its *internal* connection URL.
 2. **App:** New resource → this repository, build pack **Dockerfile**, Dockerfile location `server/Dockerfile`,
    base directory `/` (the build needs both `server/` and `app/`). Port **3000**.
-3. **Environment:** `DATABASE_URL` = the internal URL from step 1. For Rooti in the app, also `DEEPSEEK_API_KEY`
-   and `GROQ_API_KEY` (the same keys as the WhatsApp bot).
+3. **Environment:** `DATABASE_URL` = the internal URL from step 1. For Rooti in the app, also `ROOTI_BOT_URL`, the
+   bot's public address, which answers it (and `ROOTI_WHATSAPP` for the WhatsApp buttons).
 4. Health check path `/healthz`. On the first start the server creates the tables (`server/schema.sql`) and loads
    the example posts from `app/data/vecinos.json` once, marked as examples.
 

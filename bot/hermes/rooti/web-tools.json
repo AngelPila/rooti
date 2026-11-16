@@ -129,6 +129,93 @@
   {
     "type": "function",
     "function": {
+      "name": "try_change",
+      "description": "Test the farmer's plan with other crops or with irrigation, without changing it, and compare it with the plan they have now. The page offers a button to apply it.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "crops": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every crop id the plan could use in the test, not only the new one"
+          },
+          "irrigation": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "open_plan",
+      "description": "Open one of the named plans on the page so the farmer sees its route, years and calendar.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "plan"
+        ],
+        "properties": {
+          "plan": {
+            "type": "string",
+            "enum": [
+              "safe",
+              "income",
+              "soil",
+              "today"
+            ],
+            "description": "safe: the safest. income: the one that pays most. soil: the one that cares most for the soil. today: what the farmer does today."
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "set_years",
+      "description": "Show the plans tested on another set of real years. The page shows the change with an Undo button.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "years"
+        ],
+        "properties": {
+          "years": {
+            "type": "string",
+            "enum": [
+              "all",
+              "nino",
+              "dry",
+              "wet"
+            ],
+            "description": "all: every year since 1981. nino: only rainy seasons after strong El Niños. dry: only dry years. wet: only wet years."
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "this_year",
+      "description": "The rain of the last months around the plot against the normal for those months (NASA POWER, 1991-2020).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "undo_change",
       "description": "Undo the latest change to the plot or the plan (one you made, or an idea the farmer applied), when the farmer asks to undo it or go back. Call it again to undo the one before.",
       "parameters": {

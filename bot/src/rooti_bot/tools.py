@@ -21,24 +21,9 @@ CROP_IDS = sorted(CROPS) + ["mulch"]
 CROP_LIST = ", ".join(f"{k} ({v['name_es'].split(' / ')[0].lower()})" for k, v in sorted(CROPS.items()))
 MODES = {"all": "todos los años desde 1981", "nino": "solo años de El Niño fuerte", "dry": "solo años secos",
          "wet": "solo años lluviosos"}
-GLOSSARY = {
-    "evapotranspiracion": "El agua que el sol y el viento sacan del suelo y de las hojas cada día. Si llueve menos "
-                          "que eso, la planta pasa sed.",
-    "et": "Lo mismo que evapotranspiración: el agua que el sol y el viento sacan del suelo y de las plantas.",
-    "humedad del suelo": "Cuánta agua guarda la tierra para la raíz. Una anomalía es cuando hay más o menos de lo "
-                         "normal para ese mes.",
-    "ndvi": "Un número que mide desde el satélite qué tan verde está el campo: alto es cultivo sano y tupido, bajo "
-            "es suelo pelado o planta seca.",
-    "balance hidrico": "La cuenta del agua: lo que llueve menos lo que la planta y el sol se llevan. Si sale "
-                       "negativo, falta riego.",
-    "el nino": "Cuando el mar frente a la costa se calienta: en la costa de Ecuador suele traer inviernos mucho más "
-               "lluviosos, con inundaciones, como 1983 y 1998.",
-    "rotacion": "Sembrar cultivos distintos uno tras otro en el mismo lote, por ejemplo arroz y después soya, para "
-                "cortar plagas y que el suelo descanse.",
-    "suelo desnudo": "Tierra sin nada sembrado ni paja encima. La lluvia fuerte se la lleva y el sol la reseca.",
-    "nasa power": "Datos de clima de la NASA desde 1981, calculados para cuadros de unos 50 km: dicen cómo es la "
-                  "zona, no el lote exacto.",
-}
+# The same words the website's Rooti explains (WEB.md gets the English ones)
+GLOSSARY = {name: entry["es"] for entry in json.loads((config.REPO / "bot" / "hermes" / "rooti" / "glossary.json")
+                                                    .read_text(encoding="utf-8")) for name in entry["names_es"]}
 
 
 class ToolError(Exception):

@@ -36,6 +36,9 @@ export async function initLink() {
 }
 
 export const linked = () => !!link.token;
+// Where Rooti's chat answers (the bot's address, "" for this same server), or null when this site has no Rooti
+export const rootiBase = () => (cfg.url == null ? null : cfg.url.replace(/\/$/, ""));
+export const rootiHeaders = () => (link.token ? { "x-rooti-token": link.token } : {});
 export const waUrl = (text) => `https://wa.me/${cfg.whatsapp}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
 export const hasWhatsApp = () => !!cfg.whatsapp;
 export const canHandoff = () => !link.token && cfg.url != null && !!cfg.whatsapp;

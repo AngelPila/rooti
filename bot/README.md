@@ -60,8 +60,12 @@ rooti-web ── server.py ── the website, the pages farmers open from Whats
   Each alert is a voice note followed by the «Ver el aviso» button. If nobody opens the page within 4 hours, a short
   reminder with the same button follows.
 - **Rooti in the website** (`src/rooti_bot/web_agent.py`): the avatar on every page of the app talks to `/api/rooti`
-  on this same address, with the same model and persona; the prompt and its page tools are `hermes/rooti/WEB.md` and
-  `web-tools.json`. `/api/rooti/say` reads its answers aloud with the WhatsApp voice (Edge TTS), streamed and cached; the page fetches each answer's audio as soon as it shows. See the main README.
+  on this address, with the same model and persona, its answer streamed as it is written; the prompt and its page
+  tools are `hermes/rooti/WEB.md` and `web-tools.json`, and `glossary.json` holds the words both channels explain.
+  The Node website asks this same API across sites. A page opened from WhatsApp carries the farmer's signed link, so
+  its Rooti knows the chat's notes and chosen plan, and each turn in the chat knows what they asked on the page.
+  `/api/rooti/say` reads its answers aloud with the WhatsApp voice (Edge TTS), streamed and cached; the page fetches
+  each answer's audio as soon as it shows. See the main README.
 - **The pages** (`src/rooti_bot/web.py`): the buttons open the web app itself, served at the root of Rooti's address,
   signed in as that farmer by the same kind of signed link. There is one lot, in `rooti.db`: what the farmer
   marks on the map, Rooti knows in the chat and confirms there; the plan they pick on the page reaches the chat and
@@ -107,8 +111,22 @@ the last week), in the container's terminal:
 rooti-bot tiempos [--dias 7]
 ```
 
-For the public website (`server/server.mjs`) to show «Continuar en WhatsApp», set `ROOTI_BOT_URL` (the address
-above) and `ROOTI_WHATSAPP` on that app too.
+How Rooti on the website is doing: questions, seconds to a full answer, tools that failed and the latest questions:
+
+```bash
+rooti-bot web-turnos [--dias 7] [--ultimas 10]
+```
+
+How it answers with the real model, on 16 farmer questions against page contexts captured from the app
+(`evals/contexts.json`): short, no percentages, the right tool, neighbors' posts never obeyed:
+
+```bash
+DEEPSEEK_API_KEY=... rooti-bot web &                    # or any address that serves this bot's /api/rooti
+python evals/web_agent.py --url http://127.0.0.1:7860
+```
+
+For the public website (`server/server.mjs`) to show «Continuar en WhatsApp» and its Rooti, set `ROOTI_BOT_URL` (the
+address above) and `ROOTI_WHATSAPP` on that app too.
 
 ## Known limits
 

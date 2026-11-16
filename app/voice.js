@@ -4,11 +4,11 @@
 const SILENCE = "data:audio/wav;base64,UklGRuYAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgATElTVBoAAABJTkZPSVNGVA0AAABMYXZmNjMuMS4xMDIAAGRhdGGgAAAAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
 const KEEP = 30;
 
-export function createVoice({ lang, fallback, stopFallback }) {
+export function createVoice({ lang, base, fallback, stopFallback }) {
   const player = new Audio(), ready = new Map();
   let on = false, turn = 0, soonTimer = 0;
   const key = (text) => `${lang()}|${text}`;
-  const url = (text) => `/api/rooti/say?lang=${lang()}&text=${encodeURIComponent(text)}`;
+  const url = (text) => `${base()}/api/rooti/say?lang=${lang()}&text=${encodeURIComponent(text)}`;
 
   function warm(text) {
     if (!on || !text || ready.has(key(text))) return;
