@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=23";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=57";
+import { COPY } from "./copy.js?v=58";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=24";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
@@ -1231,32 +1231,54 @@ function lotOf(P) {
   const dLat = (w / 4 / R) * k, dLon = (w / 2 / (R * Math.cos(lat / k))) * k;
   return { pts: [[lon - dLon, lat - dLat], [lon + dLon, lat - dLat], [lon + dLon, lat + dLat], [lon - dLon, lat + dLat]], drawn: false };
 }
+// Soil colours from the measured data: texture sets the earth, organic matter darkens the top (classed, like soil survey legends)
+const TEXTURE_COLOR = { sand: "#D9BF86", sandy_loam: "#C4A06A", loam: "#A9824F", clay_loam: "#8E5E3A", clay: "#7A4630" };
+const mixHex = (a, b, t) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t).toString(16).padStart(2, "0")).join("");
+function soilLook(d) {
+  const base = TEXTURE_COLOR[d?.texture] || "#94714A", dark = { low: 0.3, medium: 0.5, high: 0.72 }[d?.omClass] ?? 0.5;
+  return { top: mixHex(base, "#1E140C", dark), mid: mixHex(base, "#1E140C", dark * 0.45), base };
+}
+// A classed bar with a marker at the farmer's value: segs [[upTo, colour]], words under it
+function scaleBar(min, max, segs, value, words) {
+  let from = min;
+  const parts = segs.map(([to, col]) => { const el = h("i", { style: { flexGrow: String(Math.max(0.01, Math.min(to, max) - from)), background: col } }); from = to; return el; });
+  const pos = Math.max(2, Math.min(98, ((value - min) / (max - min)) * 100));
+  return h("div", { class: "scale", "aria-hidden": "true" }, h("div", { class: "scale-bar" }, ...parts, h("b", { class: "scale-mk", style: { left: `${pos}%` } })),
+    h("div", { class: "scale-w" }, ...words.map((w) => h("span", {}, w))));
+}
 function viewTerreno() {
   return withResults(async (r) => {
     const picked = (await chosen(r)).f;
     const c = C(), T = c.s3, P = state.plan, tr = r.terrain, d = describeSoil(tr?.soil), wl = r.site.wl, { pts, drawn } = lotOf(P);
-    const months = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([k]) => +k.slice(5) === i + 1 && +k.slice(0, 4) >= 1991 && +k.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (f) => vs.reduce((a, v) => a + v[f], 0) / Math.max(1, vs.length); return { m: i + 1, rain: avg("rain"), et0: avg("et0"), tmax: avg("tmax"), tmin: avg("tmin") }; });
-    const annual = months.reduce((a, x) => a + x.rain, 0), wet = months.filter((x) => x.rain >= x.et0 * 0.8).map((x) => mon(x.m)), dry = months.filter((x) => x.rain < 0.5 * x.et0).map((x) => mon(x.m));
-    const tmin = Math.min(...months.map((x) => x.tmin)), tmax = Math.max(...months.map((x) => x.tmax));
+    const months = Array.from({ length: 12 }, (_, i) => { const vs = Object.entries(r.clim.months).filter(([k]) => +k.slice(5) === i + 1 && +k.slice(0, 4) >= 1991 && +k.slice(0, 4) <= 2020).map(([, v]) => v); const avg = (f) => vs.reduce((a, v) => a + v[f], 0) / Math.max(1, vs.length); return { m: i + 1, rain: avg("rain"), et0: avg("et0") }; });
     const slope = tr?.slopePct, slopeW = slope == null ? "—" : slope < 2 ? c.flat : slope < 8 ? c.gentle : c.steep;
-    const row = (k, v, note, key) => h("div", { class: "trow", "data-k": key, onmouseenter: key && (() => hi(key)), onmouseleave: key && (() => hi(null)) }, h("span", {}, k, key ? h("i", { class: "pin" }) : null), h("div", {}, h("b", {}, v), note ? h("small", {}, note) : null));
-    const wlW = wl >= 0.6 ? c.high : wl >= 0.35 ? c.medium : c.low;
+    const wlK = wl >= 0.6 ? "high" : wl >= 0.35 ? "medium" : "low", wlW = c[wlK];
     const wlWhy = P.waterlog ? c.wlYouSaid : tr?.pilotWater != null ? c.wlSat : c.wlEstimated;
-    const mx = Math.max(...months.map((x) => Math.max(x.rain, x.et0)), 1);
-    const last = r.clim.last, lm = r.clim.months[last], lmNormal = normalRain(r.clim, +last.slice(5));
-    const noaa = DATA.outlook?.official?.noaa, erfen = DATA.outlook?.official?.erfen;
     // Month by month from the area's normal rain and evaporation (NASA POWER): how wet the soil is, how much low ground holds water
     const bal = (m) => months[m].rain - months[m].et0;
     const wetOf = (m) => Math.max(0, Math.min(1, (bal(m) + 170) / 310)), floodOf = (m) => Math.max(0, Math.min(0.24, (bal(m) / 134) * 0.22 * (0.6 + 0.8 * wl)));
     const soilWord = (m) => (wetOf(m) >= 0.75 ? T.soilWet : wetOf(m) >= 0.4 ? T.soilMoist : T.soilDry);
     const st = { m: months.reduce((b, x, i) => (x.rain > months[b].rain ? i : b), 0), mode: "foto", water: true, roofs: true, lifted: true };
     let scene = null;
-    const hi = (key) => { scene?.highlight(key); document.querySelectorAll(".terreno .trow[data-k]").forEach((x) => x.classList.toggle("on", x.dataset.k === key)); };
+    const hi = (key) => { scene?.highlight(key); document.querySelectorAll(".terreno .srow[data-k]").forEach((x) => x.classList.toggle("on", x.dataset.k === key)); };
 
-    const hMonth = h("h2", {}), hSub = h("p", {}), labelsEl = h("div", { class: "s3-labels" }), note = h("div", { class: "s3-note", hidden: true });
+    // One row per thing about the land: a traffic-light mark, the word, the number small, a classed bar where it helps
+    const G = c.soilGrade;
+    const mark = (g) => h("span", { class: `st st-${g}`, role: "img", "aria-label": G[g] }, { ok: "✓", watch: "!", bad: "✕" }[g]);
+    const row = (g, k, v, note, extra, key) => h("div", { class: "srow", "data-k": key, onmouseenter: key && (() => hi(key)), onmouseleave: key && (() => hi(null)) },
+      g ? mark(g) : h("span", { class: "st st-none" }), h("div", {}, h("small", {}, k), h("b", {}, v), note ? h("span", { class: "sn" }, note) : null, extra || null));
+    const gTex = !d ? null : d.texture === "sand" || d.texture === "clay" ? "watch" : "ok";
+    const gPh = !d ? null : d.phClass === "good" ? "ok" : d.phClass.startsWith("very") ? "bad" : "watch";
+    const gOm = !d ? null : d.omClass === "low" ? "watch" : "ok";
+    const gWl = { low: "ok", medium: "watch", high: "bad" }[wlK];
+    const gSl = slope == null ? null : slope >= 8 ? "watch" : "ok";
+    const wlSteps = h("div", { class: "scale", "aria-hidden": "true" }, h("div", { class: "scale-steps" }, ...[["low", "#DCEAF7"], ["medium", "#6BAED6"], ["high", "#08519C"]].map(([k, col]) => h("i", { class: k === wlK ? "on" : "", style: { background: col } }))),
+      h("div", { class: "scale-w" }, h("span", {}, c.low), h("span", {}, c.medium), h("span", {}, c.high)));
+
+    const hMonth = h("h2", {}), hSub = h("p", {}), labelsEl = h("div", { class: "s3-labels" });
     const segBtn = (lab, on, fn, dot) => h("button", { "aria-pressed": String(on), onclick: fn }, dot ? h("span", { class: "dot", style: { background: dot } }) : null, lab);
     const tools = h("div", { class: "s3-seg", role: "group" });
-    const strip = h("div", { class: "s3-months" }), bars = h("div", { class: "clim-bars" });
+    const strip = h("div", { class: "s3-months" });
     const loader = soilLoader(T);
     const stage = h("section", { class: "s3", "aria-label": T.from },
       labelsEl,
@@ -1264,16 +1286,11 @@ function viewTerreno() {
       h("div", { class: "s3-ctrl" }, tools),
       drawn ? null : h("div", { class: "s3-example" }, icon("i-info"), T.example),
       h("div", { class: "s3-src" }, T.src),
-      h("div", { class: "s3-foot" }, strip, h("div", { class: "s3-unk" }, ...T.unk.map(([lab, tx]) => h("button", { "aria-expanded": "false", onclick: (e) => {
-        const b = e.currentTarget, open = b.getAttribute("aria-expanded") !== "true";
-        b.parentNode.querySelectorAll("button").forEach((x) => x.setAttribute("aria-expanded", "false"));
-        b.setAttribute("aria-expanded", String(open)); note.hidden = !open; note.textContent = tx;
-      } }, lab)))),
-      note,
+      h("div", { class: "s3-foot" }, strip),
       loader.el);
     const labels = () => {
       const f = st.water ? floodOf(st.m) : 0;
-      return { lot: T.lot, lotSub: T.lotSub, cut: T.cut, soil: d ? c.texture[d.texture] : c.noData, waterK: f > 0 ? T.lows : T.lowsK, waterV: f > 0 ? T.lowsPct(Math.round(floodOf(st.m) * 100)) : T.noLows, roofsK: T.roofsK, roofsV: T.roofsV };
+      return { lot: T.lot, lotSub: T.lotSub, cut: T.cut, soil: d ? `${c.texture[d.texture]} · ${T.measured}` : c.noData, waterK: f > 0 ? T.lows : T.lowsK, waterV: f > 0 ? T.lowsPct(Math.round(f * 100)) : T.noLows };
     };
     const paint = (rebuild = true) => {
       const m = st.m, x = months[m];
@@ -1281,44 +1298,29 @@ function viewTerreno() {
       hSub.textContent = `${x.rain >= x.et0 * 0.8 ? T.rainy : x.rain < 0.5 * x.et0 ? T.drySeason : T.between} · ${soilWord(m)}`;
       put(tools, segBtn(T.photo, st.mode === "foto", () => { st.mode = "foto"; paint(); }),
         segBtn(T.green, st.mode === "verdor", () => { st.mode = "verdor"; paint(); }, "linear-gradient(90deg,#CDBF8C,#549A5C,#C8FF9E)"),
-        segBtn(T.water, st.water, () => { st.water = !st.water; paint(); }, "var(--rain)"),
-        segBtn(T.roofs, st.roofs, () => { st.roofs = !st.roofs; paint(); }, "#E9E3D3"),
-        segBtn(T.lift, st.lifted, () => { st.lifted = !st.lifted; scene?.lift(st.lifted); paint(false); }));
+        segBtn(T.water, st.water, () => { st.water = !st.water; paint(); }, "var(--rain)"));
       put(strip, ...months.map((y, i) => h("button", { "aria-pressed": String(i === m), "aria-label": cap(S().monthsLong[i]), onclick: () => { st.m = i; paint(); } }, h("i", { class: y.rain >= y.et0 * 0.8 ? "wet" : y.rain >= 0.5 * y.et0 ? "mid" : "" }), mon(i + 1))));
-      bars.querySelectorAll(".cb").forEach((b, i) => b.setAttribute("aria-pressed", String(i === m)));
       if (rebuild) scene?.update({ mode: st.mode, water: st.water, roofs: st.roofs, lifted: st.lifted, wet: wetOf(m), flood: floodOf(m) });
     };
-    put(bars, ...months.map((x, i) => h("button", { class: "cb", "aria-label": cap(S().monthsLong[i]), onclick: () => { st.m = i; paint(); stage.scrollIntoView({ behavior: "smooth", block: "nearest" }); } },
-      h("span", { class: "v" }, String(Math.round(x.rain))), h("div", { class: "bars" }, h("i", { class: "r", style: { height: `${Math.max(2, (x.rain / mx) * 100)}%` } }), h("i", { class: "e", style: { height: `${Math.max(2, (x.et0 / mx) * 100)}%` } })), h("span", {}, S().months[x.m - 1]))));
     paint();
 
     put($("#view"), h("div", { class: "terreno" }, stage, h("div", { class: "res terreno-cards" }, resHead(P),
       h("div", { class: "col-left" },
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.yourPlot),
-          h("div", {},
-            row(c.elevation, tr?.elevation != null ? `${tr.elevation} m` : "—"),
-            row(c.slope, slopeW, slope != null ? `${num(slope)} %` : null),
-            row(c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null, "soil"),
-            row(c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null),
-            row(c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null),
-            row(c.waterlog, wlW, wlWhy, "water")),
-          h("div", { class: "q" }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); syncLot(); render(); })),
-          h("p", { class: "small" }, d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain))),
+        h("section", { class: "card soil-card" }, h("h2", { class: "card-h" }, c.yourPlot),
+          row(gTex, c.soilType, d ? c.texture[d.texture] : c.noData, d ? c.holds(d.awc) : null, null, "soil"),
+          row(gPh, c.acidity, d ? c.phWord[d.phClass] : c.noData, d ? `pH ${num(d.ph)}` : null,
+            d ? scaleBar(4, 9, [[5, "#D7301F"], [5.5, "#FC8D59"], [7.3, "#1A9850"], [8, "#74ADD1"], [9, "#4575B4"]], d.ph, c.phScale) : null),
+          row(gOm, c.organic, d ? c.omWord[d.omClass] : c.noData, d ? `${num(d.om)} %` : null,
+            d ? scaleBar(0, 8, [[2, "#FEC44F"], [4, "#EC7014"], [8, "#993404"]], d.om, c.omScale) : null),
+          row(gWl, c.waterlog, wlW, wlWhy, h("div", {}, wlSteps, h("div", { class: "q" }, h("small", { class: "small" }, c.wlFix), waterlogOpts(P, () => { setPlan({ ...P }); memo.clear(); syncLot(); render(); }))), "water"),
+          row(gSl, c.relief, slopeW, [slope != null ? `${num(slope)} %` : null, tr?.elevation != null ? c.aboveSea(tr.elevation) : null].filter(Boolean).join(" · ") || null),
+          h("p", { class: "small soil-note" }, icon("i-info"), h("span", {}, c.soilSquare, " ", d && tr.soil.offsetKm ? c.srcTerrainNear(tr.soil.offsetKm) : c.srcTerrain)))),
       h("div", { class: "col-right" },
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.climate),
-          h("div", { class: "kpis" }, h("div", {}, h("b", {}, `${Math.round(annual).toLocaleString(state.lang)} mm`), h("small", {}, c.rainYear)), h("div", {}, h("b", {}, `${Math.round(tmin)}–${Math.round(tmax)} °C`), h("small", {}, c.tempRange)), h("div", {}, h("b", {}, String(dry.length)), h("small", {}, c.dryMonths))),
-          bars,
-          h("div", { class: "legend" }, h("span", {}, h("i", { class: "sw", style: { background: "var(--rain)" } }), c.lgRain), h("span", {}, h("i", { class: "sw", style: { background: "#C7CCD4" } }), c.lgNeed), h("span", {}, T.tapMonth)),
-          h("p", { class: "small" }, wet.length ? c.wetMonths(andList(wet)) : "", " ", dry.length ? c.dryList(andList(dry)) : "")),
-        h("section", { class: "card" }, h("h2", { class: "card-h" }, c.thisYear),
-          lm ? row(`${cap(S().monthsLong[+last.slice(5) - 1])} ${last.slice(0, 4)}`, `${Math.round(lm.rain)} mm`, c.vsNormal(Math.round(lmNormal))) : null,
-          noaa ? h("p", {}, c.ninoNow(noaa.chance_pct), h("br"), h("small", { class: "small" }, `NOAA · ${noaa.issued}`)) : null,
-          erfen && COAST(P.place) ? h("p", { class: "small" }, `ERFEN (${erfen.issued}): ${es() ? erfen.es : erfen.en}`) : null),
         h("section", { class: "card" }, h("h2", { class: "card-h" }, c.tipsTitle), tipList(tipsFor(r)))))));
 
     // The 3D loads after the page; without WebGL or the network the flat satellite map stays
     const [lon, lat] = lotCenter(pts);
-    import("./soil3d.js?v=3").then((m) => m.mountSoil3d(stage, labelsEl, { lat, lon, lot: pts, labels, onStep: loader.step })).then((s) => {
+    import("./soil3d.js?v=5").then((m) => m.mountSoil3d(stage, labelsEl, { lat, lon, lot: pts, labels, look: soilLook(d), onStep: loader.step })).then((s) => {
       if (!s) return;
       scene = s; stage.classList.add("ready"); paint();
     }).catch(() => { if (stage.isConnected) stage.replaceWith(plotMap(r, picked)); });
