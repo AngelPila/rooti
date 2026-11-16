@@ -1,6 +1,7 @@
-// Rooti inside the app: a floating avatar that opens a conversation by text or voice. The model runs behind
-// /api/rooti; its tools run here, through the same state and planner the buttons use, so what Rooti says is what the
-// page shows. Showing things happens on its own; changing the plot comes with Undo; publishing or WhatsApp never does.
+// Rooti inside the app: a floating avatar that opens a conversation by text or voice. The model runs behind the bot's
+// /api/rooti (app.api() says where); its tools run here, through the same state and planner the buttons use, so what
+// Rooti says is what the page shows. Showing things happens on its own; changing the plot comes with Undo; publishing
+// or WhatsApp never does. The conversation lasts as long as the tab, reloads included.
 const T = {
   es: {
     open: "Hablar con Rooti", close: "Cerrar", greet: "Hola, soy Rooti. Pregúnteme por su lote.", seeing: "Viendo", hello: (s) => `Hola, soy Rooti. Veo que está en ${s}. ¿En qué le ayudo?`,
@@ -33,6 +34,7 @@ const MARK = '<path d="M14 0H32V36H50V53H0V14A14 14 0 0 1 14 0Z"/><path d="M37 0
 // The Mosaico mark as a face: the eyes sit inside the two top modules and the smile across the bottom two
 const FACE = `<svg viewBox="-30 -30 160 160" aria-hidden="true"><circle cx="50" cy="50" r="80" fill="#153E32"/><g fill="#C8FF9E">${MARK}</g><g class="rt-eyes" fill="#153E32"><circle cx="18" cy="41" r="6"/><circle cx="82" cy="40" r="6"/></g><path d="M33 84Q50 96 67 84" fill="none" stroke="#153E32" stroke-width="6" stroke-linecap="round"/></svg>`;
 const GREET_MS = [1000, 6000];
+const SAVED = "rooti:chat";
 const wide = () => matchMedia("(min-width: 1024px)").matches;
 const waitFor = (test, ms = 8000) => new Promise((ok) => {
   const t0 = performance.now();
@@ -43,8 +45,9 @@ const waitFor = (test, ms = 8000) => new Promise((ok) => {
 export function createRooti(app) {
   const { h, icon } = app;
   const t = () => T[app.lang()];
-  const S = { open: false, peek: false, busy: false, rec: null, msgs: [], history: [], screen: null, greeted: false, ctxShown: null };
-  let root, fab, greet, panel, list, form, input, actBtn, peek;
+  const S = { open: false, peek: false, busy: false, rec: null, msgs: [], history: [], screen: null, greeted: false, ctxShown: null, live: "" };
+  let root, fab, greet, panel, list, form, input, actBtn, peek, liveText;
+  const api = (path) => `${app.api()}${path}`;
 
   const face = (cls = "") => { const s = h("span", { class: `rt-face ${cls}` }); s.innerHTML = FACE; return s; };
 
@@ -77,7 +80,11 @@ export function createRooti(app) {
   function msgEl(m) {
     if (m.who === "ctx") return h("div", { class: "rt-ctx" }, h("span", {}, t().now(app.screenName(m.screen))), chipsFor(m.screen));
     if (m.who === "me") return h("div", { class: "rt-me" }, m.voice ? h("span", { class: "rt-vn" }, icon("i-mic"), h("i"), h("i"), h("i"), h("i"), h("i")) : null, h("p", {}, m.text));
-    if (m.who === "dots") return h("div", { class: "rt-row" }, face("xs busy"), h("div", { class: "rt-bot rt-dots" }, h("i"), h("i"), h("i")));
+    if (m.who === "dots") {
+      // While the answer streams in, the dots give way to its words
+      liveText = h("p", {}, S.live);
+      return h("div", { class: "rt-row" }, face("xs busy"), S.live ? h("div", { class: "rt-bot" }, liveText) : h("div", { class: "rt-bot rt-dots" }, h("i"), h("i"), h("i")));
+    }
     return h("div", { class: "rt-row" }, face("xs"), h("div", { class: "rt-bot" }, h("p", {}, m.text),
       ...(m.cards || []).map(cardEl),
       m.chips ? chipsFor(m.chips) : null,
@@ -135,29 +142,62 @@ export function createRooti(app) {
     const users = S.history.map((m, i) => (m.role === "user" ? i : -1)).filter((i) => i >= 0).slice(-10);
     return S.history.slice(users.find((i) => S.history.length - i <= 40) ?? users[users.length - 1] ?? 0);
   };
+  function save() {
+    // Undo and the offer buttons hold functions of this page, so a reload keeps what changed but not the buttons
+    const keep = (m) => ({ ...m, cards: (m.cards || []).filter((c) => c.kind === "change").map((c) => ({ kind: "change", text: c.text, undone: c.undone })) });
+    try { sessionStorage.setItem(SAVED, JSON.stringify({ history: recent(), msgs: S.msgs.slice(-40).map(keep) })); } catch { /* private mode: the chat lives in memory */ }
+  }
+  function restore() {
+    try { const v = JSON.parse(sessionStorage.getItem(SAVED)); if (Array.isArray(v?.history) && Array.isArray(v?.msgs)) Object.assign(S, { history: v.history, msgs: v.msgs }); } catch { /* nothing saved */ }
+  }
+  function streamed(delta) {
+    S.live += delta;
+    if (liveText?.isConnected) { liveText.textContent = S.live; list.scrollTop = list.scrollHeight; } else draw();
+  }
+  // One model round, its words shown as they arrive; the answer is the last line of the stream
+  async function round(final) {
+    const r = await fetch(api("/api/rooti"), { method: "POST", headers: { "content-type": "application/json", ...app.apiHeaders() },
+      body: JSON.stringify({ lang: app.lang(), context: await app.context(), messages: recent(), final }) });
+    if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "", message = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      buf += dec.decode(value || new Uint8Array(), { stream: !done });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const ev = JSON.parse(line);
+        if (ev.delta) streamed(ev.delta);
+        else if (ev.message) message = ev.message;
+        else if (ev.error) throw new Error(ev.error);
+      }
+      if (done) break;
+    }
+    if (!message) throw new Error("no answer");
+    return message;
+  }
   async function ask(text, voice = false) {
     if (S.busy) return;
     if (!S.open) openPanel();
     S.msgs.push({ who: "me", text, voice });
     S.history.push({ role: "user", content: text });
-    S.busy = true; S.peek = false; draw();
-    const cards = []; let acted = false, reply = "";
+    S.busy = true; S.peek = false; S.live = ""; draw();
+    const cards = [], used = [], t0 = performance.now(); let acted = false, reply = "", failed = false;
     try {
-      for (let round = 0; round < 5; round++) {
-        const final = round === 4;
-        const r = await fetch("/api/rooti", { method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ lang: app.lang(), context: await app.context(), messages: recent(), final }) });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const { message } = await r.json();
-        // After acting, the model sometimes ends with no words; the final round forces them
-        if (!message.tool_calls?.length && !message.content?.trim() && !final) { round = 3; continue; }
+      for (let n = 0; n < 5; n++) {
+        const final = n === 4, message = await round(final);
         if (!message.tool_calls?.length || final) { reply = message.content?.trim() || ""; S.history.push({ role: "assistant", content: reply }); break; }
+        // Words that came before a tool call were the model thinking aloud; the answer comes after the tools
+        S.live = "";
         S.history.push(message);
         for (const call of message.tool_calls) {
           let args = {}; try { args = JSON.parse(call.function.arguments || "{}"); } catch { /* the model sent bad JSON: the tool reports it */ }
           const out = await runTool(call.function.name, args).catch((e) => ({ result: { error: String(e.message || e) } }));
           if (out.card) cards.push(out.card);
           if (out.acted) acted = true;
+          used.push({ name: call.function.name, error: out.result?.error || null });
           S.history.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(out.result) });
         }
       }
@@ -165,13 +205,16 @@ export function createRooti(app) {
       console.error("rooti", e);
       // Drop the half-finished turn, so the next question does not carry a tool call without its answer
       const at = S.history.map((m) => m.role).lastIndexOf("user"); S.history.splice(at);
-      reply = t().down;
+      reply = t().down; failed = true;
     }
-    S.busy = false;
+    S.busy = false; S.live = "";
     S.msgs.push({ who: "bot", text: reply || (cards.length ? t().done : t().again), cards });
     if (acted && !wide()) S.peek = true;
     draw();
-    if (voice && reply) say(reply);
+    save();
+    if (voice && reply && !failed) say(reply);
+    fetch(api("/api/rooti/turn"), { method: "POST", keepalive: true, headers: { "content-type": "application/json", ...app.apiHeaders() },
+      body: JSON.stringify({ question: text, answer: failed ? "" : reply, tools: used, seconds: (performance.now() - t0) / 1000, screen: S.screen || "landing", lang: app.lang(), voice, failed }) }).catch(() => {});
   }
 
   async function runTool(name, a) {
@@ -191,6 +234,27 @@ export function createRooti(app) {
       if (r.error) return { result: { error: r.error } };
       await mark(`idea-${a.idea}`);
       return { acted: true, card: r.apply ? { kind: "offer", label: r.label, apply: r.apply, title: r.title } : null, result: { idea: r.title, why: r.why, effect: r.effect, applied: false } };
+    }
+    if (name === "try_change") {
+      const r = await app.tryChange(a);
+      if (r.error) return { result: { error: r.error } };
+      return { acted: true, card: { kind: "offer", label: r.label, apply: r.apply, title: r.title }, result: { ...r.result, applied: false } };
+    }
+    if (name === "open_plan") {
+      const r = await app.openPlan(a.plan);
+      if (r.error) return { result: { error: r.error } };
+      await mark("route");
+      return { acted: true, result: r };
+    }
+    if (name === "set_years") {
+      const r = await app.setYears(a.years);
+      if (r.error) return { result: { error: r.error } };
+      if (r.changed) await mark("years");
+      return { acted: true, card: r.changed ? { kind: "change", text: r.changed, undo: r.undo } : null, result: { changed: r.changed, now: r.now } };
+    }
+    if (name === "this_year") {
+      const r = await app.thisYear();
+      return { result: r };
     }
     if (name === "undo_change") {
       const c = S.msgs.flatMap((m) => m.cards || []).reverse().find((x) => x.kind === "change" && x.undo && !x.undone);
@@ -222,13 +286,13 @@ export function createRooti(app) {
     c.undo(); c.undone = true;
     S.msgs.push({ who: "bot", text: t().restored, cards: [] });
     S.history.push({ role: "user", content: `[${t().undo}: ${c.text}]` }, { role: "assistant", content: t().restored });
-    draw();
+    draw(); save();
   }
   function takeOffer(c) {
     const undo = c.apply(); c.done = true;
     S.msgs.push({ who: "bot", text: t().applied, cards: [{ kind: "change", text: c.title, undo }] });
     S.history.push({ role: "user", content: `[${c.label}: ${c.title}]` }, { role: "assistant", content: t().applied });
-    draw();
+    draw(); save();
   }
 
   const { say, hush, unlock } = app.voice;
@@ -261,7 +325,7 @@ export function createRooti(app) {
     let text = "";
     try {
       const blob = new Blob(rec.chunks, { type: rec.mr.mimeType || "audio/webm" });
-      const r = await fetch(`/api/rooti/voice?lang=${app.lang()}`, { method: "POST", headers: { "content-type": blob.type }, body: blob });
+      const r = await fetch(api(`/api/rooti/voice?lang=${app.lang()}`), { method: "POST", headers: { "content-type": blob.type }, body: blob });
       if (r.ok) text = (await r.json()).text;
     } catch { /* handled below */ }
     S.busy = false;
@@ -278,7 +342,9 @@ export function createRooti(app) {
 
   return {
     async start() {
-      try { const r = await fetch("/api/rooti", { cache: "no-store" }), st = r.ok && (await r.json()); if (!st?.on) return; app.voice.enable(st.say); } catch { return; }
+      if (app.api() == null) return;
+      try { const r = await fetch(api("/api/rooti"), { cache: "no-store" }), st = r.ok && (await r.json()); if (!st?.on) return; app.voice.enable(st.say); } catch { return; }
+      restore();
       build(); root.hidden = false; S.ready = true;
       root.dataset.screen = S.screen || "landing";
       draw(); greetOnce();

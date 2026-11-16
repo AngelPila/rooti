@@ -1,0 +1,50 @@
+[
+  {
+    "names_es": ["evapotranspiracion", "et"],
+    "name_en": "ET or evapotranspiration",
+    "es": "El agua que el sol y el viento sacan del suelo y de las hojas cada día. Si llueve menos que eso, la planta pasa sed.",
+    "en": "the water the sun and wind take out of the soil and the leaves each day; if it rains less than that, the plant goes thirsty."
+  },
+  {
+    "names_es": ["humedad del suelo", "anomalia de humedad"],
+    "name_en": "Soil moisture anomaly",
+    "es": "Cuánta agua guarda la tierra para la raíz. Una anomalía es cuando hay más o menos de lo normal para ese mes.",
+    "en": "when the ground holds more or less water than normal for that month."
+  },
+  {
+    "names_es": ["ndvi"],
+    "name_en": "NDVI",
+    "es": "Un número que mide desde el satélite qué tan verde está el campo: alto es cultivo sano y tupido, bajo es suelo pelado o planta seca.",
+    "en": "a satellite number for how green the field is; high is a healthy, dense crop, low is bare soil or a dry plant."
+  },
+  {
+    "names_es": ["balance hidrico"],
+    "name_en": "Water balance",
+    "es": "La cuenta del agua: lo que llueve menos lo que la planta y el sol se llevan. Si sale negativo, falta riego.",
+    "en": "the rain minus what the plant and the sun take; if it is negative, the crop needs water."
+  },
+  {
+    "names_es": ["el nino"],
+    "name_en": "El Niño",
+    "es": "Cuando el mar frente a la costa se calienta: en la costa de Ecuador suele traer inviernos mucho más lluviosos, con inundaciones, como 1983 y 1998.",
+    "en": "when the sea off the coast warms up; on the coast of Ecuador it usually brings much wetter rainy seasons, with floods, like 1983 and 1998."
+  },
+  {
+    "names_es": ["rotacion"],
+    "name_en": "Crop rotation",
+    "es": "Sembrar cultivos distintos uno tras otro en el mismo lote, por ejemplo arroz y después soya, para cortar plagas y que el suelo descanse.",
+    "en": "planting different crops one after another on the same plot, like rice and then soybean, to break pests and rest the soil."
+  },
+  {
+    "names_es": ["suelo desnudo"],
+    "name_en": "Bare soil",
+    "es": "Tierra sin nada sembrado ni restos de cosecha encima. La lluvia fuerte se la lleva y el sol la reseca.",
+    "en": "ground with nothing growing and no crop residue on it; heavy rain washes it away and the sun dries it out."
+  },
+  {
+    "names_es": ["nasa power"],
+    "name_en": "NASA POWER",
+    "es": "Datos de clima de la NASA desde 1981, calculados para cuadros de unos 50 km: dicen cómo es la zona, no el lote exacto.",
+    "en": "NASA climate data since 1981 for squares about 50 km wide; it describes the area, not the exact plot."
+  }
+]

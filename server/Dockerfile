@@ -6,8 +6,6 @@ COPY server/package.json server/package-lock.json* ./
 RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev --no-audit --no-fund
 COPY server/ ./
 COPY app/ /srv/app/
-# Rooti in the app speaks with the same persona as Rooti on WhatsApp
-COPY bot/hermes/rooti/ /srv/bot/hermes/rooti/
 ENV NODE_ENV=production PORT=3000 APP_DIR=/srv/app TRUST_PROXY=1
 EXPOSE 3000
 USER node

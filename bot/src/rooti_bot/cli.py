@@ -32,6 +32,11 @@ def context(chat: str) -> str:
         lines.append("Botones que ya le llegaron hoy: " + ", ".join(
             f"«{b['label']}» (hace {max(1, round((time.time() - b['sent_at']) / 60))} min)" for b in pages)
             + ". No se los mandes otra vez si no te los pide.")
+    asked = store.web_turns(time.time() - 86400, phone=chat)[-3:]
+    if asked:
+        lines.append("En la página web también habló con Rooti (no lo repitas, sigue desde ahí): " + " | ".join(
+            f"hace {max(1, round((time.time() - t['at']) / 60))} min preguntó «{t['question'][:200]}» y Rooti le "
+            f"dijo «{t['answer'][:300]}»" for t in asked))
     chosen = farmer.get("chosen")
     if chosen:
         lines.append(f"En la página «Ver mi plan» eligió «{chosen['name']}»: {chosen.get('route') or ''}")
@@ -78,6 +83,35 @@ def times(days: int) -> str:
     return "\n".join(lines)
 
 
+def web_turns(days: int, last: int) -> str:
+    """How Rooti on the website is doing: questions, seconds to a full answer, tools that failed, the latest ones."""
+    import statistics
+    from collections import Counter
+    from rooti_bot import store
+    rows = store.web_turns(time.time() - days * 86400)
+    if not rows:
+        return f"Últimos {days} días: nadie le preguntó a Rooti en la web."
+    secs = sorted(r["seconds"] for r in rows)
+    used = Counter(t["name"] for r in rows for t in r["tools"])
+    broke = Counter(f"{t['name']}: {t['error']}" for r in rows for t in r["tools"] if t["error"])
+    lines = [f"Últimos {days} días: {len(rows)} preguntas en la web, {sum(r['voice'] for r in rows)} por voz, "
+             f"{len({r['phone'] for r in rows if r['phone']})} de agricultores que vinieron de WhatsApp.",
+             f"  respuesta completa: mediana {statistics.median(secs):.1f} s, "
+             f"p90 {secs[min(len(secs) - 1, int(len(secs) * 0.9))]:.1f} s",
+             f"  sin respuesta: {sum(r['failed'] for r in rows)}",
+             "  herramientas: " + (", ".join(f"{n} {c}" for n, c in used.most_common()) or "ninguna")]
+    if broke:
+        lines.append("  herramientas que fallaron: " + "; ".join(f"{e} ({c})" for e, c in broke.most_common(8)))
+    if last:
+        lines.append(f"Las últimas {min(last, len(rows))}:")
+        for r in rows[-last:]:
+            when = datetime.fromtimestamp(r["at"], TZ).strftime("%d/%m %H:%M")
+            tools = ", ".join(t["name"] for t in r["tools"])
+            lines.append(f"  {when} [{r['screen']}] «{r['question'][:120]}» → «{r['answer'][:160]}»"
+                         + (f" ({tools})" if tools else "") + f" {r['seconds']:.1f} s")
+    return "\n".join(lines)
+
+
 def serve_alerts(every: int) -> int:
     from rooti_bot import alerts
     while True:
@@ -109,6 +143,9 @@ def main(argv=None) -> int:
     av.add_argument("--cada", type=int, default=1800)
     tm = sub.add_parser("tiempos", help="cuánto tarda Rooti en responder (mediana y p90)")
     tm.add_argument("--dias", type=int, default=7)
+    wt = sub.add_parser("web-turnos", help="cómo le va a Rooti en la web: preguntas, tiempos, herramientas que fallan")
+    wt.add_argument("--dias", type=int, default=7)
+    wt.add_argument("--ultimas", type=int, default=10, help="cuántas preguntas recientes mostrar")
     srv = sub.add_parser("web", help="la web de Rooti, las páginas de WhatsApp y su API")
     srv.add_argument("--host", default="0.0.0.0")
     srv.add_argument("--puerto", type=int, default=7860)
@@ -147,6 +184,9 @@ def main(argv=None) -> int:
         return 0
     if args.cmd == "tiempos":
         print(times(args.dias))
+        return 0
+    if args.cmd == "web-turnos":
+        print(web_turns(args.dias, args.ultimas))
         return 0
     if args.cmd == "web":
         from rooti_bot import server

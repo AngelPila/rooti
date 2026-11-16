@@ -88,6 +88,15 @@ def _confirm_choice(phone: str) -> None:
     bridge.send_text(phone, text)
 
 
+def client_ip(request: Request) -> str:
+    """The address Coolify's proxy saw: it appends the last X-Forwarded-For hop, the ones before come from the
+    client and can be anything."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
+    return request.client.host if request.client else "?"
+
+
 def _allowed(key: str) -> bool:
     now = time.time()
     with _lock:
@@ -152,8 +161,7 @@ def mount(api: FastAPI) -> None:
 
     @api.post("/api/handoff")
     async def handoff(request: Request):
-        ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0]
-        if not _allowed(ip.strip()):
+        if not _allowed(client_ip(request)):
             raise HTTPException(429, "Demasiados intentos; pruebe en una hora.")
         body = await request.json()
         try:

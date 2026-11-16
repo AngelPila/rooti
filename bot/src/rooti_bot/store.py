@@ -47,10 +47,20 @@ CREATE TABLE IF NOT EXISTS buttons (      -- every page button Rooti sends; one 
   label TEXT NOT NULL, text TEXT NOT NULL, url TEXT NOT NULL,
   queued_at REAL NOT NULL, sent_at REAL
 );
+CREATE TABLE IF NOT EXISTS web_turns (    -- each question to Rooti on the website, for `rooti-bot web-turnos`
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at REAL NOT NULL,
+  phone TEXT,                             -- set when the page was opened from WhatsApp
+  lang TEXT NOT NULL, screen TEXT NOT NULL,
+  question TEXT NOT NULL, answer TEXT NOT NULL,
+  tools TEXT NOT NULL DEFAULT '[]',       -- [{name, error}] in the order Rooti called them
+  seconds REAL NOT NULL, voice INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0
+);
 """
 # Columns added after the first deploy: CREATE TABLE IF NOT EXISTS leaves an older table as it was.
 LATER_COLUMNS = {"plot": "TEXT NOT NULL DEFAULT '[]'", "chosen": "TEXT"}
 HANDOFF_HOURS = 48
+WEB_TURN_DAYS = 90
 CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I, read aloud or typed by hand
 LOT_FIELDS = ("name", "lat", "lon", "place", "crops", "current", "area", "unit", "irrigation", "waterlog", "priority",
               "alerts_ok", "notes", "plot", "chosen")
@@ -215,3 +225,23 @@ def sent_buttons(phone: str, since: float) -> list[dict]:
     with connect() as db:
         return [dict(r) for r in db.execute("SELECT label, sent_at FROM buttons WHERE phone = ? AND sent_at >= ? "
                                             "ORDER BY sent_at", (phone, since))]
+
+
+def add_web_turn(phone: str | None, lang: str, screen: str, question: str, answer: str, tools: list, seconds: float,
+                 voice: bool, failed: bool) -> None:
+    now = time.time()
+    with connect() as db:
+        db.execute("DELETE FROM web_turns WHERE at < ?", (now - WEB_TURN_DAYS * 86400,))
+        db.execute("INSERT INTO web_turns (at, phone, lang, screen, question, answer, tools, seconds, voice, failed) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (now, phone, lang, screen, question, answer, json.dumps(tools, ensure_ascii=False), seconds,
+                    int(voice), int(failed)))
+
+
+def web_turns(since: float, phone: str | None = None) -> list[dict]:
+    query, args = "SELECT * FROM web_turns WHERE at >= ?", [since]
+    if phone is not None:
+        query, args = query + " AND phone = ?", args + [phone]
+    with connect() as db:
+        rows = db.execute(query + " ORDER BY at", args).fetchall()
+    return [{**dict(r), "tools": json.loads(r["tools"])} for r in rows]
