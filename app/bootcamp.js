@@ -4,11 +4,11 @@ import { BOOTCAMP_COURSES } from "./bootcamp-courses.js?v=2";
 const PROGRESS_KEY = "bootcamp2";
 const LESSON_ICONS = ["i-sprout", "i-leaf", "i-calendar", "i-history"];
 const COURSE_ART = {
-  rotation: { image: "img/illu/maize-clean.png", accent: "#E6AE2E", tint: "#FFF2CE" },
-  soil: { image: "img/illu/mulch-clean.png", accent: "#78B957", tint: "#EAF3DD" },
-  water: { image: "img/illu/rice-clean.png", accent: "#4A7FC1", tint: "#E5EFF8" },
+  rotation: { image: "img/illu/maize.jpg", accent: "#E6AE2E", tint: "#FFF2CE" },
+  soil: { image: "img/illu/mulch.jpg", accent: "#78B957", tint: "#EAF3DD" },
+  water: { image: "img/illu/rice.jpg", accent: "#4A7FC1", tint: "#E5EFF8" },
   seeds: { image: "img/maize.jpg", accent: "#D18A35", tint: "#F9EAD8" },
-  pests: { image: "img/illu/soybean-clean.png", accent: "#2E9E92", tint: "#DFF2EF" },
+  pests: { image: "img/illu/soybean.jpg", accent: "#2E9E92", tint: "#DFF2EF" },
 };
 
 export function createBootcamp({ h, put, icon, tile, store, speak }) {
@@ -223,7 +223,7 @@ export function createBootcamp({ h, put, icon, tile, store, speak }) {
           ),
         ),
         h("figure", {},
-          h("img", { src: "img/illu/maize-clean.png", alt: "" }),
+          h("img", { src: "img/illu/maize.jpg", alt: "" }),
         ));
     const courseResources = h("section", { class: "bc-resources", "aria-labelledby": "bc-courses-title" },
         h("div", { class: "bc-section-heading" },
