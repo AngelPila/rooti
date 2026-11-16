@@ -59,6 +59,7 @@
 - Fonts from Google Fonts (SIL Open Font License): Geist, Geist Mono, Funnel Display, Instrument Serif, Space Grotesk.
 - Crop illustrations (maize, rice, soybean, straw mulch) generated with AI (OpenAI image generation through Codex). Each carries a visible "IMAGEN GENERADA CON IA" watermark. The app uses the same files on the landing page (`app/img/illu/`).
 - "How it works" illustrations on the landing page (plot on the map, climate reading, plan comparison, Rooti on WhatsApp) generated with AI (OpenAI image generation through Codex), each with a visible "IMAGEN GENERADA CON IA" watermark. Files and exact prompts: `app/img/how/` and `app/img/how/PROMPTS.md`.
+- Profile pictures of the example neighbors in Vecinos (`app/img/vecinos/`) generated with AI (OpenAI image generation through Codex). Each carries a visible "IA" badge, and the Vecinos page says the pictures are AI-generated. Prompts: `app/img/vecinos/PROMPTS.json`.
 - Icons and the vector logo mark were drawn by hand for this project.
 - Agent skills in `.claude/skills/` (learn-taste, mobile-native, break-ui, remove-animations, find-animation-opportunities, choreograph, prototype) copied from [emilkowalski/skills](https://github.com/emilkowalski/skills) (MIT), commit 0f2e23b. License in `.claude/skills/EMIL-SKILLS-LICENSE`.
 

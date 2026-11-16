@@ -1,7 +1,7 @@
 import { fetchClimate } from "./climate.js?v=23";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
+import { plan as runPlanner, cropMonths, NINO_ONSET, COAST, ninoByDefault, ninoOffsetFor, namedPlans as pickNamedPlans } from "./planner.js?v=36";
 import { COPY } from "./copy.js?v=57";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=24";
+import { fetchTerrain, describeSoil, waterlogFactor, nearPilot, pilotSite } from "./terrain.js?v=25";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=3";
@@ -12,7 +12,6 @@ const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
 const GEO = "https://geocoding-api.open-meteo.com/v1/search";
 const REV = "https://nominatim.openstreetmap.org/reverse";
-const PILOTS = { daule: [-1.86, -79.98], babahoyo: [-1.80, -79.53], quevedo: [-1.03, -79.46] };
 const CROP_ORDER = ["rice", "maize", "soybean", "potato", "common_bean", "peanut", "sorghum", "wheat", "barley", "sunflower", "chickpea", "cowpea", "jack_bean", "velvet_bean", "mulch"];
 const UNITS = { ha: 1, cuadra: 0.7056, m2: 0.0001, acre: 0.4047 };
 const STEP = { ha: 0.5, cuadra: 1, m2: 100, acre: 1 };
@@ -108,7 +107,6 @@ const andList = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join("
 function fracParts(x) { let best = [1, 2], err = 1; for (let n = 2; n <= 10; n++) { const k = Math.max(1, Math.round(x * n)); const e = Math.abs(k / n - x); if (e < err - 0.02) { err = e; best = [k, n]; } } return best; }
 // 0.83 -> "5 de cada 6": plain fractions instead of percentages.
 const frac = (x) => (x <= 0.001 ? C().none : x >= 0.999 ? (es() ? "Todos" : "All") : C().kOf(...fracParts(x)));
-const nearPilot = (pl) => Object.entries(PILOTS).find(([, [la, lo]]) => Math.hypot(la - pl.lat, lo - pl.lon) * 111 < 40)?.[0] || null;
 function parseDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(value + "T12:00:00");
@@ -184,8 +182,7 @@ function terrain(pl, preload = false) {
       if (z) {
         const pilotData = (url) => fetch(url, { signal }).then(ok).catch(() => null);
         const [zd, sw] = await Promise.all([pilotData(`data/${z}.json`), pilotData("data/surface_water.json")]);
-        const so = zd?.soil; if (so?.clay) pilotSoil = { clay: so.clay.value_0_30cm, sand: so.sand.value_0_30cm, phh2o: so.phh2o.value_0_30cm, soc: so.soc.value_0_30cm, nitrogen: so.nitrogen?.value_0_30cm };
-        pilotWater = sw?.zones?.[z]?.waterlogging_index ?? null;
+        ({ pilotSoil, pilotWater } = pilotSite(zd, sw, z));
       }
       const t = await (bundled ?? fetchTerrain(pl.lat, pl.lon, pilotSoil, { signal })).catch(() => ({ soil: null }));
       return { ...t, pilotWater, zone: z };
@@ -212,7 +209,7 @@ async function results(P = state.plan, mode = state.mode, priority = "soil") {
   if (!memo.has(key)) {
     const site = siteOf(tr, P);
     const start = P.start.slice(0, 7), end = P.end.slice(0, 7);
-    const ninoOffset = ninoNow(P) ? CURRENT_NINO_ONSET - Number(start.slice(0, 4)) : 0;
+    const ninoOffset = ninoNow(P) ? ninoOffsetFor(start) : 0;
     memo.set(key, { clim: c, P, terrain: tr, site, ninoOffset, ...runPlanner(c, DATA.crops, P.crops, { start, end, irrigation: P.irrigation, priority, mode, ninoOffset, site, current: P.current || [] }) });
   }
   return memo.get(key);
@@ -696,16 +693,7 @@ async function withResults(draw) {
 const NAMED_ICON = { safe: "i-shield", income: "i-income", soil: "i-straw", today: "i-plot" };
 async function namedPlans(P = state.plan, mode = state.mode) {
   const [rs, ri] = await Promise.all([results(P, mode, "soil"), results(P, mode, "income")]);
-  const today = rs.today, tSig = today ? sig(today) : null;
-  const pool = [rs.farm, ri.farm, ...(rs.others || []), ...(ri.others || [])].filter((f) => f && sig(f) !== tSig && f.parcels.some((p) => p.d.steps.length));
-  // A plan offered as new must be a rotation: at least two crops, and never the same crop twice in a row on a plot
-  const rotates = (f) => new Set(f.parcels.flatMap((p) => p.d.steps.map((s) => s.crop))).size > 1 && f.parcels.every((p) => p.d.steps.every((s, i, a) => !i || s.crop !== a[i - 1].crop));
-  const rot = pool.filter(rotates);
-  const safe = [...(rot.length ? rot : pool)].sort((a, b) => a.anyLoss - b.anyLoss || b.harvest - a.harvest)[0];
-  const out = [], seen = new Set();
-  for (const [key, f] of [["safe", safe], ["income", ri.farm], ["soil", rs.farm]]) { if (!f || seen.has(sig(f))) continue; seen.add(sig(f)); out.push({ key, f }); }
-  if (today) out.push({ key: "today", f: today });
-  return out;
+  return pickNamedPlans(rs, ri);
 }
 const whyOf = (it, plans) => {
   const D = C().ds, today = plans.find((x) => x.key === "today");
@@ -1055,15 +1043,59 @@ async function viewAviso() {
     h("section", { class: "av-hero" }, h("span", { class: "pill-eyebrow glass mono" }, W.kind[A.kind] || W.crumb), h("h1", { class: "h2" }, alertTitle(A, days)), es() ? h("p", {}, A.text) : null),
     h("section", { class: "card" }, h("b", { class: "card-h" }, W.nextDays), days ? rainChart(days) : h("p", { class: "small" }, W.noForecast), h("p", { class: "small" }, W.forecastSrc)),
     h("section", { class: "card" }, h("b", { class: "card-h" }, W.todo), tipList(W.tips[A.kind] || [])),
-    h("div", { class: "av-acts" }, hasWhatsApp() ? h("a", { class: "btn lime big block", href: waUrl() }, icon("i-chat"), W.back) : null, h("a", { class: "btn big block", href: "#/plan" }, icon("i-month"), W.seePlan))));
+    h("div", { class: "av-acts" }, hasWhatsApp() ? h("a", { class: "btn lime big block", href: waUrl() }, icon("i-chat"), W.back) : null, h("a", { class: "btn big block", href: "#/resumen" }, icon("i-month"), W.seePlan))));
+}
+
+/* ================= Resumen: the page behind WhatsApp's «Ver mi plan» ================= */
+// The chat explains; this page is for seeing the plan at a glance and picking one. The full plan is one tap away.
+function nextUp(r, f) {
+  const N = r.period.length, now = new Date(), ym = now.getFullYear() * 12 + now.getMonth() + 1;
+  let t = r.period.findIndex((p) => p.y * 12 + p.m === ym), early = false;
+  // A plan that has not started yet: everything in it is still to sow
+  if (t < 0) { early = r.period[0].y * 12 + r.period[0].m > ym; if (!early) return []; t = 0; }
+  const crop = (x) => x && x.c !== "bare" && x.c !== "mulch";
+  return plotsOf(f).map(({ pc, name }) => {
+    const runs = runsOf(pc, N), cur = runs.find((x) => x.t0 <= t && t < x.t1);
+    const run = crop(cur) ? cur : runs.find((x) => x.t0 > t && crop(x));
+    return run && { pc, name, run, now: run === cur && !early };
+  }).filter(Boolean);
+}
+function viewResumen() {
+  return withResults(async (r) => {
+    const c = C(), D = c.ds, S2 = c.sum, P = state.plan, N = r.period.length, multi = r.samples.length > 1;
+    const plans = await namedPlans(P);
+    if (!plans.length) { put($("#view"), h("div", { class: "res aviso" }, h("section", { class: "card" }, h("p", {}, c.noPlans), h("a", { class: "btn dark", href: "#/planear" }, c.changeData)))); return; }
+    if (!plans.some((x) => x.key === state.pick)) state.pick = plans.some((x) => x.key === link.chosen?.key) ? link.chosen.key : plans[0].key;
+    const cur = () => plans.find((x) => x.key === state.pick);
+    const thisYear = new Date().getFullYear();
+    const monthOf = (t) => { const p = r.period[t]; return monL(p.m) + (p.y !== thisYear ? ` ${p.y}` : ""); };
+    const line = (x) => (x.now ? S2.growing : S2.sow)(cropName(x.run.c).toLowerCase(), fmtArea(x.pc.share), monthOf(x.now ? x.run.t1 - 1 : x.run.t0));
+    const draw = () => {
+      const it = cur(), f = it.f, next = nextUp(r, f), good = f.per.filter((x) => yearLv(x) === "g").length;
+      const e = explain(f, r), note = e.risks[0] || e.why[0];
+      const [a, b, z] = D.goodYears(f.per.length);
+      put($("#view"), h("div", { class: "res aviso sum" },
+        h("section", { class: "av-hero sum-hero", "data-rooti": "route" },
+          h("span", { class: "pill-eyebrow glass mono" }, `${S2.eyebrow} · ${D.names[it.key]}`),
+          h("h1", { class: "h2" }, next.length ? cap(line(next[0])) : S2.noNext),
+          next.length > 1 ? h("ul", { class: "sum-next" }, ...next.slice(1).map((x) => h("li", {}, tile(x.run.c), h("span", {}, h("b", {}, x.name), cap(line(x)))))) : null),
+        tagged(ninoBanner(r), "nino"),
+        h("section", { class: "card" }, h("b", { class: "card-h" }, D.whatWhen), routeEl(r, f)),
+        multi ? h("section", { class: "card", "data-rooti": "years" }, h("div", { class: "statbox" }, h("div", { class: "stat" }, String(good)), h("p", {}, a, h("b", {}, b), z)),
+          note ? h("p", { class: "sum-note" }, icon(e.risks.length ? "i-care" : "i-check"), h("span", {}, note)) : null) : null,
+        plans.length > 1 ? h("section", { class: "sum-plans", "data-rooti": "plans" }, h("b", { class: "card-h" }, S2.others),
+          h("div", { class: "sum-chips", role: "radiogroup", "aria-label": D.planLabel }, ...plans.map((x) => h("button", { class: "sum-chip", role: "radio", "aria-checked": String(x.key === it.key),
+            onclick: () => { if (x.key !== state.pick) { state.pick = x.key; draw(); } } }, icon(NAMED_ICON[x.key]), D.names[x.key])))) : null,
+        linked() ? pickBar(r, cur) : canHandoff() ? handoffCard(P) : null,
+        h("div", { class: "sum-foot" }, h("a", { class: "link", href: `#/plan/${it.key}` }, S2.detail, icon("i-chev-r")),
+          listenBtn(() => `${D.names[it.key]}. ${next.map(line).join(". ")}. ${a}${b}${z}: ${good}.`, c.listen), sourceNote(r, f))));
+    };
+    draw();
+  });
 }
 
 /* ---------- why, risks, what we don't know, questions for the agronomist ---------- */
-const COAST = (pl) => pl.lat > -5 && pl.lat < 2 && pl.lon > -81.5 && pl.lon < -78.5;
-const CURRENT_NINO_ONSET = 2026;
-// A strong El Niño is under way (NOAA/ERFEN, data/outlook.json): on the Pacific coast, a plan for the coming rainy
-// season is tested by default on the seasons that followed past strong El Niños, not on all years alike.
-const ninoNow = (P) => !!P && DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place) && P.start.slice(0, 7) <= `${CURRENT_NINO_ONSET + 1}-04` && P.end >= iso(new Date());
+const ninoNow = (P) => !!P && ninoByDefault(P.place, P.start, P.end, DATA.outlook, iso(new Date()));
 const defaultMode = (P) => (ninoNow(P) ? "nino" : "all");
 const seasonsOf = (r) => r.samples.filter((s) => s.base != null).map((s) => s.base + r.ninoOffset);
 function ninoBanner(r) {
@@ -1141,7 +1173,6 @@ function tipsFor(r) {
   return out;
 }
 const tipList = (items) => h("ul", { class: "tips" }, ...items.map(([ic, tx]) => h("li", {}, h("span", { class: "ic" }, icon(ic)), h("span", {}, tx))));
-function sig(f) { return f.parcels.map((p) => p.d.steps.map((s) => s.crop + s.t0).join(",")).join("|"); }
 
 /* ---------- the plot ---------- */
 // The plot from the satellite with the picked plan's plots drawn on it. The split is illustrative, and says so.
@@ -1549,7 +1580,7 @@ function loadVecinos(pl = state.plan?.place, fresh = false) {
   return (VEC.load = (async () => {
     if (z) try { const d = await vecApi(`?zone=${encodeURIComponent(z)}`); VEC.posts = d.posts || []; VEC.server = true; return; } catch { /* no server: examples and this phone */ }
     VEC.server = false;
-    try { const d = await fetch("data/vecinos.json?v=1").then(ok); VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true })); } catch { VEC.posts = []; }
+    try { const d = await fetch("data/vecinos.json?v=2").then(ok); VEC.posts = (d.posts || []).map((p) => ({ ...p, example: true, replies: (p.replies || []).map((x) => ({ ...x, example: true })) })); } catch { VEC.posts = []; }
   })());
 }
 const zoneKey = (pl) => nearPilot(pl) || `pt:${pl.lat.toFixed(1)},${pl.lon.toFixed(1)}`;
@@ -1586,12 +1617,28 @@ function vecChipsOf(r, pc, all, seen = new Set()) {
   return out.length ? h("div", { class: "vec-chips" }, ...out) : null;
 }
 const VEC_BADGE = { bien: "good", regular: "care", perdio: "danger" };
-function vecAuthor(x, V) {
-  return h("p", { class: "vp-by" }, h("b", {}, x.author), x.role === "tecnico" ? h("span", { class: "vp-tech" }, icon("i-agronomist"), V.tech) : null, h("span", {}, fmtDate(x.date)));
+// Example posts carry an AI profile picture so the demo reads like real people; anyone else gets their initials.
+// Babahoyo and Quevedo reuse Daule's faces: the feed only ever shows one zone.
+const VEC_AVATAR = { "Don J. M.": "jm", "Doña R. C.": "rc", "J. P.": "jp", "Ing. P. A.": "pa", "Don C. B.": "cb", "Don F. A.": "fa", "L. V.": "lv", "Doña M. T.": "mt",
+  "Don E. G.": "cb", "Doña A. S.": "lv", "Don W. Z.": "fa", "Doña G. L.": "mt" };
+const vecInitials = (n) => (n || "").replace(/^(don|doña|ing\.)\s+/i, "").replace(/\./g, "").split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?";
+function vecAvatar(x, example, size) {
+  const k = example && VEC_AVATAR[x.author];
+  return k ? h("img", { class: `vh-av ${size}`, src: `img/vecinos/${k}.webp`, alt: "", loading: "lazy" })
+    : h("span", { class: `vh-av ${size}${x.role === "tecnico" ? " tech" : ""}`, "aria-hidden": "true" }, vecInitials(x.author));
 }
+function vecAgo(s) {
+  const V = C().vec, day = (t) => new Date(t.slice(0, 10) + "T12:00:00"), then = day(s), d = Math.round((day(iso(new Date())) - then) / 864e5);
+  if (d <= 0) return V.today;
+  if (d === 1) return V.yesterday;
+  if (d < 7) return V.ago(d, "d");
+  if (d < 28) return V.ago(Math.floor(d / 7), "w");
+  return cap(then.toLocaleDateString(state.lang, { month: "long", ...(then.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) }));
+}
+const vecWho = (x, V, ...more) => h("header", { class: "vh-who" }, h("b", {}, x.author), x.role === "tecnico" ? h("span", { class: "vh-tech" }, V.tech) : null, h("span", { class: "vh-when" }, vecAgo(x.date || x.ts)), ...more);
 function vecCard(p, redraw) {
   const c = C(), V = c.vec;
-  if (p.hidden) return h("article", { class: "vp hidden" }, h("p", { class: "small" }, V.reported), h("button", { class: "link", onclick: () => { store.set("vecHidden1", store.get("vecHidden1", []).filter((x) => x !== p.id)); redraw(); } }, V.undoReport));
+  if (p.hidden) return h("article", { class: "vh-post hidden" }, h("p", { class: "small" }, V.reported), h("button", { class: "link", onclick: () => { store.set("vecHidden1", store.get("vecHidden1", []).filter((x) => x !== p.id)); redraw(); } }, V.undoReport));
   const replyBox = h("div", { class: "vp-reply" });
   const openReply = () => {
     const input = h("textarea", { rows: 2, maxlength: 280, placeholder: V.replyPh, "aria-label": V.reply });
@@ -1603,16 +1650,25 @@ function vecCard(p, redraw) {
       h("button", { class: "btn soft", onclick: () => put(replyBox) }, V.fCancel)));
     input.focus();
   };
-  return h("article", { class: `vp t-${p.type}` },
-    h("div", { class: "vp-head" }, h("span", { class: "mono vp-type" }, V.type1[p.type]), p.example || p.local ? h("span", { class: `vp-tag${p.example ? "" : " mine"}` }, p.example ? V.example : V.local) : null),
-    p.crop ? h("div", { class: "vp-crop" }, tile(p.crop), h("b", {}, V.sown(cropLabel(p.crop), monL(p.sowMonth), p.sowYear)), p.area ? h("span", { class: "small" }, `${num(p.area)} ${c.units[p.unit] || p.unit || ""}`) : null) : null,
-    p.result ? h("span", { class: `badge ${VEC_BADGE[p.result]}` }, V.results[p.result]) : null,
-    vecText(p) ? h("p", { class: "vp-text" }, vecText(p)) : null,
-    vecAuthor(p, V),
-    p.replies.length ? h("ul", { class: "vp-replies", "aria-label": V.replies(p.replies.length) }, ...p.replies.map((x) => h("li", { class: x.role === "tecnico" ? "tech" : "" }, vecAuthor(x, V), h("p", {}, vecText(x))))) : null,
-    h("div", { class: "vp-acts" }, h("button", { class: "link", onclick: openReply }, icon("i-chat"), V.reply),
-      h("button", { class: "link quiet", onclick: () => { store.set("vecHidden1", [...store.get("vecHidden1", []), p.id]); if (VEC.server && !p.local) vecApi(`/${encodeURIComponent(p.id)}/report`, { device: vecDevice() }).catch(() => {}); redraw(); } }, V.report)),
-    replyBox);
+  // "Same here" lives on this phone only, like Report: the count is the example's plus this farmer's tap
+  const same = store.get("vecSame1", []), mine = same.includes(p.id), n = (p.same || 0) + (mine ? 1 : 0);
+  const L = p.crop ? look(p.crop) : null;
+  return h("article", { class: `vh-post t-${p.type}` },
+    h("div", { class: "vh-rail" }, vecAvatar(p, p.example, "l"), p.replies.length ? h("span", { class: "vh-line" }) : null),
+    h("div", { class: "vh-body" },
+      vecWho(p, V, p.local ? h("span", { class: "vh-tag" }, V.local) : null, p.type !== "asi_me_fue" ? h("span", { class: `vh-kind k-${p.type}` }, V.type1[p.type]) : null),
+      vecText(p) ? h("p", { class: "vh-text" }, vecText(p)) : null,
+      p.crop ? h("div", { class: "vh-report" },
+        h("span", { class: "vh-crop", style: { background: L.color, color: L.light ? "#fff" : "var(--ink)" } }, cropLabel(p.crop)),
+        p.sowMonth ? h("span", { class: "vh-sown" }, V.sownAt(monL(p.sowMonth), p.sowYear, p.area ? `${num(p.area)} ${c.units[p.unit] || p.unit || ""}` : "")) : null,
+        p.result ? h("span", { class: `vh-res ${VEC_BADGE[p.result]}` }, V.results[p.result]) : null) : null,
+      h("footer", { class: "vh-acts" },
+        h("button", { class: "vh-act", onclick: openReply }, V.reply),
+        h("button", { class: "vh-act same", "aria-pressed": String(mine), onclick: () => { store.set("vecSame1", mine ? same.filter((x) => x !== p.id) : [...same, p.id]); redraw(); } }, V.same, n ? h("b", {}, String(n)) : null),
+        h("button", { class: "link quiet", onclick: () => { store.set("vecHidden1", [...store.get("vecHidden1", []), p.id]); if (VEC.server && !p.local) vecApi(`/${encodeURIComponent(p.id)}/report`, { device: vecDevice() }).catch(() => {}); redraw(); } }, V.report)),
+      p.replies.length ? h("ul", { class: "vh-reps", "aria-label": V.replies(p.replies.length) }, ...p.replies.map((x) => h("li", { class: x.role === "tecnico" ? "tech" : "" },
+        vecAvatar(x, x.example, "m"), h("div", {}, vecWho(x, V), h("p", {}, vecText(x)))))) : null,
+      replyBox));
 }
 function vecForm(P, done) {
   const c = C(), V = c.vec, d = (state.vecDraft ||= { type: "asi_me_fue", crop: null, sowMonth: new Date(P.start + "T12:00:00").getMonth() + 1, result: null, text: "" });
@@ -1654,26 +1710,29 @@ async function viewVecinos(arg) {
   state.vecName ??= store.get("vecName1", "");
   if (arg && arg !== state.vecArg) { state.vecArg = arg; state.vecCrop = CROP_LOOK[arg] ? arg : null; state.vecType = "asi_me_fue"; }
   state.vecType ||= "all";
-  const feed = h("div", { class: "vec-feed" }), side = h("div", { class: "vec-side" }), note = h("p", { class: "vec-saved", role: "status" });
+  const feed = h("div", { class: "vh-feed" }), side = h("aside", { class: "vh-side" }), note = h("p", { class: "vec-saved", role: "status" });
   const draw = () => {
     const all = vecPosts(P.place), cropsIn = [...new Set(all.filter((p) => p.crop).map((p) => p.crop))];
     const list = all.filter((p) => (state.vecType === "all" || p.type === state.vecType) && (!state.vecCrop || p.crop === state.vecCrop));
+    const people = [...new Map(all.filter((p) => !p.hidden).flatMap((p) => [p, ...p.replies]).map((x) => [x.author, x])).values()];
     put(side,
-      h("div", { class: "res-title" }, h("h1", { class: "display" }, V.title), h("p", {}, z ? V.lead(cap(z)) : V.leadFar)),
+      h("div", { class: "res-title" }, h("h1", { class: "display" }, z ? V.group(cap(z)) : V.groupFar), h("p", {}, z ? V.lead(cap(z)) : V.leadFar)),
+      people.length ? h("div", { class: "vh-members" }, h("span", { class: "vh-stack" }, ...people.slice(0, 5).map((x) => vecAvatar(x, x.example, "s"))), h("span", {}, V.members(people.length))) : null,
+      h("p", { class: "vh-fine" }, V.peer, all.some((p) => p.example) ? ` ${V.demoShort}` : ""));
+    put(feed,
       state.vecForm ? vecForm(P, async (saved) => { state.vecForm = false; if (saved === "server") await loadVecinos(P.place, true); note.textContent = saved === "server" ? V.savedServer : saved ? V.saved : ""; draw(); })
-        : h("button", { class: "btn lime big", onclick: () => { state.vecForm = true; note.textContent = ""; draw(); } }, icon("i-plus"), V.publish),
+        : h("button", { class: "vh-compose", onclick: () => { state.vecForm = true; note.textContent = ""; draw(); } },
+          h("span", { class: "vh-av m me", "aria-hidden": "true" }, V.you), h("span", { class: "vh-compose-ph" }, V.compose), h("span", { class: "vh-compose-go" }, V.publish)),
       note,
-      h("div", { class: "vec-filters" },
-        h("div", { class: "seg", role: "group", "aria-label": V.title }, ...["all", "asi_me_fue", "aviso", "pregunta"].map((k) => h("button", { "aria-pressed": String(state.vecType === k), onclick: () => { state.vecType = k; draw(); } }, V.types[k]))),
-        cropsIn.length > 1 ? h("div", { class: "row wrap", style: { gap: "6px" } },
-          h("button", { class: "chip", "aria-pressed": String(!state.vecCrop), onclick: () => { state.vecCrop = null; draw(); } }, V.allCrops),
-          ...cropsIn.map((id) => h("button", { class: "chip", "aria-pressed": String(state.vecCrop === id), onclick: () => { state.vecCrop = id; draw(); } }, tile(id), cropLabel(id)))) : null),
-      h("p", { class: "vec-note" }, icon("i-agronomist"), h("span", {}, V.peer)),
-      h("p", { class: "vec-note" }, icon("i-info"), h("span", {}, VEC.server ? V.demoServer : V.demo)));
-    put(feed, ...(list.length ? list.map((p) => vecCard(p, draw)) : [h("div", { class: "card vec-empty" }, h("p", {}, all.length ? V.emptyFilter : V.empty))]));
+      h("div", { class: "vh-filters" },
+        h("div", { class: "vh-tabs", role: "group", "aria-label": V.title }, ...["all", "asi_me_fue", "aviso", "pregunta"].map((k) => h("button", { "aria-pressed": String(state.vecType === k), onclick: () => { state.vecType = k; draw(); } }, V.types[k]))),
+        cropsIn.length > 1 ? h("div", { class: "vh-crops", role: "group", "aria-label": V.allCrops },
+          h("button", { "aria-pressed": String(!state.vecCrop), onclick: () => { state.vecCrop = null; draw(); } }, V.allCrops),
+          ...cropsIn.map((id) => h("button", { "aria-pressed": String(state.vecCrop === id), onclick: () => { state.vecCrop = id; draw(); } }, h("i", { style: { background: look(id).color } }), cropLabel(id)))) : null),
+      ...(list.length ? list.map((p) => vecCard(p, draw)) : [h("p", { class: "vh-empty" }, all.length ? V.emptyFilter : V.empty)]));
   };
   draw();
-  put($("#view"), h("div", { class: "res vec" }, resHead(P), h("div", { class: "vec-grid" }, side, feed)));
+  put($("#view"), h("div", { class: "res vec" }, resHead(P), h("div", { class: "vh-grid" }, side, feed)));
 }
 
 /* ================= Rooti, the in-app assistant ================= */
@@ -1684,7 +1743,7 @@ const MODE_WORDS = { all: "every real run of years since 1981", nino: "only the 
 const goOrRender = (r) => (route().r === r ? render() : go(r));
 function rootiName(r) {
   const n = C().nav, name = { "": es() ? "la portada" : "the home page", planear: es() ? "Planear" : "the planner", bootcamp: C().ctaBootcamp, plan: n.plan, terreno: n.plot, probar: n.try,
-    comparar: n.compare, pasado: n.past, vecinos: n.neighbors, pasaporte: es() ? "el pasaporte del suelo" : "the soil passport", aviso: es() ? "el aviso" : "the alert" }[r ?? ""] || r;
+    comparar: n.compare, pasado: n.past, vecinos: n.neighbors, pasaporte: es() ? "el pasaporte del suelo" : "the soil passport", aviso: es() ? "el aviso" : "the alert", resumen: es() ? "el resumen de su plan" : "the plan summary" }[r ?? ""] || r;
   return es() ? `«${name}»` : `“${name}”`;
 }
 const rootiPlot = (P) => `${P.place ? `${P.place.name}${P.place.admin ? `, ${P.place.admin}` : ""}` : "place not given yet"}; ${P.area} ${C().units[P.unit || "ha"]}; from ${P.start} to ${P.end}; crops the plan may use: ${P.crops.map(cropName).join(", ") || "none yet"}; grows today: ${(P.current || []).map(cropName).join(", ") || "not said"}; irrigation: ${P.irrigation ? "yes" : "no"}; floods: ${P.waterlog || "not said"}.`;
@@ -1806,7 +1865,8 @@ function route() {
   if (RESULTS.includes(r) && !state.plan) return { r: "planear", arg: state.linkError && state.draft.place && dateErr(state.draft) ? "2" : undefined };
   if (r === "pasaporte" && !nearPilot(state.plan.place)) return { r: "plan" };
   if (r === "aviso" && !(link.alert && state.plan)) return { r: state.plan ? "plan" : "planear" };
-  return { r: ["", "planear", "bootcamp", "aviso", ...RESULTS].includes(r) ? r : "", arg, courseId, lessonNumber };
+  if (r === "resumen" && !state.plan) return { r: "planear" };
+  return { r: ["", "planear", "bootcamp", "aviso", "resumen", ...RESULTS].includes(r) ? r : "", arg, courseId, lessonNumber };
 }
 const TAB_ORDER = ["plan", "terreno", "probar", "comparar", "vecinos"];
 const tabIx = (r) => TAB_ORDER.indexOf(r === "pasado" ? "plan" : r);
@@ -1834,8 +1894,8 @@ function renderChrome(r) {
   document.documentElement.lang = state.lang;
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
   // Off the results there are no tabs, so the bar carries a way back: to the plan when there is one, else home
-  const back = isRes ? null : h("a", { class: "round", href: (r === "planear" || r === "aviso") && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtSpan(P)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : c.planTitle}`)),
+  const back = isRes ? null : h("a", { class: "round", href: ["planear", "aviso", "resumen"].includes(r) && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtSpan(P)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : r === "resumen" ? c.sum.eyebrow : c.planTitle}`)),
     isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
     h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null,
       linked() && hasWhatsApp() ? h("a", { class: "round", href: waUrl(), "aria-label": c.wa.back, title: c.wa.back }, icon("i-chat")) : null, langBtn()));
@@ -1876,7 +1936,7 @@ async function render() {
   if (document.body.classList.contains("r-bootcamp")) window.speechSynthesis?.cancel();
   renderChrome(r);
   rooti.route(r);
-  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: () => viewBootcamp(arg, courseId, lessonNumber), plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso };
+  const views = { "": viewLanding, planear: () => viewPlanear(arg), bootcamp: () => viewBootcamp(arg, courseId, lessonNumber), plan: () => viewPlan(arg), terreno: viewTerreno, probar: viewProbar, comparar: viewComparar, pasado: viewPasado, pasaporte: viewPasaporte, vecinos: () => viewVecinos(arg), aviso: viewAviso, resumen: viewResumen };
   try { await views[r](); if (shownRoute === r) enterView(prev, r); } catch (e) { console.error(e); put($("#view"), errorCard(C().climateError, render)); }
 }
 async function start() {
@@ -1891,7 +1951,7 @@ async function start() {
       // A farmer from WhatsApp: their lot from Rooti, in Spanish unless they switched, on the page the button named
       if (store.get("lang", null) == null) state.lang = "es";
       state.plan = link.plan; state.custom = null; state.draft = null;
-      if (!location.hash.replace(/^#\/?/, "")) history.replaceState(null, "", "#/" + (link.alert && link.plan ? "aviso" : link.plan ? "plan" : "planear/1"));
+      if (!location.hash.replace(/^#\/?/, "")) history.replaceState(null, "", "#/" + (link.alert && link.plan ? "aviso" : link.plan ? "resumen" : "planear/1"));
     }
   } catch (e) {
     const W = C().wa;

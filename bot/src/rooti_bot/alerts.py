@@ -10,7 +10,7 @@ import urllib.request
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from rooti_bot import bridge, calls, store, voice
+from rooti_bot import bridge, calls, engine, store, voice
 
 TZ = ZoneInfo("America/Guayaquil")
 FORECAST = os.environ.get("ROOTI_FORECAST_URL", "https://api.open-meteo.com/v1/forecast")  # E2E: a stand-in
@@ -47,14 +47,15 @@ def heavy_rain(farmer: dict, forecast=_forecast) -> tuple[str, str] | None:
 
 
 def sow_window(farmer: dict, plan: dict | None, today=None) -> tuple[str, str] | None:
-    if not plan or not plan.get("farm"):
+    followed = engine.followed(plan, farmer) if plan else None
+    if not followed:
         return None
     today = today or datetime.now(TZ).date()
     soon = today + timedelta(days=SOW_LEAD_DAYS)
     if soon.month == today.month:
         return None  # only in the last days before a new month starts
     month = f"{MONTHS[soon.month - 1]} {soon.year}"
-    crops = [p["crop"] for plot in plan["farm"]["plots"] for p in plot["plantings"][:1] if p["from"] == month]
+    crops = [p["crop"] for plot in followed["plots"] for p in plot["plantings"][:1] if p["from"] == month]
     if not crops:
         return None
     crop = crops[0]

@@ -11,6 +11,7 @@ from rooti_bot import calls, config, engine, store
 
 log = logging.getLogger("rooti.tools")
 WAIT_TEXT = "Déjeme revisar su lote con los datos de la NASA, un ratito 🌱"
+WAIT_AFTER_S = 2.5  # a plan from fetched data is ready well before this
 WAIT_EVERY_S = 300  # a second plan try right after a slow first one does not repeat the same sentence
 BUTTON_FALLBACK_S = 120  # a turn that ends without text still gets its button
 _waited: dict[str, float] = {}
@@ -88,17 +89,29 @@ def _crops(values, field) -> list[str]:
 
 
 def _plan(farmer: dict) -> dict:
-    """The saved plan; when it has to be computed (up to a minute and a half), the farmer hears so first: the model's
-    own words only go out once the turn is over."""
-    if (farmer.get("lat") is not None and farmer.get("crops") and engine.cold(farmer)
-            and time.time() - _waited.get(farmer["phone"], 0) > WAIT_EVERY_S):
-        from rooti_bot import bridge
-        _waited[farmer["phone"]] = time.time()
-        try:
-            bridge.send_text(farmer["phone"], WAIT_TEXT)
-        except Exception as exc:
-            log.warning("no pude avisar que espere: %s", exc)
-    return engine.plan_for(farmer)
+    """The saved plan; when computing it waits on NASA (up to a minute and a half), the farmer hears so first: the
+    model's own words only go out once the turn is over. With the data already fetched it takes a fraction of a
+    second, and no wait message goes out."""
+    if not (farmer.get("lat") is not None and farmer.get("crops") and engine.cold(farmer)):
+        return engine.plan_for(farmer)
+    timer = threading.Timer(WAIT_AFTER_S, _say_wait, (farmer["phone"],))
+    timer.daemon = True
+    timer.start()
+    try:
+        return engine.plan_for(farmer)
+    finally:
+        timer.cancel()
+
+
+def _say_wait(phone: str) -> None:
+    if time.time() - _waited.get(phone, 0) <= WAIT_EVERY_S:
+        return
+    from rooti_bot import bridge
+    _waited[phone] = time.time()
+    try:
+        bridge.send_text(phone, WAIT_TEXT)
+    except Exception as exc:
+        log.warning("no pude avisar que espere: %s", exc)
 
 
 def save_lot(farmer_id: str, args: dict) -> dict:
@@ -120,23 +133,30 @@ def save_lot(farmer_id: str, args: dict) -> dict:
 
 
 def recommended_plan(farmer_id: str, _args: dict) -> dict:
+    f = _farmer(farmer_id)
     try:
-        r = _plan(_farmer(farmer_id))
+        r = _plan(f)
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
-    return {k: r.get(k) for k in ("from", "to", "tested_on", "why_these_years", "farm", "today", "soil", "limits")}
+    out = {k: r.get(k) for k in ("from", "to", "tested_on", "why_these_years", "plans", "soil", "limits")}
+    return {**out, "followed": (engine.followed(r, f) or {}).get("name")}
 
 
 def when_to_sow(farmer_id: str, args: dict) -> dict:
+    f = _farmer(farmer_id)
     try:
-        r = _plan(_farmer(farmer_id))
+        r = _plan(f)
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
     sow = r.get("sow") or []
     if args.get("cultivo"):
         name = CROPS.get(args["cultivo"], {}).get("name_es", args["cultivo"]).lower()
         sow = [s for s in sow if s["crop"] == name] or sow
-    return {"desde": r["from"], "hasta": r["to"], "probado_en": r["tested_on"], "cultivos": sow}
+    plan = engine.followed(r, f) or {}
+    sowings = [{"crop": p["crop"], "month": p["from"], "land": plot["land"]}
+               for plot in plan.get("plots", []) for p in plot["plantings"]]
+    return {"desde": r["from"], "hasta": r["to"], "probado_en": r["tested_on"], "cultivos": sow,
+            "followed": {"name": plan.get("name"), "sowings": sowings}}
 
 
 def try_change(farmer_id: str, args: dict) -> dict:
@@ -153,7 +173,8 @@ def try_change(farmer_id: str, args: dict) -> dict:
         base = _plan(_farmer(farmer_id))
     except engine.EngineError as exc:
         raise ToolError(str(exc)) from None
-    return {"probado_en": trial["tested_on"], "con_el_cambio": trial.get("farm"), "plan_actual": base.get("farm")}
+    return {"probado_en": trial["tested_on"], "con_el_cambio": engine.followed(trial, f),
+            "plan_actual": engine.followed(base, f)}
 
 
 def this_year(farmer_id: str, _args: dict) -> dict:
@@ -209,7 +230,7 @@ def plan_button(farmer_id: str, args: dict) -> dict:
     if not store.saved_plan(farmer_id):
         raise ToolError("Todavía no hay plan: primero guarda la ubicación y los cultivos del lote.")
     return _button(farmer_id, args.get("texto") or "Aquí tiene su plan, con los tres caminos para comparar.",
-                   "Ver mi plan", lambda: calls.page(farmer_id, "plan"))
+                   "Ver mi plan", lambda: calls.page(farmer_id, "resumen"))
 
 
 LOT_PROPS = {
@@ -234,9 +255,11 @@ TOOLS = [
          my_lot, {}),
     Tool("guardar_lote", "Guarda o corrige datos del lote (solo los que cambian). Con ubicación y cultivos calcula el "
                          "plan; la primera vez tarda hasta un minuto.", save_lot, LOT_PROPS),
-    Tool("plan_recomendado", "Qué sembrar, cuándo y en cuánta tierra para los próximos 12 meses, comparado con lo que "
-                             "hace hoy, probado en años reales.", recommended_plan, {}),
-    Tool("cuando_sembrar", "Los mejores meses para sembrar cada cultivo del lote.", when_to_sow,
+    Tool("plan_recomendado", "Los planes de la página «Ver mi plan», en el mismo orden, y lo que hace hoy: qué sembrar, "
+                             "cuándo y en cuánta tierra los próximos 12 meses, probado en años reales. «followed» es el "
+                             "que sigue el agricultor.", recommended_plan, {}),
+    Tool("cuando_sembrar", "Los mejores meses para sembrar cada cultivo del lote, y cuándo siembra cada uno en el plan "
+                           "que sigue.", when_to_sow,
          {"cultivo": {"type": "string", "description": "id de un cultivo, si pregunta por uno"}}),
     Tool("probar", "Qué pasaría con otros cultivos, con riego, o en años secos, lluviosos o de El Niño, sin cambiar "
                    "el plan guardado.", try_change,
@@ -251,8 +274,8 @@ TOOLS = [
                        "el mapa y elige sus cultivos. Para un agricultor nuevo que todavía no te dio su lote, salvo "
                        "que prefiera escribir.",
          lot_button, {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
-    Tool("boton_plan", "Manda, después de tu respuesta, el botón «Ver mi plan»: los tres caminos lado a lado, el "
-                       "calendario y los años, para elegir uno. Solo si quiere verlo, compararlo o elegir; nunca en "
+    Tool("boton_plan", "Manda, después de tu respuesta, el botón «Ver mi plan»: lo que toca sembrar ahora, la ruta "
+                       "del año y los caminos para elegir uno. Solo si quiere verlo, compararlo o elegir; nunca en "
                        "lugar de explicarle tú.", plan_button,
          {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
 ]
