@@ -88,7 +88,7 @@ function planting(crop, id, t, sample, irrigation, site, store0) {
     if (drowned && wlSev[i] > 0.2) { kind = "waterlogged"; sev = 1; }
     return { crop: id, kind, sev, rain: c.rain, need: n, obs: !!c.obs };
   });
-  return { failed, yieldShare, ratio, rain, need, tMean, cold: coldM >= 0, hot: hotM >= 0, waterFail, drowned, phF, cells };
+  return { failed, yieldShare, ratio, rain, need, tMean, cold: coldM >= 0, hot: hotM >= 0, coldAt: coldM, hotAt: hotM, wetAt: wlMax > 0.2 ? wlSev.indexOf(wlMax) : -1, waterFail, drowned, phF, tempF, wlMax, cells };
 }
 const bareCell = (c) => (c.rain >= 40
   ? { crop: null, kind: "rain_on_bare", sev: clamp01(c.rain / 200), rain: c.rain, need: 0, obs: !!c.obs }
@@ -160,9 +160,18 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
   const planted = uniq.filter((r) => r.steps.length);
   const plans = (planted.length ? planted : uniq).slice(0, 6).map((r, i) => describe(r, i));
   // When to sow each crop: the expected share of a full harvest for every possible sowing month.
+  // Each month also says why, from the same runs: how many years were lost to dry spells, cold, heat or standing water,
+  // in which calendar month that happened most, and how much of the crop's water the rain covered.
+  const monthOf = (t, idx) => (idx >= 0 ? period[t + idx]?.m ?? null : null);
+  const most = (xs) => { const n = {}; let b = null; for (const x of xs) if (x != null) { n[x] = (n[x] || 0) + 1; if (b == null || n[x] > n[b]) b = x; } return b == null ? null : +b; };
+  const whyOf = (runs, t) => ({
+    n: runs.length, dry: runs.filter((x) => x.waterFail).length, cold: runs.filter((x) => x.cold).length, hot: runs.filter((x) => x.hot).length, drowned: runs.filter((x) => x.drowned).length,
+    coldM: most(runs.map((x) => monthOf(t, x.coldAt))), hotM: most(runs.map((x) => monthOf(t, x.hotAt))), wetM: most(runs.map((x) => monthOf(t, x.wetAt))),
+    cover: Math.round(Math.min(1.5, mean(runs.map((x) => x.ratio))) * 100), phF: runs[0]?.phF ?? 1, tempF: mean(runs.map((x) => x.tempF ?? 1)), wl: mean(runs.map((x) => x.wlMax ?? 0)),
+  });
   const windows = {};
   for (const id of all) {
-    const starts = period.map((_, t) => { const row = tab[id][t]; if (!row) return null; const value = (1 - row.fail) * row.yld; return { t, value, fail: row.fail, yld: row.yld, level: value >= 0.65 ? "good" : value >= 0.35 ? "care" : "danger" }; });
+    const starts = period.map((_, t) => { const row = tab[id][t]; if (!row) return null; const value = (1 - row.fail) * row.yld; return { t, value, fail: row.fail, yld: row.yld, level: value >= 0.65 ? "good" : value >= 0.35 ? "care" : "danger", why: whyOf(row.runs, t) }; });
     const ok = starts.filter(Boolean), best = ok.reduce((a, b) => (b.value > (a?.value ?? -1) ? b : a), null);
     const want = ok.some((x) => x.level === "good") ? "good" : "care", wins = [];
     for (const x of ok) {

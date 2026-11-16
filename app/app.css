@@ -1139,3 +1139,19 @@ body.drawing .search, body.drawing .geo, body.drawing .gps, body.drawing .pf-nex
 .tabs a .icon { width: 17px; height: 17px; flex: none; opacity: .75; transition: color var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease); }
 .tabs a[aria-current="page"] .icon { color: var(--lime); opacity: 1; }
 @media (max-width: 1280px) { .tabs a .icon { display: none; } }
+
+/* When to sow: shorter rows, squares you can tap, and the reason under the grid */
+.sow-cells button { height: 26px; border: 0; padding: 0; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+.sow-cells button.good { background: var(--good); } .sow-cells button.care { background: var(--care); } .sow-cells button.danger { background: var(--danger); } .sow-cells button.none { background: var(--parchment); }
+.sow-cells button .icon { width: 13px; height: 13px; }
+.sow-cells button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--forest); position: relative; z-index: 1; }
+.sow-cells button:active { transform: scale(.94); }
+@media (hover: hover) and (pointer: fine) { .sow-cells button:hover { transform: translateY(-1px); box-shadow: 0 4px 10px -6px rgba(20, 32, 26, .6); } .sow-cells button[aria-pressed="true"]:hover { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--forest); } }
+@media (min-width: 1024px) { .sow-cells button { height: 34px; border-radius: 8px; } .sow-cells button .icon { width: 15px; height: 15px; } }
+.sow-more { display: flex; flex-direction: column; gap: 6px; } .sow-more[hidden] { display: none; }
+.sow-toggle { align-self: flex-start; margin-left: calc(var(--lab, 64px) + 8px); font-size: 13px; }
+@media (min-width: 1024px) { .sow-toggle { margin-left: 154px; } }
+.sow-why { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; padding: 12px 14px; border-radius: 16px; background: var(--cream); font-size: 15px; line-height: 1.45; }
+.sow-why > .icon { width: 18px; height: 18px; flex: none; margin-top: 2px; color: var(--lichen); }
+.sow-why > .sw { width: 12px; height: 12px; border-radius: 4px; flex: none; margin-top: 5px; }
+.sow-why b { font-weight: 500; }

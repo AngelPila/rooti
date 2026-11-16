@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=23";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=37";
-import { COPY } from "./copy.js?v=63";
+import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=38";
+import { COPY } from "./copy.js?v=66";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=25";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=5";
@@ -1401,11 +1401,38 @@ function viewProbar() {
     const head = h("div", { class: "sow-row", style: { "--lab": lab } }, h("span"), h("div", { class: "sow-cells", style: { "--n": N } }, ...r.period.map((p, i) => N > 24
       ? h("span", { style: { fontSize: "12px", fontWeight: 700, color: "var(--ink2)", whiteSpace: "nowrap" } }, p.m === 1 ? `'${String(p.y).slice(2)}` : "")
       : h("span", { style: { textAlign: "center", fontSize: "12px", fontWeight: 700, color: "var(--ink2)", overflow: "hidden" } }, N <= 14 && desktop() ? mon(p.m) : S().months[p.m - 1]))));
+    // Why a square is green, amber or red, from the planner's own runs (no guessing): the main cause and how often it happened
+    const W = c.why, whyBox = h("p", { class: "sow-why", "aria-live": "polite" }, icon("i-info"), h("span", {}, W.pick));
+    const reason = (id, s) => {
+      if (!s) return W.none(r.windows[id].L);
+      const y = s.why, n = y.n, cr = DATA.crops[id] || {}, [tlo, thi] = (cr.temp_abs_c || [null, null]).map(Number), M = (m) => S().monthsLong[m - 1];
+      const causes = [["dry", y.dry], ["hot", y.hot], ["cold", y.cold], ["wet", y.drowned]].sort((a, b) => b[1] - a[1]);
+      const [k, cnt] = causes[0];
+      if (s.level !== "good" && cnt >= Math.max(1, n * 0.1)) {
+        if (k === "dry") return W.dry(Math.min(100, y.cover), cnt, n);
+        if (k === "hot") return W.hot(M(y.hotM || r.period[s.t].m), thi, cnt, n);
+        if (k === "cold") return W.cold(M(y.coldM || r.period[s.t].m), tlo, cnt, n);
+        return W.wet(M(y.wetM || r.period[s.t].m), cnt, n);
+      }
+      if (s.level !== "good") return y.cover < 90 ? W.lowRain(y.cover) : y.tempF < 0.95 ? W.lowTemp : y.phF < 1 ? W.lowPh : y.wl > 0.15 ? W.lowWet : W.lowRain(Math.min(100, y.cover));
+      return W.good(y.cover >= 100, n - Math.round(s.fail * n), n);
+    };
+    let sel = null;
+    const pick = (id, t, el) => {
+      document.querySelectorAll(".sow-cells button[aria-pressed='true']").forEach((x) => x.setAttribute("aria-pressed", "false"));
+      el.setAttribute("aria-pressed", "true"); sel = `${id}|${t}`;
+      const s = r.windows[id].starts[t];
+      put(whyBox, h("i", { class: `sw ${s ? s.level : "none"}` }), h("span", {}, h("b", {}, `${W.sown(cropName(id), `${monL(r.period[t].m)} ${r.period[t].y}`)} `), (([a, ...b]) => a.toLowerCase() + b.join(""))(reason(id, s))));
+    };
     const sowRow = (id) => {
       const w = r.windows[id];
-      return h("div", { class: "sow-row", style: { "--lab": lab } }, h("b", { style: { fontSize: desktop() ? "16px" : "13px" } }, cap(cropName(id))),
-        h("div", { class: "sow-cells", style: { "--n": N } }, ...w.starts.map((s, t) => h("i", { class: s ? s.level : "none", title: s ? `${ym(r.period[t])}: ${Math.round(s.value * 100)} %` : c.sowNone }, s && w.best && s.t === w.best.t && w.best.level !== "danger" ? "★" : ""))));
+      return h("div", { class: "sow-row", style: { "--lab": lab } }, h("b", { style: { fontSize: desktop() ? "15px" : "13px" } }, cap(cropName(id))),
+        h("div", { class: "sow-cells", style: { "--n": N } }, ...w.starts.map((s, t) => h("button", { class: s ? s.level : "none", "aria-pressed": String(sel === `${id}|${t}`), "aria-label": `${cap(cropName(id))} · ${ym(r.period[t])}`, onclick: (e) => pick(id, t, e.currentTarget) },
+          s && w.best && s.t === w.best.t && w.best.level !== "danger" ? icon("i-star") : null))));
     };
+    const MAX_ROWS = 4, extra = picked.slice(MAX_ROWS);
+    const more = h("div", { class: "sow-more", hidden: true }, ...extra.map(sowRow));
+    const moreBtn = extra.length ? h("button", { class: "link sow-toggle", onclick: (e) => { more.hidden = !more.hidden; e.currentTarget.textContent = more.hidden ? c.seeMore(extra.length) : c.seeLess; } }, c.seeMore(extra.length)) : null;
     put($("#view"), h("div", { class: "res stack" },
       resHead(P),
       h("div", { class: "res-title" }, h("h1", { class: "display" }, c.tryTitle), h("p", {}, c.tryLead)),
@@ -1416,7 +1443,8 @@ function viewProbar() {
         h("div", { class: "row between wrap" }, h("b", { class: "card-h" }, c.sowTitle),
           h("div", { class: "legend" }, ...[["good", c.sowGood], ["care", c.sowCare], ["danger", c.sowBad], ["none", c.sowNone]].map(([k, l]) => h("span", {}, h("i", { class: `sw ${k}` }), l)))),
         h("p", { class: "small" }, c.sowLead),
-        h("div", { class: "sow" }, head, h("p", { class: "sow-group" }, c.yours), ...picked.map(sowRow), suggested.length ? h("p", { class: "sow-group" }, c.suggested) : null, ...suggested.slice(0, 3).map(sowRow)))));
+        h("div", { class: "sow" }, head, h("p", { class: "sow-group" }, c.yours), ...picked.slice(0, MAX_ROWS).map(sowRow), more, moreBtn, suggested.length ? h("p", { class: "sow-group" }, c.suggested) : null, ...suggested.slice(0, 3).map(sowRow)),
+        whyBox)));
   });
 }
 
