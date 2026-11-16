@@ -10,7 +10,7 @@ Use case: illustration-story. Create ONE landscape editorial illustration for Ro
 
 AI use declaration: These four illustrations were generated with the built-in image generator. No watermark is embedded; the page supplies its AI disclosure in HTML.
 
-Style references supplied to every generation: `app/img/illu/maize-clean.png` and `app/img/illu/rice-clean.png`.
+Style references supplied to every generation: `app/img/illu/maize-clean.jpg` and `app/img/illu/rice-clean.jpg`.
 
 ## plot.png
 

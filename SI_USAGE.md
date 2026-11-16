@@ -8,7 +8,7 @@
 
 ## Requests made from outside the project folder (reconstructed)
 
-The automatic log only records requests made with Claude Code started inside this folder. Most of the work on 14 November was done from a session started in the home folder, so those requests were not logged automatically. Below is the work Claude Code did in that session, one line per change, taken from the git history (time of the commit, not of the request). Design mock-ups were also made with Claude in Pencil; they used stock photos, and no AI-generated image is used in the app.
+The automatic log only records requests made with Claude Code started inside this folder. Most of the work on 14 November was done from a session started in the home folder, so those requests were not logged automatically. Below is the work Claude Code did in that session, one line per change, taken from the git history (time of the commit, not of the request). Design mock-ups were also made with Claude in Pencil; they used stock photos. The app does use AI-generated illustrations (crops, "How it works", weather badges, example neighbors' pictures), made with OpenAI image generation through Codex; each is labelled "AI-generated" in the app or declared in `docs/REFERENCES.md`.
 
 | Time (commit) | Change made with Claude Code |
 |---|---|

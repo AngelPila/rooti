@@ -9,6 +9,10 @@ Rules learned from design reviews. Each one comes from a correction the product 
 - **The logo is the 06 "Mosaico" mark (four modules = four plots) with the wordmark in Space Grotesk 500. Space Grotesk is used for the logo only.**
   <!-- 2026-11-14: "este html esta el logo es el 06 de rooti" -->
 
+- **Results screens are not cream on cream: each title sits on a forest band over the farm's own satellite photo, plan cards take a light tint of the crop that leads them, and the soil on "Su terreno" floats on the map as bubbles that each show a small specimen of the data (soil colour, pH marker, organic matter and water dots, slope).**
+  Why: "dale personalidad a todo, se ve muy pobre, puro blanco".
+  <!-- 2026-11-15 -->
+
 ## Typography
 - **Headings never use a condensed or narrow display face (no `font-stretch` below 100%, no Bricolage Grotesque).** Headings use a normal-width face at weight 400–500 with tracking around −0.04em: Geist today, Funnel Display and Instrument Serif are the candidates on trial.
   Why: "esta fuente es horrible", "que asco" (on Bricolage Grotesque at 82% width).

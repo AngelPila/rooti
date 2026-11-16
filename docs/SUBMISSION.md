@@ -9,14 +9,14 @@ Everything below is in English, ready to paste into the submission form. Fill th
 Rooti
 
 ## High-level summary (form field)
-Rooti tells a farmer what to plant, in which months and on how much land, so the soil lasts and the harvest holds up in a changing climate. The farmer marks a plot anywhere on Earth, picks the dates and the crops they want to grow, and Rooti builds crop-rotation strategies from those crops only. Every strategy is replayed month by month on real NASA POWER climate since 1981: the months that already happened use the real weather, and the months ahead are tested on about 40 real sequences of years, including El Niño years. Rooti compares the recommended plan with what the farmer does today, shows when to sow each crop, how much land each one should get, how it would have gone year by year, what we don't know, and what to ask the local agronomist. It reads the plot too — slope, soil texture, acidity, organic matter and waterlogging — and gives plain-language tips. It runs in the browser, in Spanish and English, on a phone or a computer.
+Rooti tells a farmer what to plant, in which months and on how much land, so the soil lasts and the harvest holds up in a changing climate. The farmer marks a plot anywhere on Earth, picks the dates and the crops they want to grow, and Rooti builds crop-rotation strategies from those crops only. Every strategy is replayed month by month on NASA POWER climate (a reanalysis product) since 1981: the months that already happened use the recorded weather, and the months ahead are tested on about 40 real sequences of years, including El Niño years. Rooti compares the recommended plan with what the farmer does today, shows when to sow each crop, how much land each one should get, how it would have gone year by year, what we don't know, and what to ask the local agronomist. It reads the plot too — slope, soil texture, acidity, organic matter and waterlogging — and gives plain-language tips. It runs in the browser, in Spanish and English, on a phone or a computer.
 
 ## Demo link
 [30-second video or 7 slides — public link, no login]
 
 ## Final project link
-[Public GitHub repository: https://github.com/AngelPila/rooti — make it public before submitting]
-[Live app: URL once deployed]
+- Public GitHub repository: https://github.com/AngelPila/rooti
+- Live app (English): https://rooti.taws.espol.edu.ec/?lang=en
 
 ## Project details (form field)
 
@@ -47,7 +47,7 @@ HTML, vanilla JavaScript (no framework), CesiumJS. The planner runs in the brows
 - **NASA POWER** (Langley Research Center), community AG: PRECTOTCORR, T2M, T2M_RANGE, T2M_MAX, T2M_MIN, RH2M, WS2M, ALLSKY_SFC_SW_DWN — monthly 1981–2025 and daily 2026, any point. https://power.larc.nasa.gov
 - **MODIS MOD14A2 / MYD14A2** thermal anomalies (fires seen from space around the pilot plots, 2003–2026), LP DAAC via Microsoft Planetary Computer.
 - **MODIS MOD13Q1 / MYD13Q1** NDVI (pilot-zone pipeline; documented as unable to see single plots at 250 m).
-- **Landsat** (NASA/USGS), through the JRC Global Surface Water dataset (1984–2021), for how often the land stays under water.
+- **Landsat** (NASA/USGS) imagery, through the JRC Global Surface Water dataset built from it (1984–2021), for how often the land stays under water.
 - **NASA Earthdata CMR** (MCP server) to search datasets and variables.
 
 ## Space agency partner and other data
@@ -70,7 +70,7 @@ We used **Claude (Anthropic) through Claude Code** as a coding and research assi
 - writing and debugging the code (data pipeline, planner, interface), and the interface text in plain Spanish and English;
 - searching and reading data documentation and official sources, and checking numbers;
 - design reviews of the screens.
-The challenge choice, the problem framing for coastal Ecuador, the persona and farmer requirements, and all product decisions were the team's. Every AI request made inside the project folder was logged automatically in `SI_USAGE.md`; requests made from outside it are listed there too, reconstructed from the git history. The app contains **no AI-generated images**: the only photo is a credited Wikimedia Commons image. No NASA logos or mission identifiers are used.
+The challenge choice, the problem framing for coastal Ecuador, the persona and farmer requirements, and all product decisions were the team's. Every AI request made inside the project folder was logged automatically in `SI_USAGE.md`; requests made from outside it are listed there too, reconstructed from the git history. The crop illustrations, the "How it works" pictures, the small weather and crop badges and the example neighbors' profile pictures were generated with AI (OpenAI image generation through Codex). Each one is labelled "AI-generated" in the app or declared in `docs/REFERENCES.md`, with its prompts in the repository. The only photo is a credited Wikimedia Commons image. No NASA logos or mission identifiers are used.
 
 ---
 

@@ -90,12 +90,15 @@ function waterCanvas(low, DG, flood) {
   g.putImageData(im, 0, 0); return c;
 }
 function rng(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
-// The soil wall: dark top, the measured 0-30 cm (dashed line), subsoil, roots, and the wet band from below
-function soilCanvas(wetT) {
+// The soil wall coloured from the data: texture sets the earth, organic matter darkens the top. Only 0-30 cm is measured
+// (dashed line); below it the wall is hatched and faded, a drawing to find your way. Roots and the wet band from below.
+function soilCanvas(wetT, look = { top: "#2A1D14", mid: "#5A3E26", base: "#94714A" }) {
   const W = 512, H = 512, c = document.createElement("canvas"); c.width = W; c.height = H;
   const g = c.getContext("2d"), r = rng(7);
   const band = (t0, t1, a, b) => { const gr = g.createLinearGradient(0, t0 * H, 0, t1 * H); gr.addColorStop(0, a); gr.addColorStop(1, b); g.fillStyle = gr; g.fillRect(0, t0 * H, W, (t1 - t0) * H + 1); };
-  band(0, 0.12, "#2A1D14", "#3A2919"); band(0.12, 0.3, "#4E3622", "#6A4A2E"); band(0.3, 1, "#7A5636", "#94714A");
+  band(0, 0.12, look.top, look.top); band(0.12, 0.3, look.mid, look.base); band(0.3, 1, look.base, look.base);
+  g.fillStyle = "rgba(243,240,229,.28)"; g.fillRect(0, 0.3 * H, W, H);
+  g.strokeStyle = "rgba(60,40,22,.22)"; g.lineWidth = 2; for (let x = -H; x < W; x += 18) { g.beginPath(); g.moveTo(x, H); g.lineTo(x + 0.7 * H, 0.3 * H); g.stroke(); }
   for (let i = 0; i < 1400; i++) { const y = r() * H, x = r() * W; g.fillStyle = `rgba(${y < H * 0.3 ? "20,12,6" : "60,40,22"},${0.25 + r() * 0.3})`; g.beginPath(); g.ellipse(x, y, 1 + r() * 2.5, 0.8 + r() * 1.6, r() * 3, 0, 7); g.fill(); }
   g.strokeStyle = "rgba(226,208,170,.55)"; g.lineCap = "round";
   for (let i = 0; i < 34; i++) { let x = r() * W, y = 0; const len = H * (0.12 + r() * 0.26); g.lineWidth = 1 + r() * 1.4; g.beginPath(); g.moveTo(x, y); while (y < len) { y += 6; x += (r() - 0.5) * 5; g.lineTo(x, y); } g.stroke(); }
@@ -161,7 +164,7 @@ export async function mountSoil3d(stage, labelsEl, opts) {
     wallIdx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2);
   });
   const wallGeo = new THREE.BufferGeometry(); wallGeo.setAttribute("position", new THREE.Float32BufferAttribute(wallPos, 3)); wallGeo.setAttribute("uv", new THREE.Float32BufferAttribute(wallUv, 2)); wallGeo.setIndex(wallIdx); wallGeo.computeVertexNormals();
-  const soilTex = tex(soilCanvas(0.5)); soilTex.wrapS = THREE.RepeatWrapping;
+  const soilTex = tex(soilCanvas(0.5, opts.look)); soilTex.wrapS = THREE.RepeatWrapping;
   const walls = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({ map: soilTex, roughness: 1, side: THREE.DoubleSide })); lotGroup.add(walls);
   const ring = (y, r) => new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(poly.map(([x, z]) => new THREE.Vector3(x, y, z)), true, "catmullrom", 0), poly.length * 24, r, 6, true), new THREE.MeshBasicMaterial({ color: 0xc8ff9e }));
   const rim = ring(0, Math.max(1, span * 0.01)); lotGroup.add(rim);
@@ -195,7 +198,6 @@ export async function mountSoil3d(stage, labelsEl, opts) {
       { key: "soil", cls: "left", k: L.cut, v: L.soil, pos: () => new THREE.Vector3(near[0], h * 0.45, near[1]) },
     ];
     if (lowSpot) list.push({ key: "water", cls: "water left", k: L.waterK, v: L.waterV, pos: () => new THREE.Vector3(lowSpot[0], 2, lowSpot[1]) });
-    if (st.roofs && nearRoof) list.push({ key: "roofs", cls: "", k: L.roofsK, v: L.roofsV, pos: () => new THREE.Vector3(nearRoof[0], nearRoof[3] + 4, nearRoof[1]) });
     labelsEl.replaceChildren(); labels = list.map((l) => {
       const el = document.createElement("div"); el.className = `s3-lbl ${l.cls}${st.hi === l.key ? " on" : ""}`;
       el.innerHTML = `<span class="dot"></span><span class="ln"></span><span class="tx"><small></small><b></b></span>`;
@@ -208,15 +210,20 @@ export async function mountSoil3d(stage, labelsEl, opts) {
     const W = stage.clientWidth, Hh = stage.clientHeight;
     for (const l of labels) {
       v3.copy(l.pos()).project(camera);
-      const x = ((v3.x + 1) / 2) * W, y = ((1 - v3.y) / 2) * Hh, left = l.cls.includes("left");
-      l.el.style.transform = `translate(${left ? x - l.el.offsetWidth : x}px, ${y - l.el.offsetHeight / 2}px)`;
+      const x = ((v3.x + 1) / 2) * W, y = ((1 - v3.y) / 2) * Hh, w = l.el.offsetWidth, pad = 8;
+      // on a narrow screen a label flips to the side with room, so it never runs off the edge
+      let left = l.cls.includes("left");
+      if (left && x - w < pad && x + w <= W - pad) left = false; else if (!left && x + w > W - pad && x - w >= pad) left = true;
+      l.el.classList.toggle("left", left);
+      const tx = Math.max(pad, Math.min(W - w - pad, left ? x - w : x));
+      l.el.style.transform = `translate(${tx}px, ${y - l.el.offsetHeight / 2}px)`;
       l.el.style.opacity = v3.z < 1 ? 1 : 0;
     }
   }
   function build() {
     const map = st.mode === "verdor" ? (greenTex ??= tex(greenCanvas(area.photo))) : photoTex;
     ground.material.map = map; ground.material.needsUpdate = true; top.material.map = map; top.material.needsUpdate = true;
-    soilTex.image = soilCanvas(1 - st.wet * 0.72); soilTex.needsUpdate = true;
+    soilTex.image = soilCanvas(1 - st.wet * 0.72, opts.look); soilTex.needsUpdate = true;
     if (waterMesh) { scene.remove(waterMesh); waterMesh.geometry.dispose(); waterMesh.material.map.dispose(); waterMesh.material.dispose(); waterMesh = null; }
     if (st.water && st.flood > 0 && area.low) {
       waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(S, S), new THREE.MeshBasicMaterial({ map: tex(waterCanvas(area.low, area.DG, st.flood), false), transparent: true, depthWrite: false }));

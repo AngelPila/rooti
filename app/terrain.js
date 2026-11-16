@@ -66,7 +66,7 @@ export function pilotSite(zoneData, surfaceWater, z) {
 
 // Words and numbers the planner and the screen use.
 export function describeSoil(s) {
-  if (!s) return null;
+  if (!s || ![s.clay, s.sand, s.phh2o, s.soc].every(Number.isFinite)) return null;
   const texture = s.clay >= 40 ? "clay" : s.clay >= 27 ? "clay_loam" : s.sand >= 65 ? "sand" : s.sand >= 50 ? "sandy_loam" : "loam";
   // Water the top 60 cm can hold for roots (mm), FAO-56 Table 19 ranges by texture.
   const awc = { clay: 110, clay_loam: 100, loam: 90, sandy_loam: 70, sand: 45 }[texture];
