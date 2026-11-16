@@ -1067,3 +1067,42 @@ body.drawing .search, body.drawing .geo, body.drawing .gps, body.drawing .pf-nex
 }
 
 .l-foot .foot-links a { color: var(--lime); text-decoration: none; } .l-foot .foot-links a:hover { text-decoration: underline; }
+
+/* Bubbles with character: a specimen of the data on each one, the plot's soil arriving as a cascade once the 3D stands up */
+.bub { --i: 0; }
+.bub .st .icon { width: 15px; height: 15px; color: currentColor; }
+.st-ok, .st-bad { color: #fff; } .st-watch { color: var(--ink); }
+.bub-t { flex: 1; }
+.spec { flex: none; margin-left: 4px; }
+.spec.core { width: 14px; height: 30px; border-radius: 7px; background: linear-gradient(180deg, var(--top) 0 28%, var(--mid) 28% 55%, var(--base) 55%); box-shadow: inset 0 0 0 1px rgba(20, 32, 26, .12), 0 2px 4px -2px rgba(20, 32, 26, .5); position: relative; overflow: hidden; }
+.spec.core::after { content: ""; position: absolute; left: 0; right: 0; top: 55%; bottom: 0; background: repeating-linear-gradient(135deg, rgba(243, 240, 229, .35) 0 2px, transparent 2px 5px); }
+.spec.ph { position: relative; width: 40px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #D7301F 0 20%, #FC8D59 20% 30%, #1A9850 30% 66%, #74ADD1 66% 80%, #4575B4 80%); }
+.spec.ph b { position: absolute; top: -4px; width: 4px; height: 14px; margin-left: -2px; border-radius: 2px; background: var(--ink); box-shadow: 0 0 0 1.5px var(--paper); }
+.spec.dots { display: flex; gap: 3px; }
+.spec.dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--parchment-2); }
+.spec.om i.on:nth-child(1) { background: #FEC44F; } .spec.om i.on:nth-child(2) { background: #EC7014; } .spec.om i.on:nth-child(3) { background: #993404; }
+.spec.wl i.on:nth-child(1) { background: #9DC3E6; } .spec.wl i.on:nth-child(2) { background: #6BAED6; } .spec.wl i.on:nth-child(3) { background: #08519C; }
+.spec.slope { width: 34px; height: 18px; display: grid; place-items: center; }
+.spec.slope i { width: 30px; height: 3px; border-radius: 2px; background: var(--forest); }
+.bub[aria-expanded="true"] .spec.dots i:not(.on), .bub.on .spec.dots i:not(.on) { background: rgba(243, 240, 229, .25); }
+.bub[aria-expanded="true"] .spec.slope i, .bub.on .spec.slope i { background: var(--lime); }
+.bub[aria-expanded="true"] .spec.ph b, .bub.on .spec.ph b { background: var(--cream); box-shadow: 0 0 0 1.5px var(--forest); }
+.bub:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; border-radius: 999px; }
+.bub-panel { transform-origin: right top; }
+@media (max-width: 720px) { .bub-panel { transform-origin: center bottom; } }
+.motion .bub-panel.in { animation: bub-open 220ms cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes bub-open { from { opacity: 0; transform: scale(.94); filter: blur(4px); } }
+.motion .s3:not(.ready) .bub { opacity: 0; transform: translateX(18px); }
+.motion .s3.ready .bub { animation: bub-in 420ms cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--i) * 45ms + 120ms); }
+@keyframes bub-in { from { opacity: 0; transform: translateX(18px); } }
+@media (max-width: 720px) { .motion .s3:not(.ready) .bub { transform: translateY(14px); } @keyframes bub-in { from { opacity: 0; transform: translateY(14px); } } }
+.s3-flat { position: absolute; inset: 0; margin: 0; border-radius: 0; }
+.s3-flat > img { width: 100%; height: 100%; object-fit: cover; }
+.bubs { width: 300px; } .bub-panel { right: 332px; }
+.core-row { display: grid; grid-template-columns: 34px 1fr; gap: 6px 14px; align-items: stretch; }
+.core-row .bub-note { grid-column: 1 / -1; margin-top: 6px; }
+.core-big { width: 34px; height: 92px; border-radius: 17px; background: linear-gradient(180deg, var(--top) 0 18%, var(--mid) 18% 42%, var(--base) 42%); position: relative; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(20, 32, 26, .12), 0 6px 14px -8px rgba(20, 32, 26, .6); }
+.core-big::after { content: ""; position: absolute; left: 0; right: 0; top: 42%; bottom: 0; background: repeating-linear-gradient(135deg, rgba(243, 240, 229, .38) 0 2px, transparent 2px 6px); }
+.core-keys { display: grid; grid-template-rows: 42fr 58fr; font-size: 13px; color: var(--lichen); }
+.core-keys span { display: flex; flex-direction: column; justify-content: center; } .core-keys b { font: 500 11px var(--f-mono); letter-spacing: .04em; color: var(--forest); }
+@media (max-width: 720px) { .bubs { width: auto; } .bub { max-width: 260px; } .bub-panel { right: 12px; } }

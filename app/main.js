@@ -1268,7 +1268,17 @@ function viewTerreno() {
 
     // One bubble per thing about the land, floating on the map: a traffic-light mark, the word, and the details (number, classed bar) on tap
     const G = c.soilGrade;
-    const mark = (g) => h("span", { class: `st st-${g || "none"}`, role: "img", "aria-label": g ? G[g] : "" }, g ? { ok: "✓", watch: "!", bad: "✕" }[g] : "");
+    const mark = (g) => h("span", { class: `st st-${g || "none"}`, role: "img", "aria-label": g ? G[g] : "" }, g ? icon({ ok: "i-check", watch: "i-alert", bad: "i-x" }[g]) : null);
+    // A small specimen of the data itself on each bubble, so the soil reads before the words: its colour, where the pH sits,
+    // how much organic matter, how much water stays, how steep
+    const look = soilLook(d), dots = (n, on, cls) => h("span", { class: `spec dots ${cls}`, "aria-hidden": "true" }, ...Array.from({ length: n }, (_, i) => h("i", { class: i < on ? "on" : "" })));
+    const spec = {
+      soil: d ? h("span", { class: "spec core", "aria-hidden": "true", style: { "--top": look.top, "--mid": look.mid, "--base": look.base } }) : null,
+      ph: d ? h("span", { class: "spec ph", "aria-hidden": "true" }, h("b", { style: { left: `${Math.max(4, Math.min(96, ((d.ph - 4) / 5) * 100))}%` } })) : null,
+      om: d ? dots(3, { low: 1, medium: 2, high: 3 }[d.omClass], "om") : null,
+      water: dots(3, { low: 1, medium: 2, high: 3 }[wlK], "wl"),
+      relief: slope != null ? h("span", { class: "spec slope", "aria-hidden": "true" }, h("i", { style: { transform: `rotate(${-Math.min(28, Math.max(2, slope * 2.2))}deg)` } })) : null,
+    };
     const gTex = !d ? null : d.texture === "sand" || d.texture === "clay" ? "watch" : "ok";
     const gPh = !d ? null : d.phClass === "good" ? "ok" : d.phClass.startsWith("very") ? "bad" : "watch";
     const gOm = !d ? null : d.omClass === "low" ? "watch" : "ok";
@@ -1279,7 +1289,9 @@ function viewTerreno() {
     const square = h("p", { class: "bub-note" }, icon("i-info"), h("span", {}, c.soilSquare));
     const tips = tipsFor(r);
     const items = [
-      { key: "soil", g: gTex, k: c.soilType, v: d ? c.texture[d.texture] : c.noData, note: d ? c.holds(d.awc) : null, extra: d ? square : null },
+      { key: "soil", g: gTex, k: c.soilType, v: d ? c.texture[d.texture] : c.noData, note: d ? c.holds(d.awc) : null,
+        extra: d ? h("div", { class: "core-row" }, h("span", { class: "core-big", "aria-hidden": "true", style: { "--top": look.top, "--mid": look.mid, "--base": look.base } }),
+          h("div", { class: "core-keys" }, h("span", {}, h("b", {}, "0–30 cm"), T.measured.replace(/\s*0–30 cm/, "")), h("span", {}, h("b", {}, "30 cm +"), T.unk[2][0])), square) : null },
       { key: "ph", g: gPh, k: c.acidity, v: d ? c.phWord[d.phClass] : c.noData, note: d ? `pH ${num(d.ph)}` : null,
         extra: d ? scaleBar(4, 9, [[5, "#D7301F"], [5.5, "#FC8D59"], [7.3, "#1A9850"], [8, "#74ADD1"], [9, "#4575B4"]], d.ph, c.phScale) : null },
       { key: "om", g: gOm, k: c.organic, v: d ? c.omWord[d.omClass] : c.noData, note: d ? `${num(d.om)} %` : null,
@@ -1300,11 +1312,11 @@ function viewTerreno() {
       put(panel, h("div", { class: "bub-ph" }, it.ic ? h("span", { class: "st st-none" }, icon(it.ic)) : mark(it.g), h("div", {}, h("small", {}, it.k), h("b", {}, it.v)),
         h("button", { class: "bub-x", "aria-label": c.close || "×", onclick: () => openBub(openKey) }, "×")),
         it.note && it.key !== "tips" ? h("p", { class: "bub-sn" }, it.note) : null, it.extra || null);
-      panel.hidden = false;
+      panel.hidden = false; panel.classList.remove("in"); void panel.offsetWidth; panel.classList.add("in");
     };
-    const bubs = h("div", { class: "bubs" }, ...items.map((it) => h("button", { class: "bub", "data-k": it.key, "aria-expanded": "false", onclick: () => openBub(it.key),
+    const bubs = h("div", { class: "bubs" }, ...items.map((it, i) => h("button", { class: "bub", "data-k": it.key, "aria-expanded": "false", style: { "--i": String(i) }, onclick: () => openBub(it.key),
       onmouseenter: () => (it.key === "soil" || it.key === "water") && !openKey && hi(it.key), onmouseleave: () => !openKey && hi(null) },
-      it.ic ? h("span", { class: "st st-none" }, icon(it.ic)) : mark(it.g), h("span", { class: "bub-t" }, h("small", {}, it.k), h("b", {}, it.v)))));
+      it.ic ? h("span", { class: "st st-none" }, icon(it.ic)) : mark(it.g), h("span", { class: "bub-t" }, h("small", {}, it.k), h("b", {}, it.v)), spec[it.key] || null)));
 
     const hMonth = h("h2", {}), hSub = h("p", {}), labelsEl = h("div", { class: "s3-labels" });
     const segBtn = (lab, on, fn, dot) => h("button", { "aria-pressed": String(on), onclick: fn }, dot ? h("span", { class: "dot", style: { background: dot } }) : null, lab);
@@ -1343,7 +1355,11 @@ function viewTerreno() {
     import("./soil3d.js?v=5").then((m) => m.mountSoil3d(stage, labelsEl, { lat, lon, lot: pts, labels, look: soilLook(d), onStep: loader.step })).then((s) => {
       if (!s) return;
       scene = s; stage.classList.add("ready"); paint();
-    }).catch(() => { if (stage.isConnected) stage.replaceWith(plotMap(r, picked)); });
+    }).catch(() => {
+      // Without WebGL or the network the flat satellite map takes the 3D's place, and the soil bubbles stay on it
+      if (!stage.isConnected) return;
+      const flat = plotMap(r, picked); flat.classList.add("s3-flat"); stage.prepend(flat); stage.classList.add("ready");
+    });
   });
 }
 
