@@ -25,10 +25,13 @@ if (CACHE) {
   } });
 }
 const { fetchClimate } = await import("../../app/climate.js");
-const { plan } = await import("../../app/planner.js");
-const { fetchTerrain, describeSoil, waterlogFactor } = await import("../../app/terrain.js");
+const { plan, namedPlans, ninoByDefault, ninoOffsetFor } = await import("../../app/planner.js");
+const { fetchTerrain, describeSoil, waterlogFactor, nearPilot, pilotSite } = await import("../../app/terrain.js");
+const { COPY } = await import("../../app/copy.js");
 
-const CROPS = JSON.parse(readFileSync(new URL("../../app/data/crops.json", import.meta.url))).crops;
+const dataFile = (name) => { try { return JSON.parse(readFileSync(new URL(`../../app/data/${name}`, import.meta.url))); } catch { return null; } };
+const CROPS = dataFile("crops.json").crops, OUTLOOK = dataFile("outlook.json");
+const PLAN_NAMES = COPY.es.ds.names;
 const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const UNIT_HA = { ha: 1, cuadra: 0.7056, m2: 0.0001, acre: 0.4047 };
 const UNIT_NAME = { ha: "hectáreas", cuadra: "cuadras", m2: "m²", acre: "acres" };
@@ -49,46 +52,46 @@ function period() {
   return { start: `${s.getUTCFullYear()}-${pad(s.getUTCMonth() + 1)}`, end: `${e.getUTCFullYear()}-${pad(e.getUTCMonth() + 1)}` };
 }
 
-// Same rule as the web app: a plot on the Pacific coast of Ecuador or northern Peru, with a plan that starts before
-// May 2027, is tested on the rainy seasons after past strong El Niños (NOAA and ERFEN expect one this year).
-const ninoByDefault = (lot, start) => lot.lat > -6 && lot.lat < 2 && lot.lon > -81.5 && lot.lon < -78.5 && start < "2027-05";
-
+// The page's site data (app/main.js terrain()): in a pilot zone, its own soil and surface water.
 async function terrainOf(lot) {
-  const key = `rooti:terrain:${lot.lat.toFixed(3)},${lot.lon.toFixed(3)}`;
-  try { const c = JSON.parse(localStorage.getItem(key)); if (c) return c; } catch { /* no cache */ }
-  const t = await fetchTerrain(lot.lat, lot.lon, null).catch(() => ({ soil: null }));
-  try { if (t.soil) localStorage.setItem(key, JSON.stringify(t)); } catch { /* no storage */ }
-  return t;
+  const z = nearPilot(lot), { pilotSoil, pilotWater } = pilotSite(z && dataFile(`${z}.json`), dataFile("surface_water.json"), z);
+  const t = await fetchTerrain(lot.lat, lot.lon, pilotSoil).catch(() => ({ soil: null }));
+  // A point cached with SoilGrids soil before the pilot data was used here still gets the pilot soil
+  return { ...t, ...(pilotSoil && { soil: { ...pilotSoil, offsetKm: 0, source: "pilot" } }), pilotWater };
 }
 
 function siteOf(t, lot) {
   const d = describeSoil(t?.soil);
   const answer = lot.waterlog === true ? "yes" : lot.waterlog === false ? "no" : null;
-  return { awc: d?.awc ?? 90, ph: d?.ph ?? null, slope: t?.slopePct ?? 0, wl: waterlogFactor(t, answer, null), soil: d };
+  return { awc: d?.awc ?? 90, ph: d?.ph ?? null, slope: t?.slopePct ?? 0, wl: waterlogFactor(t, answer, t?.pilotWater), soil: d };
 }
 
 async function planCmd(lot, mode = "auto") {
   const { start, end } = period();
   const picked = (lot.crops || []).filter((id) => CROPS[id] || id === "mulch");
   if (!picked.length) return { error: "El lote no tiene cultivos registrados." };
-  const used = mode === "auto" ? (ninoByDefault(lot, start) ? "nino" : "all") : mode;
+  // The page's choices (app/main.js results(), namedPlans()): same El Niño years, both priorities, same three plans.
+  const nino = ninoByDefault(lot, start, end, OUTLOOK, new Date().toISOString().slice(0, 10));
+  const used = mode === "auto" ? (nino ? "nino" : "all") : mode;
   const [clim, terrain] = await Promise.all([fetchClimate(lot.lat, lot.lon), terrainOf(lot)]);
   const site = siteOf(terrain, lot);
-  const r = plan(clim, CROPS, picked, { start, end, irrigation: !!lot.irrigation, priority: lot.priority || "soil", mode: used, site, current: lot.current || [], ninoOffset: used === "nino" ? 2026 - Number(start.slice(0, 4)) : 0 });
-  const n = r.samples.length, first = r.samples[0]?.base ?? 1981, area = Number(lot.area) || 0, unit = UNIT_HA[lot.unit] ? lot.unit : "ha";
+  const opts = { start, end, irrigation: !!lot.irrigation, mode: used, ninoOffset: nino ? ninoOffsetFor(start) : 0, site, current: lot.current || [] };
+  const r = plan(clim, CROPS, picked, { ...opts, priority: "soil" }), ri = plan(clim, CROPS, picked, { ...opts, priority: "income" });
+  const n = r.samples.length, first = (r.samples[0]?.base ?? 1981) + (used === "nino" ? opts.ninoOffset : 0), area = Number(lot.area) || 0, unit = UNIT_HA[lot.unit] ? lot.unit : "ha";
   const land = (share) => (area ? `${round(share * area)} ${UNIT_NAME[unit]}` : `${Math.round(share * 100)} % del lote`);
-  const farm = r.farm && {
-    plots: r.farm.parcels.filter((p) => p.share > 0.001).sort((a, b) => b.share - a.share).map((p) => ({
+  const plans = namedPlans(r, ri).map(({ key, f }) => ({
+    key, name: PLAN_NAMES[key],
+    plots: f.parcels.filter((p) => p.share > 0.001).sort((a, b) => b.share - a.share).map((p) => ({
       land: land(p.share),
       plantings: p.d.steps.map((s) => ({ crop: cropName(s.crop), from: ym(s.from), to: ym(s.to), risk: riskOf(s.fail), bad_years: yearsOf(s.fail, n), harvest_share: round(s.yld, 2) })),
     })),
-    bare_soil_months: Math.round((1 - r.farm.covered) * r.period.length),
-    risk: riskOf(r.farm.anyLoss),
-    bad_years: yearsOf(r.farm.anyLoss, n),
-    years_losing_over_half: yearsOf(r.farm.bigLoss, n),
-    verdict: r.farm.verdict,
-  };
-  const today = r.today && { risk: riskOf(r.today.anyLoss), bad_years: yearsOf(r.today.anyLoss, n), bare_soil_months: Math.round((1 - r.today.covered) * r.period.length), verdict: r.today.verdict };
+    // Counted like the page's plan cards: a month is bare when more than half the land is
+    bare_soil_months: f.grid.slice(0, r.period.length).filter((g) => g.bare?.share > 0.5).length,
+    risk: riskOf(f.anyLoss),
+    bad_years: yearsOf(f.anyLoss, n),
+    years_losing_over_half: yearsOf(f.bigLoss, n),
+    verdict: f.verdict,
+  }));
   const sow = Object.values(r.windows || {}).map((w) => {
     const good = w.starts.filter((s) => s && s.level === "good").map((s) => r.period[s.t]);
     const best = w.starts.filter(Boolean).sort((a, b) => b.value - a.value)[0];
@@ -101,7 +104,7 @@ async function planCmd(lot, mode = "auto") {
     why_these_years: used === "nino"
       ? `Este invierno viene con un Niño fuerte (lo esperan NOAA y el ERFEN), así que el plan se prueba con lo que pasó después de otros Niños fuertes: si lo hubiera sembrado en esos ${n} inviernos, cómo le habría ido.`
       : `El plan se prueba con el clima de cada año desde ${first}: si lo hubiera sembrado en esos ${n} años, cómo le habría ido.`,
-    farm, today, sow,
+    plans, sow,
     soil: site.soil && { texture: site.soil.texture, ph: round(site.soil.ph ?? 0, 1), ph_class: site.soil.phClass, organic_matter: site.soil.omClass },
     slope_pct: site.slope,
     limits: "Clima de NASA POWER: describe unos 50 km alrededor del lote, no el lote mismo. Suelo de SoilGrids (250 m).",

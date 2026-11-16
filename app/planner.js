@@ -14,6 +14,12 @@ const GREEN_MANURE = new Set(["velvet_bean", "jack_bean"]);
 // El Niño events of moderate to very strong size (NOAA CPC ONI peak >= 1.5), by the year whose December starts the
 // rainy season they hit on the Pacific coast: 1982-83, 1986-87, 1991-92, 1997-98, 2009-10, 2015-16, 2023-24.
 export const NINO_ONSET = [1982, 1991, 1997, 2009, 2015, 2023]; // ONI peak >= 1.5 (1986-87 peaks at 1.21 in data oni.csv)
+export const CURRENT_NINO_ONSET = 2026;
+export const COAST = (pl) => pl.lat > -5 && pl.lat < 2 && pl.lon > -81.5 && pl.lon < -78.5;
+// A strong El Niño is under way (NOAA/ERFEN, data/outlook.json): on the Pacific coast, a plan for the coming rainy
+// season is tested by default on the seasons that followed past strong El Niños, not on all years alike.
+export const ninoByDefault = (place, start, end, outlook, today) => outlook?.official?.noaa?.chance_pct >= 70 && COAST(place) && start.slice(0, 7) <= `${CURRENT_NINO_ONSET + 1}-04` && end >= today;
+export const ninoOffsetFor = (start) => CURRENT_NINO_ONSET - Number(start.slice(0, 4));
 export const PRIORITY_WEIGHTS = { soil: { water: 1, soil: 3, income: 1 }, water: { water: 3, soil: 1, income: 1 }, income: { water: 1, soil: 1, income: 3 } };
 
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -295,4 +301,21 @@ export function plan(clim, crops, picked, { start, end, irrigation = false, prio
     return { i, score: r.v, steps, months, perSample, bare, covered, verdict, harvests: steps.reduce((x, s) => x + (1 - s.fail), 0),
              crops: [...new Set(r.steps.map((s) => s.crop))] };
   }
+}
+
+// The same plantings on the same plots
+export const planSig = (f) => f.parcels.map((p) => p.d.steps.map((s) => s.crop + s.t0).join(",")).join("|");
+// Three named plans the farmer compares, plus what they do today, from the soil- and income-priority runs of plan().
+// "Safest" is the new plan that loses a harvest in the fewest years. The web page and the WhatsApp agent both use it.
+export function namedPlans(rs, ri) {
+  const today = rs.today, tSig = today ? planSig(today) : null;
+  const pool = [rs.farm, ri.farm, ...(rs.others || []), ...(ri.others || [])].filter((f) => f && planSig(f) !== tSig && f.parcels.some((p) => p.d.steps.length));
+  // A plan offered as new must be a rotation: at least two crops, and never the same crop twice in a row on a plot
+  const rotates = (f) => new Set(f.parcels.flatMap((p) => p.d.steps.map((s) => s.crop))).size > 1 && f.parcels.every((p) => p.d.steps.every((s, i, a) => !i || s.crop !== a[i - 1].crop));
+  const rot = pool.filter(rotates);
+  const safe = [...(rot.length ? rot : pool)].sort((a, b) => a.anyLoss - b.anyLoss || b.harvest - a.harvest)[0];
+  const out = [], seen = new Set();
+  for (const [key, f] of [["safe", safe], ["income", ri.farm], ["soil", rs.farm]]) { if (!f || seen.has(planSig(f))) continue; seen.add(planSig(f)); out.push({ key, f }); }
+  if (today) out.push({ key: "today", f: today });
+  return out;
 }

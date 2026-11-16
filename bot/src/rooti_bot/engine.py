@@ -14,7 +14,7 @@ from rooti_bot import config, store
 log = logging.getLogger("rooti.engine")
 ENGINE = config.BOT_DIR / "engine" / "rooti.mjs"
 SOIL_RETRY_S = 86400  # a plan saved without soil asks SoilGrids again after this long
-PLAN_FORMAT = 3  # bump when a plan's content changes (rooti.mjs, the soil fetch), so saved plans are computed again
+PLAN_FORMAT = 4  # bump when a plan's content changes (rooti.mjs, the soil fetch), so saved plans are computed again
 
 
 class EngineError(Exception):
@@ -99,6 +99,14 @@ def plan_for(farmer: dict, *, fresh: bool = False, mode: str = "auto") -> dict:
         result = run({"cmd": "plan", "lot": store.lot_inputs(farmer), "mode": mode})
         store.save_plan(farmer["phone"], inputs, result)
     return result
+
+
+def followed(result: dict, farmer: dict) -> dict | None:
+    """The plan the farmer follows: the one picked on the page, else the first the page shows («El más seguro»).
+    A plan saved before the named plans (format 3) has only «farm»."""
+    plans = result.get("plans") or ([result["farm"]] if result.get("farm") else [])
+    key = (farmer.get("chosen") or {}).get("key")
+    return next((p for p in plans if p.get("key") == key), plans[0] if plans else None)
 
 
 def this_year(farmer: dict) -> dict:

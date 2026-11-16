@@ -8,6 +8,10 @@ Pilot zones: Daule, Babahoyo and Quevedo (rice and maize on the Ecuadorian coast
 
 ## Try it
 
+Live app (English): https://rooti.taws.espol.edu.ec/?lang=en
+
+Or run it locally:
+
 ```bash
 cd app && python3 -m http.server 8765    # then open http://localhost:8765
 ```
@@ -39,7 +43,7 @@ The bootcamp saves lesson progress and the quiz badge in the current browser. It
 
 1. **Plan.** Pick any place in the world (search, GPS or tap the globe), a date range (for example 4 Mar 2023 to 7 Jun 2027) the crops you want to grow and how much land you have (ha, m², acres or cuadras).
 2. **Recommended farm plan.** The land is split into plots that run side by side, one led by each crop that suits the dates, each rotating the picked crops. Rooti says how much land goes to each crop and when, and shows one farm calendar with every crop (for example potato Jan–Apr and maize May–Aug on one plot, the opposite on the other, so both are in the ground every month). More land goes to what yields best, at least 15 % to each rotation.
-3. **Try these simulations.** Better crops for the dates, irrigation, a legume, keeping the straw, testing on dry years; one tap each.
+3. **Try these simulations.** Better crops for the dates, irrigation, a legume, covering the soil with crop residue, testing on dry years; one tap each.
 4. **Build your own plan and compare.** Start from the recommended plan, change crops, sowing months or land per plot, and see your plan's farm calendar and a side-by-side table: expected harvest, years with some loss, years losing over half, soil covered, soil damage and (in the pilot zones) money after costs.
 5. **Single-plot rotations.** Rooti builds rotations **only from those crops** and picks the planting months itself. The best candidate is shown as recommended; every other option stays on screen.
 6. **When to sow each crop.** For every picked crop, each month of the range is coloured by how it would go if sown that month; the best windows are named ("best to sow: Dec 2026 – Mar 2027 · up to 91 %").
@@ -50,9 +54,9 @@ How the global planner works (`app/climate.js`, `app/planner.js`):
 - **NASA POWER** monthly climate for the point, 1981 to last month (monthly API plus daily data for the current year), fetched live from the browser. ET0 is FAO-56 Penman-Monteith from POWER's monthly means (`T2M`, `T2M_RANGE`, `RH2M`, `WS2M`, `ALLSKY_SFC_SW_DWN`).
 - Months that already happened use the real climate. Future months are tested on every real run of consecutive years since 1981 (about 40), optionally only dry, wet or strong El Niño years.
 - The plot changes the plan: water left in the soil after the rains counts for the next crop (bucket sized by soil texture), crops that cannot stand standing water can drown in very wet months on plots that hold water, soil pH outside a crop's range lowers its harvest, and bare soil on a slope loses more.
-- Strategies shown side by side: the recommended farm plan, what the farmer does today (their crops, no straw cover) and other rotations, each with why, risks, what we don't know and questions for the agronomist.
+- Strategies shown side by side: the recommended farm plan, what the farmer does today (their crops, no crop-residue cover) and other rotations, each with why, risks, what we don't know and questions for the agronomist.
 - Each planting: water need = FAO-56 crop coefficients × ET0; lost when rain covers under 20 % of the need (no irrigation), or when a month is colder or hotter than the crop's ECOCROP limits (with a margin, since these are monthly means); yield share = FAO-33 Ky response.
-- The best sequence is found by dynamic programming over months, weighing harvests, water deficit, failures, bare-soil months (rain on bare soil, bare soil in the sun) and rotation rules (no crop back to back, legume after a cereal, not two cereals in a row), by the farmer's priority (soil, water or income). Straw left after a cereal covers the soil if "keep the straw" is picked.
+- The best sequence is found by dynamic programming over months, weighing harvests, water deficit, failures, bare-soil months (rain on bare soil, bare soil in the sun) and rotation rules (no crop back to back, legume after a cereal, not two cereals in a row), by the farmer's priority (soil, water or income). Crop residue left after a cereal covers the soil if "cover the plot with the cereal residue" is picked.
 - Wheat, barley, potato, sunflower and chickpea were added for use outside the tropics with approximate FAO-56 / ECOCROP values (flagged in the app).
 - Pilot zones (Daule, Babahoyo, Quevedo) keep the soil passport (MODIS fires) and Ecuador prices.
 
@@ -90,7 +94,7 @@ How the global planner works (`app/climate.js`, `app/planner.js`):
   - Weak numbers are flagged in the app (soybean cost is from ~2015).
   - With 2024–2026 costs, typical rice and maize margins come out **negative** (about −800 and −480 USD/ha), in line with what growers' unions reported. Costs come from press statements and may include land rent.
 - `app/` is a static site: HTML, vanilla JS and **CesiumJS** (Esri World Imagery, OpenStreetMap fallback).
-- `bot/` is Rooti on WhatsApp: farmers ask by text or voice note and get answers from the same planner, plus opt-in alerts and a live voice call. See [`bot/README.md`](bot/README.md).
+- `bot/` is Rooti on WhatsApp: farmers ask by text or voice note and get answers from the same planner, plus opt-in alerts. See [`bot/README.md`](bot/README.md).
 - `data-pipeline/` holds the download scripts (NASA POWER, MODIS, SoilGrids, DEM, ONI) and their README with known caveats. `env/Dockerfile` is the reproducible Python environment they run in.
 
 ## Run locally

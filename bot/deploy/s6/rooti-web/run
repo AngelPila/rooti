@@ -1,0 +1,5 @@
+#!/command/with-contenv sh
+# Rooti's website, its pages and their API (server.py). Coolify publishes port 7860.
+export HOME=/opt/data
+cd /opt/data || exit 1
+exec s6-setuidgid hermes /opt/rooti/bot/.venv/bin/rooti-bot web --host 0.0.0.0 --puerto 7860

@@ -25,7 +25,7 @@ Rooti tells a farmer what to plant, in which months and on how much land, so the
 - **Recommended farm plan:** the land is split into plots that run side by side, each led by one crop and rotating the others, so several crops share the season and no single crop carries the whole farm. The farm calendar shows every crop, how much land it takes and how each planting ends, over the average monthly rain of the place.
 - **Strategies side by side:** the recommended plan, what the farmer does today and other rotations, judged with the same numbers (harvest, years with a loss, months with the soil covered). Each one has *why*, *risks*, *what we don't know* and *questions for your agronomist* — the challenge asks for all four.
 - **My plot:** elevation and slope, soil type and how much water it holds, acidity, organic matter, waterlogging (with a button to correct it), the climate of the place, this year (last month's rain against normal, the official El Niño outlook) and tips.
-- **Try these ideas:** irrigation, a better crop for the dates, a legume, keeping the straw, testing on dry years only. Each idea is checked by re-running the planner and only shown if it improves the plan; one tap to try, one to undo.
+- **Try these ideas:** irrigation, a better crop for the dates, a legume, covering the soil with crop residue, testing on dry years only. Each idea is checked by re-running the planner and only shown if it improves the plan; one tap to try, one to undo.
 - **Compare:** the farmer builds their own plan (plots, crops, sowing months, land) and sees it against the recommended one.
 - **What if:** the same plan on every real run of years since 1981.
 
@@ -41,7 +41,7 @@ Rooti tells a farmer what to plant, in which months and on how much land, so the
 - It keeps the farmer in charge: options with reasons, never orders, and a reminder to check with the local agronomist (MAG, INIAP). It can support the national rice agroclimatic technical table (CIIFEN, INAMHI, MAG) and the new state crop insurance.
 
 **Tools**
-HTML, vanilla JavaScript (no framework, no API keys), CesiumJS, Python (pandas, xarray, rioxarray, odc-stac) in Docker for the pilot-zone pipeline, Pencil for design. Built with the help of Claude (see Use of AI).
+HTML, vanilla JavaScript (no framework), CesiumJS. The planner runs in the browser and needs no API keys; the Rooti assistant (in the app and on WhatsApp) runs on a server with DeepSeek and Groq keys. Also Python (pandas, xarray, rioxarray, odc-stac) in Docker for the pilot-zone pipeline, Pencil for design. Built with the help of Claude (see Use of AI).
 
 ## NASA data used
 - **NASA POWER** (Langley Research Center), community AG: PRECTOTCORR, T2M, T2M_RANGE, T2M_MAX, T2M_MIN, RH2M, WS2M, ALLSKY_SFC_SW_DWN — monthly 1981–2025 and daily 2026, any point. https://power.larc.nasa.gov
@@ -61,6 +61,11 @@ HTML, vanilla JavaScript (no framework, no API keys), CesiumJS, Python (pandas, 
 Full list with links: `docs/REFERENCES.md`.
 
 ## Use of AI (form field)
+AI is used in three places, all declared here:
+- **Building the project:** Claude (Anthropic) through Claude Code as a coding and research assistant (details below).
+- **Images:** the illustrations were generated with OpenAI image generation through Codex and are marked as AI-generated in the app (list and prompts in `docs/REFERENCES.md`).
+- **Inside the product:** the Rooti assistant answers with DeepSeek (`deepseek-chat`), which only calls the planner's own functions; voice notes are transcribed with Whisper large-v3-turbo on Groq, and answers are read aloud with Microsoft Edge neural text-to-speech (edge-tts). The rotation plans themselves come from the planner (NASA POWER, FAO-56, FAO-33), not from a language model.
+
 We used **Claude (Anthropic) through Claude Code** as a coding and research assistant during the event:
 - writing and debugging the code (data pipeline, planner, interface), and the interface text in plain Spanish and English;
 - searching and reading data documentation and official sources, and checking numbers;

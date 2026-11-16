@@ -1,10 +1,10 @@
 import { fetchClimate } from "./climate.js?v=23";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=38";
-import { COPY } from "./copy.js?v=66";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=25";
+import { plan as runPlanner, cropMonths, NINO_ONSET, COAST, ninoByDefault, ninoOffsetFor, namedPlans as pickNamedPlans } from "./planner.js?v=39";
+import { COPY } from "./copy.js?v=67";
+import { fetchTerrain, describeSoil, waterlogFactor, nearPilot, pilotSite } from "./terrain.js?v=26";
 import { STR } from "./i18n.js?v=22";
-import { createBootcamp } from "./bootcamp.js?v=5";
-import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
+import { createBootcamp } from "./bootcamp.js?v=6";
+import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=3";
 import { createRooti } from "./rooti.js?v=5";
 import { createVoice } from "./voice.js?v=1";
 
@@ -12,7 +12,6 @@ const CESIUM = "https://cdn.jsdelivr.net/npm/cesium@1.123.0/Build/Cesium/";
 const ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
 const GEO = "https://geocoding-api.open-meteo.com/v1/search";
 const REV = "https://nominatim.openstreetmap.org/reverse";
-const PILOTS = { daule: [-1.86, -79.98], babahoyo: [-1.80, -79.53], quevedo: [-1.03, -79.46] };
 const CROP_ORDER = ["rice", "maize", "soybean", "potato", "common_bean", "peanut", "sorghum", "wheat", "barley", "sunflower", "chickpea", "cowpea", "jack_bean", "velvet_bean", "mulch"];
 const UNITS = { ha: 1, cuadra: 0.7056, m2: 0.0001, acre: 0.4047 };
 const STEP = { ha: 0.5, cuadra: 1, m2: 100, acre: 1 };
@@ -108,7 +107,6 @@ const andList = (xs) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join("
 function fracParts(x) { let best = [1, 2], err = 1; for (let n = 2; n <= 10; n++) { const k = Math.max(1, Math.round(x * n)); const e = Math.abs(k / n - x); if (e < err - 0.02) { err = e; best = [k, n]; } } return best; }
 // 0.83 -> "5 de cada 6": plain fractions instead of percentages.
 const frac = (x) => (x <= 0.001 ? C().none : x >= 0.999 ? (es() ? "Todos" : "All") : C().kOf(...fracParts(x)));
-const nearPilot = (pl) => Object.entries(PILOTS).find(([, [la, lo]]) => Math.hypot(la - pl.lat, lo - pl.lon) * 111 < 40)?.[0] || null;
 function parseDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(value + "T12:00:00");
@@ -184,8 +182,7 @@ function terrain(pl, preload = false) {
       if (z) {
         const pilotData = (url) => fetch(url, { signal }).then(ok).catch(() => null);
         const [zd, sw] = await Promise.all([pilotData(`data/${z}.json`), pilotData("data/surface_water.json")]);
-        const so = zd?.soil; if (so?.clay) pilotSoil = { clay: so.clay.value_0_30cm, sand: so.sand.value_0_30cm, phh2o: so.phh2o.value_0_30cm, soc: so.soc.value_0_30cm, nitrogen: so.nitrogen?.value_0_30cm };
-        pilotWater = sw?.zones?.[z]?.waterlogging_index ?? null;
+        ({ pilotSoil, pilotWater } = pilotSite(zd, sw, z));
       }
       const t = await (bundled ?? fetchTerrain(pl.lat, pl.lon, pilotSoil, { signal })).catch(() => ({ soil: null }));
       return { ...t, pilotWater, zone: z };
@@ -223,7 +220,7 @@ async function results(P = state.plan, mode = state.mode, priority = "soil") {
   if (!memo.has(key)) {
     const site = siteOf(tr, P);
     const start = P.start.slice(0, 7), end = P.end.slice(0, 7);
-    const ninoOffset = ninoNow(P) ? CURRENT_NINO_ONSET - Number(start.slice(0, 4)) : 0;
+    const ninoOffset = ninoNow(P) ? ninoOffsetFor(start) : 0;
     memo.set(key, { clim: c, P, terrain: tr, site, ninoOffset, ...runPlanner(c, DATA.crops, P.crops, { start, end, irrigation: P.irrigation, priority, mode, ninoOffset, site, current: P.current || [] }) });
   }
   return memo.get(key);
@@ -700,16 +697,7 @@ async function withResults(draw) {
 const NAMED_ICON = { safe: "i-shield", income: "i-income", soil: "i-straw", today: "i-plot" };
 async function namedPlans(P = state.plan, mode = state.mode) {
   const [rs, ri] = await Promise.all([results(P, mode, "soil"), results(P, mode, "income")]);
-  const today = rs.today, tSig = today ? sig(today) : null;
-  const pool = [rs.farm, ri.farm, ...(rs.others || []), ...(ri.others || [])].filter((f) => f && sig(f) !== tSig && f.parcels.some((p) => p.d.steps.length));
-  // A plan offered as new must be a rotation: at least two crops, and never the same crop twice in a row on a plot
-  const rotates = (f) => new Set(f.parcels.flatMap((p) => p.d.steps.map((s) => s.crop))).size > 1 && f.parcels.every((p) => p.d.steps.every((s, i, a) => !i || s.crop !== a[i - 1].crop));
-  const rot = pool.filter(rotates);
-  const safe = [...(rot.length ? rot : pool)].sort((a, b) => a.anyLoss - b.anyLoss || b.harvest - a.harvest)[0];
-  const out = [], seen = new Set();
-  for (const [key, f] of [["safe", safe], ["income", ri.farm], ["soil", rs.farm]]) { if (!f || seen.has(sig(f))) continue; seen.add(sig(f)); out.push({ key, f }); }
-  if (today) out.push({ key: "today", f: today });
-  return out;
+  return pickNamedPlans(rs, ri);
 }
 const whyOf = (it, plans) => {
   const D = C().ds, today = plans.find((x) => x.key === "today");
@@ -1060,7 +1048,7 @@ async function viewAviso() {
     h("section", { class: "av-hero" }, h("span", { class: "pill-eyebrow glass mono" }, W.kind[A.kind] || W.crumb), h("h1", { class: "h2" }, alertTitle(A, days)), es() ? h("p", {}, A.text) : null),
     h("section", { class: "card" }, h("b", { class: "card-h" }, W.nextDays), days ? rainChart(days) : h("p", { class: "small" }, W.noForecast), h("p", { class: "small" }, W.forecastSrc)),
     h("section", { class: "card" }, h("b", { class: "card-h" }, W.todo), tipList(W.tips[A.kind] || [])),
-    h("div", { class: "av-acts" }, h("a", { class: "btn lime big block", href: link.call }, icon("i-mic"), W.call), h("a", { class: "btn big block", href: "#/resumen" }, icon("i-month"), W.seePlan))));
+    h("div", { class: "av-acts" }, hasWhatsApp() ? h("a", { class: "btn lime big block", href: waUrl() }, icon("i-chat"), W.back) : null, h("a", { class: "btn big block", href: "#/resumen" }, icon("i-month"), W.seePlan))));
 }
 
 /* ================= Resumen: the page behind WhatsApp's «Ver mi plan» ================= */
@@ -1112,11 +1100,7 @@ function viewResumen() {
 }
 
 /* ---------- why, risks, what we don't know, questions for the agronomist ---------- */
-const COAST = (pl) => pl.lat > -5 && pl.lat < 2 && pl.lon > -81.5 && pl.lon < -78.5;
-const CURRENT_NINO_ONSET = 2026;
-// A strong El Niño is under way (NOAA/ERFEN, data/outlook.json): on the Pacific coast, a plan for the coming rainy
-// season is tested by default on the seasons that followed past strong El Niños, not on all years alike.
-const ninoNow = (P) => !!P && DATA.outlook?.official?.noaa?.chance_pct >= 70 && COAST(P.place) && P.start.slice(0, 7) <= `${CURRENT_NINO_ONSET + 1}-04` && P.end >= iso(new Date());
+const ninoNow = (P) => !!P && ninoByDefault(P.place, P.start, P.end, DATA.outlook, iso(new Date()));
 const defaultMode = (P) => (ninoNow(P) ? "nino" : "all");
 const seasonsOf = (r) => r.samples.filter((s) => s.base != null).map((s) => s.base + r.ninoOffset);
 function ninoBanner(r) {
@@ -1194,7 +1178,6 @@ function tipsFor(r) {
   return out;
 }
 const tipList = (items) => h("ul", { class: "tips" }, ...items.map(([ic, tx]) => h("li", {}, h("span", { class: "ic" }, icon(ic)), h("span", {}, tx))));
-function sig(f) { return f.parcels.map((p) => p.d.steps.map((s) => s.crop + s.t0).join(",")).join("|"); }
 
 /* ---------- the plot ---------- */
 // The plot from the satellite with the picked plan's plots drawn on it. The split is illustrative, and says so.
