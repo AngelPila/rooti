@@ -150,6 +150,10 @@ python -m pytest tests/e2e    # headless browser and a fake model; needs pytest 
 4. Health check path `/healthz`. On the first start the server creates the tables (`server/schema.sql`) and loads
    the example posts from `app/data/vecinos.json` once, marked as examples.
 
+Where the website is served by the WhatsApp bot (its own address, as in production), the bot answers the same
+Vecinos API from its SQLite file (`bot/src/rooti_bot/vecinos.py`, tables `vec_*` in `rooti.db`), so posts are shared
+without this server. To hide a post there: `UPDATE vec_posts SET hidden = 1 WHERE id = '...';` in that file.
+
 Moderation: a post leaves the feed when 3 different devices report it. To hide or bring back a post by hand, run in
 the database's terminal: `UPDATE vec_posts SET hidden = true WHERE id = '...';`. The WhatsApp bot can later write
 to the same database (`source = 'whatsapp'`) over Coolify's internal network.

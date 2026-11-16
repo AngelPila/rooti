@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from rooti_bot import calls, config, engine, store
+from rooti_bot import calls, config, engine, store, vecinos
 
 log = logging.getLogger("rooti.tools")
 ON_CHAT = contextvars.ContextVar("on_chat", default=False)  # a WhatsApp turn (mcp_server), not the live call
@@ -232,6 +232,51 @@ def plan_button(farmer_id: str, args: dict) -> dict:
                    "Ver mi plan", lambda: calls.page(farmer_id, "resumen"))
 
 
+MONTHS = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+          "noviembre", "diciembre")
+RESULTS = {"bien": "le fue bien", "regular": "le fue regular", "perdio": "perdió la cosecha"}
+
+
+def _zone(farmer_id: str) -> str:
+    f = _farmer(farmer_id)
+    if f.get("lat") is None:
+        raise ToolError("Todavía no sé dónde está el lote: sin eso no sé quiénes son sus vecinos.")
+    return vecinos.zone_of(f["lat"], f["lon"])
+
+
+def neighbors(farmer_id: str, args: dict) -> dict:
+    posts = vecinos.list_posts(_zone(farmer_id))
+    if args.get("cultivo"):
+        posts = [p for p in posts if p.get("crop") == args["cultivo"] or p["type"] != "asi_me_fue"]
+    out = []
+    for p in posts[:8]:
+        item = {"tipo": p["type"], "quien": p["author"] + (" (técnico)" if p.get("role") == "tecnico" else ""),
+                "fecha": p["date"], "texto": p.get("text") or p.get("text_es") or ""}
+        if p["type"] == "asi_me_fue" and p.get("sowMonth") and p.get("result"):
+            name = CROPS.get(p.get("crop"), {}).get("name_es", p.get("crop", "")).split(" / ")[0].lower()
+            item["cosecha"] = f"{name}, sembrado en {MONTHS[p['sowMonth'] - 1]} {p['sowYear']}: {RESULTS[p['result']]}"
+        if p.get("example"):
+            item["ejemplo"] = True
+        item["respuestas"] = [f"{r['author']}: {r.get('text') or r.get('text_es') or ''}" for r in p["replies"][:3]]
+        out.append(item)
+    return {"publicaciones": out, "total": len(posts)}
+
+
+def publish(farmer_id: str, args: dict) -> dict:
+    zone = _zone(farmer_id)
+    kind = args.get("tipo")
+    body = {"type": kind, "zone": zone, "text": args.get("texto"), "author": _farmer(farmer_id).get("name")}
+    if kind == "asi_me_fue":
+        body.update(crop=args.get("cultivo"), sowMonth=args.get("mes"), sowYear=args.get("anio"),
+                    result=args.get("resultado"))
+    try:
+        post_id = vecinos.add_post(body, source="whatsapp")
+    except ValueError:
+        raise ToolError("Faltan datos: para «así me fue», el cultivo (por id), el mes y año de siembra y cómo le fue; "
+                        "para un aviso o una pregunta, el texto.") from None
+    return {"publicado": True, "firma": vecinos.mask_name(body["author"]), "id": post_id}
+
+
 LOT_PROPS = {
     "name": {"type": "string", "description": "cómo se llama el agricultor"},
     "lat": {"type": "number"}, "lon": {"type": "number"},
@@ -279,6 +324,20 @@ TOOLS = [
                        "del año y los caminos para elegir uno. Solo si quiere verlo, compararlo o elegir; nunca en "
                        "lugar de explicarle tú.", plan_button,
          {"texto": {"type": "string", "description": "la frase corta que va sobre el botón"}}),
+    Tool("vecinos", "Lo que contaron agricultores de la zona del lote en Vecinos: cómo les fue con un cultivo, avisos "
+                    "y preguntas. Es experiencia de vecinos, no un dato de la NASA.", neighbors,
+         {"cultivo": {"type": "string", "description": "id de un cultivo, para ver solo cómo les fue con ese"}}),
+    Tool("publicar_en_vecinos", "Publica en Vecinos, para los agricultores de su zona, lo que el agricultor contó. Solo "
+                                "después de leerle lo que se va a publicar y que diga que sí.", publish,
+         {"tipo": {"type": "string", "enum": ["asi_me_fue", "aviso", "pregunta"],
+                   "description": "asi_me_fue: cómo le fue con una siembra; aviso: algo que los vecinos deben saber "
+                                  "(plaga, inundación); pregunta: algo que quiere preguntarles"},
+          "cultivo": {"type": "string", "description": f"para asi_me_fue, id: {CROP_LIST}"},
+          "mes": {"type": "integer", "minimum": 1, "maximum": 12, "description": "para asi_me_fue, mes de siembra"},
+          "anio": {"type": "integer", "description": "para asi_me_fue, año de siembra"},
+          "resultado": {"type": "string", "enum": ["bien", "regular", "perdio"]},
+          "texto": {"type": "string", "description": "en sus palabras, hasta 280 letras; obligatorio en aviso y pregunta"}},
+         ("tipo",)),
 ]
 CHAT_ONLY = {"boton_llamada", "boton_lote", "boton_plan"}  # the live call has no chat to put a button in
 BY_NAME = {t.name: t for t in TOOLS}

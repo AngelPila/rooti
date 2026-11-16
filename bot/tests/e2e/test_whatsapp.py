@@ -113,6 +113,11 @@ def script(req: dict) -> dict:
             return {"content": f"Para el arroz, el mejor mes para sembrar es {rice['best_month']}."}
         if result.get("enviado") is True:
             return {"content": "Le mandé el botón."}
+        if result.get("publicado") is True:
+            return {"content": f"Listo, quedó publicado en Vecinos como «{result['firma']}»."}
+        if "publicaciones" in result:
+            return {"content": "Por su zona: " + "; ".join(f"{p['quien']}{' (ejemplo)' if p.get('ejemplo') else ''}"
+                                                          for p in result["publicaciones"][:3])}
         if result.get("plan") == "listo":
             return {"content": "Listo, ya revisé su lote con los datos de la NASA."}
         return {"content": "Anotado."}
@@ -132,6 +137,14 @@ def script(req: dict) -> dict:
                                                             "area": 3, "unit": "cuadra", "waterlog": False})]}
     if "cuándo siembro" in said:
         return {"tool_calls": [(tool(req, "cuando_sembrar"), {"cultivo": "rice"})]}
+    if "me llamo" in said:
+        return {"tool_calls": [(tool(req, "guardar_lote"), {"name": "Pedro Antonio Ramírez"})]}
+    if "cuénteles a los vecinos" in said:
+        return {"tool_calls": [(tool(req, "publicar_en_vecinos"), {
+            "tipo": "asi_me_fue", "cultivo": "rice", "mes": 1, "anio": date.today().year, "resultado": "bien",
+            "texto": "Con el agua del canal salió bien."})]}
+    if "les fue a los vecinos" in said:
+        return {"tool_calls": [(tool(req, "__vecinos"), {"cultivo": "rice"})]}
     if "hablar" in said:
         return {"tool_calls": [(tool(req, "boton_llamada"), {})]}
     if "/ayuda" in said:  # plain chat, not a Hermes command
@@ -435,3 +448,21 @@ def test_farmer_on_whatsapp(tmp_path):
         stranger = "593980000001@s.whatsapp.net"
         again = reply(lambda: wa.say(stranger, f"mi lote es {handed['code']}"), chat=stranger)
         assert again[-1]["message"] == "Ese código no me sirve, marque su lote otra vez.", "a code brings a lot only once"
+
+        # 11. Vecinos: what a farmer tells Rooti goes on the zone's feed the app reads, and the app's posts reach Rooti.
+        reply(lambda: wa.say(FARMER, "me llamo Pedro Ramírez"))
+        told = reply(lambda: wa.say(FARMER, "cuénteles a los vecinos que me fue bien con el arroz de enero"))
+        assert told[-1]["message"] == "Listo, quedó publicado en Vecinos como «Pedro R.».", told
+        status, feed = http("GET", f"{site}/api/vecinos?zone=daule")
+        mine = feed["posts"][0]
+        assert status == 200 and mine["author"] == "Pedro R." and mine["crop"] == "rice" and mine["result"] == "bien"
+        assert mine["text"] == "Con el agua del canal salió bien." and not mine["example"]
+        assert db.execute("SELECT source FROM vec_posts WHERE id = ?", (mine["id"],)).fetchone()[0] == "whatsapp"
+        row = db.execute("SELECT * FROM vec_posts WHERE id = ?", (mine["id"],)).fetchone()
+        assert FARMER.split("@")[0] not in json.dumps(row), "a post never carries the farmer's number"
+        status, _ = http("POST", f"{site}/api/vecinos", {"type": "aviso", "zone": "daule", "author": "ana torres",
+                                                        "text": "Ojo con el gusano cogollero en el maíz."})
+        assert status == 201
+        heard = reply(lambda: wa.say(FARMER, "¿cómo les fue a los vecinos con el arroz?"))
+        assert heard[-1]["message"].startswith("Por su zona: Ana T.; Pedro R.; "), heard
+        assert "(ejemplo)" in heard[-1]["message"], "the app's example posts reach Rooti marked as examples"
