@@ -1,6 +1,6 @@
 import { fetchClimate } from "./climate.js?v=23";
 import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=37";
-import { COPY } from "./copy.js?v=62";
+import { COPY } from "./copy.js?v=63";
 import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=25";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=5";
@@ -1955,9 +1955,11 @@ function renderChrome(r) {
   const tabs = [["plan", c.nav.plan, "i-sow"], ["terreno", c.nav.plot, "i-plot"], ["probar", c.nav.try, "i-bulb"], ["comparar", c.nav.compare, "i-scale"], ["vecinos", c.nav.neighbors, "i-neighbors"]];
   // Off the results there are no tabs, so the bar carries a way back: to the plan when there is one, else home
   const back = isRes ? null : h("a", { class: "round", href: ["planear", "aviso", "resumen"].includes(r) && P ? "#/plan" : "#/", "aria-label": es() ? "Atrás" : "Back", title: es() ? "Atrás" : "Back" }, icon("i-back"));
-  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), h("span", { class: "crumb" }, isRes ? `/  ${P.place.name} · ${fmtArea(1)} · ${fmtSpan(P)}` : `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : r === "resumen" ? c.sum.eyebrow : c.planTitle}`)),
-    isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, l))) : null,
-    h("div", { class: "row", style: { gap: "8px" } }, isRes ? h("a", { class: "btn light", href: "#/planear", onclick: () => { state.draft = null; state.sec = null; }, style: { minHeight: "40px", fontSize: "12px" } }, c.changeData) : null,
+  put($("#topbar"), h("div", { class: "row", style: { minWidth: 0 } }, back, brand(), isRes ? h("a", { class: "farm-chip", href: "#/planear", title: c.changeData, onclick: () => { state.draft = null; state.sec = null; } },
+      h("span", { class: "fc-sat", "aria-hidden": "true" }), h("span", { class: "fc-t" }, h("b", {}, `${P.place.name} · ${fmtArea(1)}`), h("small", {}, fmtSpan(P))), h("span", { class: "fc-edit" }, c.changeShort))
+      : h("span", { class: "crumb" }, `/  ${r === "bootcamp" ? c.ctaBootcamp : r === "aviso" ? c.wa.crumb : r === "resumen" ? c.sum.eyebrow : c.planTitle}`)),
+    isRes ? h("nav", { class: "tabs" }, ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, icon(ic), l))) : null,
+    h("div", { class: "row", style: { gap: "8px" } },
       linked() && hasWhatsApp() ? h("a", { class: "round", href: waUrl(), "aria-label": c.wa.back, title: c.wa.back }, icon("i-chat")) : null, langBtn()));
   put($("#bottom-nav"), ...tabs.map(([k, l, ic]) => h("a", { href: "#/" + k, "aria-current": r === k || (k === "plan" && r === "pasado") ? "page" : null }, icon(ic), l)));
   slidePill($("#topbar .tabs"), fromTop);

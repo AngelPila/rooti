@@ -62,7 +62,7 @@ export const COPY = {
     // results
     loading: "Trayendo el clima de la NASA para este lugar…", climateError: "No pudimos traer el clima de la NASA. Revise la conexión.", retry: "Reintentar", noPlans: "Ninguno de los cultivos elegidos se puede cosechar en estas fechas.",
     invalidPlanLink: "El enlace del plan tiene datos inválidos o incompletos. Revise los datos antes de calcular el plan.",
-    changeData: "Cambiar datos", best: "Lo mejor para su finca", verdict: { good: "Le iría bien", care: "Le iría más o menos", danger: "Le iría mal" }, verdictSoil: ": la tierra queda pelada",
+    changeData: "Cambiar datos", changeShort: "Cambiar", best: "Lo mejor para su finca", verdict: { good: "Le iría bien", care: "Le iría más o menos", danger: "Le iría mal" }, verdictSoil: ": la tierra queda pelada",
     kPlantings: "siembras", kLoss: "años con pérdida", kCovered: "meses con tierra cubierta", none: "Ninguno", kOf: (k, n) => `${k} de cada ${n}`, ofMonths: (a, b) => `${a} de ${b}`,
     landEach: "Tierra para cada cultivo", calendar: "Calendario de la finca", bare: "Pelado", straw: "Paja sobre la tierra", coversSoil: "cubre el suelo",
     harvestAll: (y) => `se cosecha todos los años · ${y} % de una buena cosecha`, harvestSome: (k, n, y) => `se cosecha ${k} de cada ${n} años · ${y} % de una buena cosecha`,
@@ -266,7 +266,7 @@ export const COPY = {
     prioQ: "What matters most?", prio: { soil: "Care for the soil", income: "Earn money", water: "Save water" }, prioShort: { soil: "Soil", income: "Money", water: "Water" },
     loading: "Getting NASA climate for this place…", climateError: "We couldn't get NASA climate data. Check the connection.", retry: "Retry", noPlans: "None of the chosen crops can be harvested on these dates.",
     invalidPlanLink: "This plan link has missing or invalid details. Review them before calculating the plan.",
-    changeData: "Change details", best: "Best for your farm", verdict: { good: "Would go well", care: "Would go so-so", danger: "Would go badly" }, verdictSoil: ": the soil is left bare",
+    changeData: "Change details", changeShort: "Change", best: "Best for your farm", verdict: { good: "Would go well", care: "Would go so-so", danger: "Would go badly" }, verdictSoil: ": the soil is left bare",
     kPlantings: "plantings", kLoss: "years with a loss", kCovered: "months with soil covered", none: "None", kOf: (k, n) => `${k} in ${n}`, ofMonths: (a, b) => `${a} of ${b}`,
     landEach: "Land for each crop", calendar: "Farm calendar", bare: "Bare", straw: "Straw left on the soil", coversSoil: "covers the soil",
     harvestAll: (y) => `harvested every year · ${y}% of a good harvest`, harvestSome: (k, n, y) => `harvested ${k} in ${n} years · ${y}% of a good harvest`,

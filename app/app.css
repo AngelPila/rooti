@@ -663,7 +663,7 @@ body.results .bottom-nav { display: grid; grid-auto-flow: column; grid-auto-colu
 /* ---------- computer ---------- */
 @media (min-width: 1024px) {
   body.app-route #topbar { display: flex; }
-  #topbar { position: sticky; top: 0; z-index: 6; height: 72px; padding: 0 max(24px, calc((100% - 1920px) / 2 + 24px)); align-items: center; justify-content: space-between; gap: 16px; background: rgba(243, 240, 229, .88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--line); }
+  #topbar { position: sticky; top: 0; z-index: 6; height: 72px; padding: 0 max(24px, calc((100% - 1920px) / 2 + 24px)); align-items: center; justify-content: space-between; gap: 16px; background: rgba(243, 240, 229, .88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
   #topbar .lockup { font-size: 26px; }
   #topbar .crumb { font: 500 12px/1 var(--f-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--lichen); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #topbar > .row:first-child { flex: 1; }
@@ -1125,3 +1125,17 @@ body.drawing .search, body.drawing .geo, body.drawing .gps, body.drawing .pf-nex
 .pp-years .v-good { color: var(--forest); background: color-mix(in srgb, var(--soybean) 25%, var(--paper)); padding: 3px 10px; border-radius: 999px; font-size: 14px; }
 @media (max-width: 720px) { .res-title, .pv-choose .pv-title { padding: 22px 20px 24px; border-radius: 24px; } }
 .res-title { align-self: stretch; }
+
+/* Topbar: the farm as a chip (its own field from above, name, dates) that is also the way to change the details; tabs carry the same icons as the phone bar */
+#topbar .farm-chip { display: inline-flex; align-items: center; gap: 10px; min-width: 0; margin-left: 14px; padding: 5px 6px 5px 5px; border-radius: 999px; background: var(--paper); box-shadow: 0 1px 0 rgba(21, 62, 50, .04), 0 6px 18px -12px rgba(21, 62, 50, .45); text-decoration: none; color: var(--ink); transition: box-shadow var(--t-fast) var(--ease), transform var(--t-fast) var(--ease); }
+#topbar .fc-sat { width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--sat, none) center / cover, var(--moss); box-shadow: inset 0 0 0 2px var(--lime); }
+#topbar .fc-t { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+#topbar .fc-t b { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#topbar .fc-t small { font: 500 10.5px/1.3 var(--f-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--lichen); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#topbar .fc-edit { flex: none; margin-left: 6px; padding: 7px 12px; border-radius: 999px; background: var(--parchment); font: 500 11px/1 var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--forest); transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+#topbar .farm-chip:active { transform: scale(.98); }
+@media (hover: hover) and (pointer: fine) { #topbar .farm-chip:hover .fc-edit { background: var(--forest); color: var(--lime); } #topbar .farm-chip:hover { box-shadow: 0 1px 0 rgba(21, 62, 50, .04), 0 10px 24px -12px rgba(21, 62, 50, .55); } }
+.tabs a { display: inline-flex; align-items: center; gap: 7px; }
+.tabs a .icon { width: 17px; height: 17px; flex: none; opacity: .75; transition: color var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease); }
+.tabs a[aria-current="page"] .icon { color: var(--lime); opacity: 1; }
+@media (max-width: 1280px) { .tabs a .icon { display: none; } }
