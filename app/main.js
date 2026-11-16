@@ -1,7 +1,7 @@
 import { fetchClimate } from "./climate.js?v=23";
-import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=35";
-import { COPY } from "./copy.js?v=58";
-import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=24";
+import { plan as runPlanner, cropMonths, NINO_ONSET } from "./planner.js?v=36";
+import { COPY } from "./copy.js?v=59";
+import { fetchTerrain, describeSoil, waterlogFactor } from "./terrain.js?v=25";
 import { STR } from "./i18n.js?v=22";
 import { createBootcamp } from "./bootcamp.js?v=3";
 import { link, initLink, linked, waUrl, hasWhatsApp, canHandoff, saveLot, choosePlan, handoff } from "./link.js?v=2";
@@ -1389,7 +1389,7 @@ function money(f) {
   if (!nearPilot(state.plan.place) || !DATA.econ) return null;
   const A = (state.plan.area || 1) * UNITS[state.plan.unit || "ha"];
   let total = 0, known = false;
-  for (const b of Object.values(f.byCrop)) for (const p of b.plantings) { const e = DATA.econ.crops?.[b.crop], y = e?.yield_t_ha?.typical, pr = e?.price_usd_per_t?.typical, co = e?.cost_usd_ha?.typical; if (!y || !pr || !co) continue; known = true; total += p.share * A * (y * pr * p.yld - co); }
+  for (const b of Object.values(f.byCrop)) for (const p of b.plantings) { const e = DATA.econ.crops?.[b.crop], y = e?.yield_t_ha?.typical, pr = e?.price_usd_per_t?.typical, co = e?.cost_usd_ha?.typical; if (b.crop === "mulch" || GREEN.has(b.crop)) continue; if (!y || !pr || !co) return null; known = true; total += p.share * A * (y * pr * p.yld - co); }
   return known ? Math.round(total / 10) * 10 : null;
 }
 // The plan the farmer picked on the plan screen; compare and "what if" follow it
@@ -1436,7 +1436,10 @@ function viewComparar() {
       ...(mR != null && mM != null ? [[c.rMoney, $$(mR), $$(mM), mR, mM, true]] : []),
     ];
     const better = (a, b, up) => (Math.abs(a - b) <= 0.02 * Math.max(Math.abs(a), Math.abs(b), 0.05) ? 0 : (up ? b > a : b < a) ? 1 : -1);
-    const score = rows.reduce((x, rw) => x + better(rw[3], rw[4], rw[5]), 0);
+    const wins = rows.map((rw) => better(rw[3], rw[4], rw[5])), score = wins.reduce((a, b) => a + b, 0);
+    // When each plan wins somewhere, say where instead of crowning one: "better on losses, worse on harvest" is the honest read
+    const winsOf = (s) => andList(rows.filter((_, i) => wins[i] === s).map((rw) => rw[0].split(" (")[0].toLowerCase()));
+    const mixed = wins.includes(1) && wins.includes(-1) ? c.mixed(winsOf(1), winsOf(-1)) : null;
     const why = score >= 0 ? "" : mine.anyLoss > rec.anyLoss + 0.1
       ? (es() ? `Su plan pierde cosecha ${frac(mine.anyLoss).toLowerCase()} años; el recomendado, ${frac(rec.anyLoss).toLowerCase()}.` : `Your plan loses a harvest ${frac(mine.anyLoss).toLowerCase()} years; the recommended one, ${frac(rec.anyLoss).toLowerCase()}.`)
       : rec.harvest > mine.harvest ? (es() ? `Con el recomendado llega a cosecha ${fmtArea(rec.harvest - mine.harvest)} más.` : `The recommended plan brings ${fmtArea(rec.harvest - mine.harvest)} more to harvest.`) : "";
@@ -1475,7 +1478,7 @@ function viewComparar() {
               return h("div", { class: "cb-row", role: "group", "aria-label": l }, h("span", { class: "cb-label", "aria-hidden": "true" }, l), line("a", recName, a, va, w < 0), line("b", c.mine, b, vb, w > 0));
             })),
           mR != null && mM != null ? h("p", { class: "small" }, c.moneyNote) : null,
-          h("div", { class: `conclusion ${score > 0 ? "good" : "even"}` }, icon(score < 0 ? "i-info" : "i-check"), h("span", {}, score < 0 ? (why || c.recBetter) : score > 0 ? c.mineBetter : c.tie)),
+          h("div", { class: `conclusion ${score > 0 && !mixed ? "good" : "even"}` }, icon(score > 0 && !mixed ? "i-check" : "i-info"), h("span", {}, mixed || (score < 0 ? (why || c.recBetter) : score > 0 ? c.mineBetter : c.tie))),
         ])));
     edgeFade($(".res.cmp > .col-left"));
   });

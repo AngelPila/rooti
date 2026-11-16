@@ -35,7 +35,7 @@ const send = (res, code, body, headers = {}) => {
   res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers });
   res.end(JSON.stringify(body));
 };
-const clientIp = (req) => (TRUST_PROXY && req.headers["x-forwarded-for"] ? String(req.headers["x-forwarded-for"]).split(",")[0].trim() : req.socket.remoteAddress) || "?";
+const clientIp = (req) => (TRUST_PROXY && req.headers["x-forwarded-for"] ? String(req.headers["x-forwarded-for"]).split(",").pop().trim() : req.socket.remoteAddress) || "?";
 async function readJson(req, limit = 4096) {
   let size = 0; const chunks = [];
   for await (const c of req) { size += c.length; if (size > limit) throw Object.assign(new Error("too large"), { code: 413 }); chunks.push(c); }
@@ -123,7 +123,7 @@ async function api(req, res, url) {
   }
   if (parts[3] === "report") {
     if (!allowed("r:" + ip, 30, 10 * 60e3)) return send(res, 429, { error: "slow down" });
-    const reporter = clean(body.device, 64) || ip;
+    const reporter = ip; // one report per connection: a made-up device id could hide any post
     const r = await db.query(`INSERT INTO vec_reports (post_id, reporter) SELECT id, $2 FROM vec_posts WHERE id = $1 ON CONFLICT DO NOTHING`, [id, reporter]);
     return send(res, 200, { ok: true, new: r.rowCount > 0 });
   }
